@@ -64,6 +64,13 @@ want = {'interferogram_mlook','interferogram_coherence','snaphu_out_phase', ...
   'row_offset','Time','GPS_time','Latitude','Longitude','Elevation', ...
   'Surface','param_records','param_polarimetric'};
 have = whos('-file', in_fn);
+required = {'Time','Surface','interferogram_coherence','interferogram_mlook'};
+missing = setdiff(required, {have.name});
+if ~isempty(missing)
+  warning('Required variable(s) %s missing from polarimetric file. Skipping this frame. Perhaps param.fabric.in_path points at the wrong product. File:\n  %s.', strjoin(missing, ', '), in_fn);
+  success = false;
+  return;
+end
 sel = intersect(want, {have.name});
 pol = load(in_fn, sel{:});
 
