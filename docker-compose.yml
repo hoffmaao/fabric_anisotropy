@@ -1,0 +1,24 @@
+services:
+  matlab:
+    # Committed from mathworks/matlab:r2024b with Optimization Toolbox
+    # added via mpm (docker commit fabric-matlab fabric-matlab-custom:r2024b)
+    image: fabric-matlab-custom:r2024b
+    # MATLAB has no Linux arm64 build; runs via Rosetta on Apple Silicon
+    platform: linux/amd64
+    container_name: fabric-matlab
+    command: -browser
+    ports:
+      - "8888:8888"
+    shm_size: "512m"
+    volumes:
+      # Project code appears inside the container at this path
+      - .:/home/matlab/fabric_anisotropy
+      # OPR toolbox (gitlab.com/openpolarradar/opr clone)
+      - ~/projects/opr:/home/matlab/opr
+      # Local mirror of CReSIS data products (see scripts/fetch_frame.sh)
+      - ~/data/opr:/home/matlab/data
+    environment:
+      # Uncomment and set if you have a network license server instead of
+      # signing in with your MathWorks account in the browser:
+      # MLM_LICENSE_FILE: 27000@license-server.example.edu
+      MWI_APP_PORT: "8888"
