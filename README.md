@@ -10,7 +10,9 @@ accumulation radar.
 ## Method code (`+ptt` package)
 
 Coordinate convention: z is height above the bed, zhat = z/H in [0, 1].
-Units: meters and nanoseconds.
+Units: meters and nanoseconds in the theory functions; the interferometric
+chain uses seconds to match OPR products (each function's header states its
+units).
 
 - `ptt.columnProfiles` - closed-form firn-ice column: Herron-Langway
   density, power-law bubble eccentricity, fabric eigenvalue profiles, and
@@ -90,17 +92,22 @@ Stop with `docker compose down`.
 
 ## Notes
 
-- Image is `mathworks/matlab:r2024b` (linux/amd64, emulated via Rosetta on
-  Apple Silicon). To match the MATLAB release on the CReSIS servers, change
-  the tag in `docker-compose.yml` and `docker compose up -d` again.
-- The base image ships MATLAB only. To add toolboxes, run e.g.:
+- The image is `fabric-matlab-custom:r2024b`: `mathworks/matlab:r2024b`
+  (linux/amd64, emulated via Rosetta on Apple Silicon) with the Optimization
+  Toolbox added via `mpm` and committed locally with `docker commit` (see the
+  comment in `docker-compose.yml`). On a machine without that committed
+  image, or to match the MATLAB release on the CReSIS servers, start from the
+  matching `mathworks/matlab` tag, install the toolboxes as below, and
+  `docker commit` it under the name in `docker-compose.yml`.
+- To add more toolboxes, run e.g.:
 
   ```sh
   docker exec -it --user root fabric-matlab \
     mpm install --release=r2024b --destination=/opt/matlab/R2024b \
     Signal_Processing_Toolbox Image_Processing_Toolbox
+  docker commit fabric-matlab fabric-matlab-custom:r2024b
   ```
 
-  (Toolbox installs go into the container layer; they persist across
-  `stop`/`start` but are lost if the container is removed. If a fixed toolbox
-  set emerges, bake it into a Dockerfile.)
+  (The `docker commit` persists the toolboxes into the image; without it they
+  are lost when the container is removed. If a fixed toolbox set emerges,
+  bake it into a Dockerfile.)
