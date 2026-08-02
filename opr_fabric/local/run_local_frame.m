@@ -89,6 +89,7 @@ pf.blend_coreg_en = true;
 pf.coherence_threshold = 0.5;
 pf.min_coverage = 0.3;
 pf.block_size = 1000;
+pf.inversion = 'joint';          % same solver as run_fabric_on_product
 pf.num_intervals = 8;
 pf.ref_twtt_offset = 50e-9;
 pf.half_offset = 0;              % co-located crossed bowties (switch-gated):

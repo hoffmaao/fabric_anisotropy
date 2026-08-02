@@ -18,10 +18,12 @@ function inv = invertBlocks(blk, map, par, opts)
 %
 %   inv fields (num_intervals x Nblk): dlam, top_depth, bot_depth [m below
 %   surface], dtau_obs, dtau_fit [ns], quality (mean coherence at nodes),
-%   clipped (joint mode: interval dlam pegged at the eigenvalue bound;
-%   all-false where the stripping path runs). Per-block fields (1 x Nblk):
+%   clipped (joint mode: 1 where the interval dlam is pegged at the
+%   eigenvalue bound, 0 where it fitted interior; NaN where the block was
+%   skipped or the stripping path runs). Per-block fields (1 x Nblk):
 %   rms [ns] (coherence-weighted misfit rms) and alpha (regularization
-%   weight), both NaN where the stripping path runs.
+%   weight), both NaN where the block was skipped or the stripping path
+%   runs.
 
 if ~isfield(opts,'num_intervals') || isempty(opts.num_intervals)
   opts.num_intervals = 10;
@@ -55,7 +57,7 @@ inv.bot_depth = nan(Nint,Nblk);
 inv.dtau_obs = nan(Nint,Nblk);
 inv.dtau_fit = nan(Nint,Nblk);
 inv.quality = nan(Nint,Nblk);
-inv.clipped = false(Nint,Nblk);
+inv.clipped = nan(Nint,Nblk);
 inv.rms = nan(1,Nblk);
 inv.alpha = nan(1,Nblk);
 
@@ -117,7 +119,7 @@ for b = 1:Nblk
   inv.dtau_fit(:,b) = inv_out.dtau_fit;
   inv.quality(:,b) = node_coh;
   if strcmp(opts.inversion, 'joint')
-    inv.clipped(:,b) = inv_out.clipped;
+    inv.clipped(:,b) = double(inv_out.clipped);
     inv.rms(b) = inv_out.rms;
     inv.alpha(b) = inv_out.alpha;
   end
