@@ -83,7 +83,7 @@ def load_dataset(pattern):
 
 
 def main():
-    data = [(name, color) + tuple(load_dataset(pattern)[i] for i in range(4))
+    data = [(name, color) + load_dataset(pattern)
             for name, pattern, color in DATASETS]
     data = [(n, c, cols, la, lo, hd) for (n, c, cols, la, lo, hd) in data if cols.size]
     if not data:
