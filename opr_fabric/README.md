@@ -1,0 +1,127 @@
+# opr_fabric: fabric inversion module for the OPR toolbox
+
+Drop-in processing module for the OPR toolbox
+(https://gitlab.com/openpolarradar/opr) that turns the existing
+`CSARP_polarimetric` product into profiles of the horizontal ice-fabric
+contrast dlam = lam_x - lam_y versus depth and along-track position,
+using the theory of Rathmann (2026) implemented in the `+ptt` package
+(one directory up).
+
+## Pipeline
+
+1. Per-polarization echograms (existing OPR flow): qlook/sar/array
+   processing of each polarization channel into separate products, e.g.
+   `CSARP_standardphase_HH`, `..._VV`, `..._HV`, `..._VH` (see
+   `run_polarimetric.m` in the toolbox; the 2024_Antarctica_Ground2 season
+   is set up this way).
+2. `polarimetric.m` (existing): synthesizes a rotated basis
+   (`synth_rot_deg`), coregisters ref/sec, forms the multilooked
+   interferogram + coherence, optionally SNAPHU-unwraps the phase. Run
+   with `coregistration.en = true` and ideally `snaphu_en = true`.
+3. `fabric.m` / `fabric_task.m` (this module): `fabric_task.m` is a thin
+   OPR adapter (file discovery, product loading, output/figure
+   conventions) around the pure numerical chain in `+ptt` -
+   `ptt.blendTraveltime` -> `ptt.blockAverage` -> `ptt.invertBlocks` -
+   which reads its options directly from the `param.fabric` struct and is
+   equally callable from standalone scripts and tests. Per frame,
+   - traveltime differences dtau(twtt, x) = t_sec - t_ref from a blend of
+     the two estimators: coregistration `row_offset * dt` fixes the sign
+     and the integer 1/fc fringe ambiguity; the interferogram phase
+     provides sub-ns precision (SNAPHU-unwrapped when present, otherwise
+     wrapped phase with per-pixel fringe resolution),
+   - dtau referenced to zero just below the surface return (removes
+     channel timing/phase biases and the unwrapping constant),
+   - coherence-weighted averaging into along-track blocks,
+   - layer-stripping inversion (ptt.invertHorizontalFabric) through the
+     Maxwell-Garnett firn model for piecewise-constant dlam over
+     `num_intervals` depth intervals,
+   - output `CSARP_fabric/<day_seg>/Data_*.mat` + overview images.
+
+## Deployment on the CReSIS servers
+
+- `fabric.m`, `fabric_task.m` -> `opr/matlab/processing/` (or keep on your
+  personal path); `run_fabric.m` -> your `run_opr` repo
+  (`gRadar.path_override`), edited per season.
+- `+ptt` (from the project root) must be on the MATLAB path, e.g. copy to
+  `opr/matlab/+ptt` or your `run_opr` repo.
+- For compiled cluster modes, add `{'fabric_task.m' 2}` to
+  `gRadar.cluster.hidden_depend_funs` in startup.m and re-run
+  cluster_compile. `cluster.type = 'debug'` needs none of that.
+- Param spreadsheet: add a `fabric` worksheet (row 1 field names, row 2
+  type codes, one row per segment matching the `cmd` sheet order), e.g.
+  `out_path`(t), `in_path`(t), `fc`(r), `block_size`(r),
+  `num_intervals`(r), `ptt.H`(r), `ptt.bco_depth`(r). Enable per segment
+  via the `cmd` sheet `generic` column `{{'fabric','fabric'}}`, or just
+  drive everything from `run_fabric.m` overrides (current default).
+  Note master.m only propagates ctrl_chains for `analysis` generic steps,
+  so run via `run_fabric.m` until that one-line change is upstreamed.
+
+## Ground accum radar (accum3 / EAGER) channel mapping
+
+From the mission defaults and lever_arm.m of recent ground seasons
+(2023-2025, config `psc_eager_configHV*`): 2 Tx x 2 Rx colocated crossed
+bowties on the sled, rx path 1 = H = ALONG-TRACK polarization, rx path 2 =
+V = CROSS-TRACK, zero baseline. The 4 waveforms are 2 Tx pols x 2 pulse
+lengths (wf1/wf3 short 0.1-1 us, wf2/wf4 long 1-8 us), so [wf adc] pairs
+map to (deep waveforms in bold for fabric work):
+
+| [wf adc] | pol | pulse |    | [wf adc] | pol | pulse |
+|---|---|---|---|---|---|---|
+| [1 1] | HH | short |    | **[2 1]** | **HH** | long |
+| [1 2] | HV | short |    | [2 2] | HV | long |
+| [3 1] | VH | short |    | [4 1] | VH | long |
+| [3 2] | VV | short |    | **[4 2]** | **VV** | long |
+
+With `synth_rot_deg = 0`, ref = HH and sec = VV, so this module's
+dlam = lam_cross-track - lam_along-track.
+
+Season/data caveats to check before interpreting results:
+- Phase-preserved products require `array.method = 'standardphase'` (no
+  multilook); the default spreadsheets and the public portal's
+  CSARP_standard_* use power-detected 'standard' (hence dtau_source =
+  'coreg' for those).
+- `radar.chan_equal_dB/deg` are all zero in every recent ground season: no
+  channel equalization has been applied. Fine for single-pair HH/VV dtau
+  (surface referencing absorbs biases), but REQUIRED before trusting
+  rotated-basis synthesis (synth_rot_deg ~= 0) or HV/VH use; note
+  polarimetric_task.m itself substitutes VH for HV due to a known HV
+  amplitude scaling issue.
+- Some 2024_Antarctica_Ground2 segments are marked "All polarizations bad
+  except VV deep waveform. Failed connector on H channel? Do not process."
+  in the cmd sheet notes; 2025_Antarctica_Ground2 notes "polarimetric
+  phase unwrapping hangs". Check the notes column per segment.
+- There is no `polarimetric` worksheet reader in the toolbox; its params
+  (and this module's, unless you add a `fabric` sheet) are set from run
+  scripts via opr_set_params.
+
+## Physics caveats
+
+- Common-offset data constrains ONLY the horizontal contrast along the
+  synthesized axes: dlam > 0 means more c-axis concentration along the
+  secondary (rotated V) axis than the reference (rotated H) axis. The
+  vertical eigenvalue lam_z and bubble close-off depth are assumed
+  (`param.fabric.ptt`); the synthetic tests show dlam is insensitive to
+  those assumptions at small offsets.
+- The synthesized basis should be aligned with the horizontal fabric
+  principal axes (choose `synth_rot_deg` in polarimetric.m, e.g. from the
+  rotation movie or minimum cross-pol energy); misalignment mixes in
+  polarization rotation that this scalar-traveltime model does not
+  capture. Azimuth scanning via multiple `synth_rot_deg` runs is a
+  natural extension.
+- Layer stripping amplifies noise between depth intervals; increase
+  `block_size` / `mlook_window` or reduce `num_intervals` if profiles
+  oscillate.
+
+## Test
+
+`test/test_fabric_task.m` builds a synthetic CSARP_polarimetric frame from
+a known fabric (with noise, wrong-sign convention, unwrapping constant,
+channel timing bias, decaying coherence), runs the real `fabric_task` with
+stubbed OPR support functions (`test/stubs/`), and asserts the inferred
+dlam matches the truth. Runs in MATLAB or Octave:
+
+```sh
+docker run --rm --platform linux/amd64 -v "$PWD/../..":/work \
+  -w /work/opr_fabric/test gnuoctave/octave:latest \
+  octave --no-gui test_fabric_task.m
+```

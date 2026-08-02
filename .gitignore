@@ -1,0 +1,11 @@
+# MATLAB
+*.asv
+*.mex*
+
+# Generated outputs
+figs/
+opr_fabric/test/output/
+
+# OS
+.DS_Store
+.claude/
