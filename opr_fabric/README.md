@@ -120,9 +120,11 @@ Season/data caveats to check before interpreting results:
   polarization rotation that this scalar-traveltime model does not
   capture. Azimuth scanning via multiple `synth_rot_deg` runs is a
   natural extension.
-- Layer stripping amplifies noise between depth intervals; increase
-  `block_size` / `mlook_window` or reduce `num_intervals` if profiles
-  oscillate.
+- Exact layer stripping (`inversion = 'stripping'`) amplifies noise
+  between depth intervals; the default joint solve suppresses this with
+  its smoothness penalty at the cost of some depth resolution. If
+  profiles still oscillate, increase `block_size` / `mlook_window`,
+  reduce `num_intervals`, or (joint mode) raise `reg`.
 
 ## Test
 
