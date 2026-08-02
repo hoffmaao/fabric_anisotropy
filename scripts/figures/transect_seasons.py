@@ -37,10 +37,9 @@ def load_season(season, product):
             if not np.any(np.isfinite(dlam[:, b])):
                 continue
             n_tot += 1
+            pegged = np.abs(dlam[:, b]) > 0.6
             if clip is not None and clip.size:
-                pegged = clip[:, b].astype(bool)
-            else:
-                pegged = np.abs(dlam[:, b]) > 0.6
+                pegged |= clip[:, b] == 1
             n_peg += int(np.any(pegged))
             col = np.full(depth_grid.size, np.nan)
             for k in range(dlam.shape[0]):
@@ -67,6 +66,7 @@ seasons = ['2022_Antarctica_Ground', '2023_Antarctica_Ground',
 product = sys.argv[1] if len(sys.argv) > 1 else 'joint'
 
 fig, axes = plt.subplots(4, 1, figsize=(14, 13))
+pc = None
 for ax, season in zip(axes, seasons):
     s = load_season(season, product)
     if s is None:
@@ -84,6 +84,9 @@ for ax, season in zip(axes, seasons):
     print(f"{season}: frames={s['n_frames']} blocks={s['n_tot']} "
           f"pegged={s['n_peg']} ({100 * s['n_peg'] / s['n_tot']:.0f}%)")
 axes[-1].set_xlabel('Along-traverse distance (km, segment gaps compressed)')
+if pc is None:
+    print(f'no data found under {ROOT}/{product}; nothing to plot')
+    sys.exit(1)
 fig.colorbar(pc, ax=axes, label=r'$\Delta\lambda = \lambda_{cross} - \lambda_{along}$',
              shrink=0.6)
 fig.suptitle('Horizontal fabric contrast, EAGER traverses 2022-2026 (joint inversion)',
