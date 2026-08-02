@@ -9,7 +9,8 @@
 %
 %   The gRadar-dependent OPR path helpers are shadowed by the stubs in
 %   ../test/stubs, which map CSARP_* products under data_root. Outputs
-%   land in <data_root>/CSARP_polarimetric and <data_root>/CSARP_fabric.
+%   land in <data_root>/CSARP_polarimetric and
+%   <data_root>/CSARP_fabric_joint.
 
 %% Paths (container defaults; falls back to host-side locations)
 opr_root = '/home/matlab/opr/matlab';
@@ -74,7 +75,7 @@ assert(success,'polarimetric_task failed');
 %% Stage 2: fabric_task
 pf = [];
 pf.in_path = 'polarimetric';
-pf.out_path = 'fabric';
+pf.out_path = 'fabric_joint';
 pf.img = 0;
 pf.out_file_exts = {'.jpg'};
 pf.fc = 750e6;                   % accum3 600-900 MHz; refine from wfs
@@ -105,4 +106,4 @@ assert(success,'fabric_task failed');
 
 fprintf('\nOutputs:\n  %s\n  %s\n', ...
   fullfile(data_root,'CSARP_polarimetric',param.day_seg), ...
-  fullfile(data_root,'CSARP_fabric',param.day_seg));
+  fullfile(data_root,'CSARP_fabric_joint',param.day_seg));

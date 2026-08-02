@@ -38,7 +38,10 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
      (ptt.invertHorizontalFabricJoint, `inversion = 'joint'`, the module
      default, robust to noisy data) or exact layer stripping
      (ptt.invertHorizontalFabric, `inversion = 'stripping'`),
-   - output `CSARP_fabric/<day_seg>/Data_*.mat` + overview images.
+   - output `CSARP_<out_path>/<day_seg>/Data_*.mat` + overview images
+     (`out_path` defaults to `fabric`, but the drivers override it to
+     `fabric_joint` so joint-solver results sit beside the earlier
+     `CSARP_fabric` stripping outputs for comparison).
 
 ## Deployment on the CReSIS servers
 
