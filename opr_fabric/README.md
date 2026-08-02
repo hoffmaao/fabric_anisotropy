@@ -32,10 +32,16 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
    - dtau referenced to zero just below the surface return (removes
      channel timing/phase biases and the unwrapping constant),
    - coherence-weighted averaging into along-track blocks,
-   - layer-stripping inversion (ptt.invertHorizontalFabric) through the
-     Maxwell-Garnett firn model for piecewise-constant dlam over
-     `num_intervals` depth intervals,
-   - output `CSARP_fabric/<day_seg>/Data_*.mat` + overview images.
+   - inversion through the Maxwell-Garnett firn model for
+     piecewise-constant dlam over `num_intervals` depth intervals:
+     smoothness-regularized joint solve
+     (ptt.invertHorizontalFabricJoint, `inversion = 'joint'`, the module
+     default, robust to noisy data) or exact layer stripping
+     (ptt.invertHorizontalFabric, `inversion = 'stripping'`),
+   - output `CSARP_<out_path>/<day_seg>/Data_*.mat` + overview images
+     (`out_path` defaults to `fabric`, but the drivers override it to
+     `fabric_joint` so joint-solver results sit beside the earlier
+     `CSARP_fabric` stripping outputs for comparison).
 
 ## Deployment on the CReSIS servers
 
@@ -56,10 +62,14 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
   Note master.m only propagates ctrl_chains for `analysis` generic steps,
   so run via `run_fabric.m` until that one-line change is upstreamed.
 - For whole-season batches that bypass master.m and the param spreadsheets
-  entirely, `server/run_fabric_scratch.m` runs `fabric_task` over every
-  frame through the `test/stubs` opr_* shims, writing `CSARP_fabric`
-  outputs to a user scratch tree instead of the shared season tree; see its
-  header for the paths and the `matlab -batch` launch line.
+  entirely, `server/run_fabric_scratch.m` runs `fabric_task` (regularized
+  joint inversion) over every frame of each input product in its
+  per-product season table (EAGER traverse seasons 2022-2026, including
+  both independent 2024-25 polarimetric processings) through the
+  `test/stubs` opr_* shims, writing `CSARP_<out_path>` outputs
+  (`fabric_joint`, or `fabric_joint_jp` for the second 2024-25 processing)
+  to a user scratch tree instead of the shared season tree; see its header
+  for the table, paths, and the `matlab -batch` launch line.
 
 ## Ground accum radar (accum3 / EAGER) channel mapping
 
@@ -113,9 +123,11 @@ Season/data caveats to check before interpreting results:
   polarization rotation that this scalar-traveltime model does not
   capture. Azimuth scanning via multiple `synth_rot_deg` runs is a
   natural extension.
-- Layer stripping amplifies noise between depth intervals; increase
-  `block_size` / `mlook_window` or reduce `num_intervals` if profiles
-  oscillate.
+- Exact layer stripping (`inversion = 'stripping'`) amplifies noise
+  between depth intervals; the default joint solve suppresses this with
+  its smoothness penalty at the cost of some depth resolution. If
+  profiles still oscillate, increase `block_size` / `mlook_window`,
+  reduce `num_intervals`, or (joint mode) raise `reg`.
 
 ## Test
 

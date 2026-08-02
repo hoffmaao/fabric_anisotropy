@@ -30,7 +30,7 @@ param.stub_out_root = data_root;
 
 pf = [];
 pf.in_path = 'polarimetric_unwrap';
-pf.out_path = 'fabric';
+pf.out_path = 'fabric_joint';
 pf.img = 0;
 pf.out_file_exts = {'.png'};
 pf.fc = 750e6;                  % deep waveform 600-900 MHz
@@ -44,6 +44,8 @@ pf.block_size = 1000;           % 4346 rlines -> 5 blocks
 pf.num_intervals = 10;
 pf.ref_twtt_offset = 50e-9;
 pf.half_offset = 0;             % colocated crossed bowties
+pf.inversion = 'joint';
+pf.reg = 0.05;
 pf.ptt = struct('H', 2000, 'bco_depth', 60, 'lam_z_sfc', 1/3, 'lam_z_bed', 1/3);
 param.fabric = pf;
 
@@ -51,7 +53,7 @@ param.fabric = pf;
 success = fabric_task(param);
 assert(success, 'fabric_task failed');
 
-out_fn = fullfile(data_root,'CSARP_fabric',param.day_seg, ...
+out_fn = fullfile(data_root,['CSARP_' pf.out_path],param.day_seg, ...
   sprintf('Data_%s_%03d.mat',param.day_seg,param.load.frm));
 out = load(out_fn);
 fprintf('\nBlocks: %d, intervals: %d\n', size(out.dlam,2), size(out.dlam,1));

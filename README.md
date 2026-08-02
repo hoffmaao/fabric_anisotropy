@@ -29,6 +29,11 @@ units).
   interval. This is the method for standard accumulation-radar profiling,
   where the Tx-Rx offset is fixed; lam_z and BCO depth must be assumed but
   the contrast is insensitive to them at small offsets.
+- `ptt.invertHorizontalFabricJoint` - smoothness-regularized joint variant
+  of the common-offset inversion: solves all depth intervals
+  simultaneously (Gauss-Newton with a first-difference Tikhonov penalty,
+  coherence-weighted misfit), robust where per-interval dtau increments
+  are below the noise level, at the cost of some depth resolution.
 - Interferometric processing chain (pure numerics, no OPR dependencies;
   options structs use the same field names as the OPR fabric worksheet):
   - `ptt.blendTraveltime` - dtau map from interferogram phase blended with
@@ -36,8 +41,9 @@ units).
     ambiguity resolution)
   - `ptt.blockAverage` - coherence-weighted along-track block averaging
     with per-block fringe correction
-  - `ptt.invertBlocks` - twtt-to-depth mapping and per-block
-    layer-stripping inversion
+  - `ptt.invertBlocks` - twtt-to-depth mapping and per-block inversion
+    (exact layer stripping or the regularized joint solve, selected by
+    `opts.inversion`)
   - `ptt.twttDepthMap` - vertical twtt vs depth from the column model
 
 Scripts (each validates or applies the above end to end):
@@ -48,15 +54,24 @@ Scripts (each validates or applies the above end to end):
   common-offset layer-stripping method.
 - `scripts/accum_inversion_template.m` - template for real accumulation
   radar picks (fill in section 1).
+- `scripts/figures/` - Python (matplotlib + scipy, no other required deps)
+  figure scripts that reproduce the analysis figures from
+  `opr_fabric/server/run_fabric_scratch.m` batch outputs mirrored locally:
+  season transects, per-season depth profiles, the 2024-25 cross-validation
+  of the two independent polarimetric processings, and an all-survey summary
+  (coverage map, median profiles, drive orientations; the map uses cartopy
+  if installed, else a plain lat/lon scatter). See each script's docstring
+  for usage; the inversion chain itself stays MATLAB/Octave.
 
 ## OPR toolbox integration (`opr_fabric/`)
 
 `opr_fabric/` contains a drop-in OPR processing module (`fabric.m`,
 `fabric_task.m`, `run_fabric.m`) that consumes the toolbox's existing
 `CSARP_polarimetric` product (interferogram + coherence + SNAPHU phase +
-coregistration offsets) and produces `CSARP_fabric` profiles of the
-horizontal fabric contrast. See `opr_fabric/README.md` for the pipeline
-and deployment notes, and `opr_fabric/test/` for its end-to-end test.
+coregistration offsets) and produces `CSARP_fabric_joint` profiles of the
+horizontal fabric contrast. See `opr_fabric/README.md` for the pipeline,
+output naming, and deployment notes, and `opr_fabric/test/` for its
+end-to-end test.
 
 Figures land in `figs/`. To run without a MATLAB license (e.g. CI or quick
 checks), the scripts also work in Octave:

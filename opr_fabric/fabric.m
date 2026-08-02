@@ -7,7 +7,8 @@ function ctrl_chain = fabric(param,param_override)
 % between the two synthesized polarizations is estimated by blending the
 % coregistration row offsets (unambiguous, coarse) with the multilooked
 % interferogram phase (precise, 2*pi-ambiguous; SNAPHU-unwrapped when
-% available), then inverted per along-track block by layer stripping
+% available), then inverted per along-track block (smoothness-regularized
+% joint solve by default, or exact layer stripping; param.fabric.inversion)
 % through the Maxwell-Garnett firn model of Rathmann (2026),
 % doi:10.1098/rspa.<pending> (see the +ptt package, which must be on the
 % MATLAB path).
@@ -114,6 +115,19 @@ end
 % num_intervals: number of depth intervals (piecewise-constant dlam nodes)
 if ~isfield(param.fabric,'num_intervals') || isempty(param.fabric.num_intervals)
   param.fabric.num_intervals = 10;
+end
+
+% inversion: 'stripping' (exact per-interval layer stripping) or 'joint'
+% (smoothness-regularized joint solve; robust to noisy dtau increments
+% that make stripping oscillate and peg the eigenvalue bounds)
+if ~isfield(param.fabric,'inversion') || isempty(param.fabric.inversion)
+  param.fabric.inversion = 'joint';
+end
+
+% reg: regularization strength for the joint inversion (dimensionless
+% relative to the mean data sensitivity; see invertHorizontalFabricJoint)
+if ~isfield(param.fabric,'reg') || isempty(param.fabric.reg)
+  param.fabric.reg = 0.05;
 end
 
 % ref_twtt_offset: two-way time below the surface return where dtau is
