@@ -142,6 +142,50 @@ nblk_ok = sum(all(isfinite(out.dlam),1));
 fprintf('Blocks fully inverted: %d of %d\n', nblk_ok, size(out.dlam,2));
 assert(nblk_ok == size(out.dlam,2), 'not all blocks inverted');
 
+%% Regularized joint inversion (default for noisy field data)
+param.fabric.inversion = 'joint';
+param.fabric.out_path = 'fabric_joint';
+success = fabric_task(param);
+assert(success, 'fabric_task (joint mode) did not succeed');
+
+outj = load(fullfile(outRoot, 'CSARP_fabric_joint', day_seg, ...
+  sprintf('Data_%s_009.mat', day_seg)));
+max_err_j = 0;
+for k = 1:size(outj.dlam,1)
+  dmid = (outj.dlam_top_depth(k,1) + outj.dlam_bot_depth(k,1))/2;
+  lam_mid = ptt.columnProfiles(parT, 1 - dmid/parT.H);
+  max_err_j = max(max_err_j, abs(outj.dlam(k,1) - (lam_mid.lam(1) - lam_mid.lam(2))));
+end
+fprintf('Joint mode: max |error| block 1: %.3f\n', max_err_j);
+assert(max_err_j < 0.05, 'joint-mode dlam deviates from truth by %.3f', max_err_j);
+
+% Joint mode saves the per-block regularization diagnostics; stripping mode
+% leaves them NaN (see ptt.invertBlocks)
+assert(all(isfinite(outj.dtau_rms)) && all(isfinite(outj.reg_alpha)), ...
+  'joint mode did not save dtau_rms/reg_alpha');
+assert(all(ismember(outj.dlam_clipped(:), [0;1])), ...
+  'joint-mode dlam_clipped must be 0/1 for inverted blocks');
+assert(all(isnan(out.dtau_rms)) && all(isnan(out.reg_alpha)) ...
+  && all(isnan(out.dlam_clipped(:))), ...
+  'stripping mode must leave the joint-only diagnostics NaN');
+fprintf('Joint diagnostics: rms %.3f ns, alpha %.3f, clipped intervals %d\n', ...
+  outj.dtau_rms(1), outj.reg_alpha(1), sum(outj.dlam_clipped(:) == 1));
+
+% Unknown solver names must fail with the documented error, not a stray
+% formatting error from the message itself (mat2str rejects char in Octave)
+param.fabric.inversion = 'jointt';
+err = [];
+try
+  fabric_task(param);
+catch err
+end
+assert(~isempty(err), 'invalid param.fabric.inversion was accepted');
+assert(strcmp(err.identifier, 'ptt:invertBlocks:inversion'), ...
+  'invalid inversion mode raised %s instead of ptt:invertBlocks:inversion', err.identifier);
+fprintf('Invalid mode rejected: %s\n', err.message);
+
+param.fabric.inversion = 'stripping'; % restore for subsequent sections
+
 %% Coregistration-only mode (detected-power products: no usable phase)
 param.fabric.dtau_source = 'coreg';
 param.fabric.out_path = 'fabric_coreg';

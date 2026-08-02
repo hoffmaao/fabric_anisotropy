@@ -23,7 +23,9 @@ if 1
 
   % Input product: must match polarimetric.out_path used in run_polarimetric
   params = opr_set_params(params,'fabric.in_path','polarimetric_unwrap');
-  params = opr_set_params(params,'fabric.out_path','fabric');
+  % Output product: fabric_joint keeps the CSARP_fabric stripping outputs
+  % untouched for side-by-side comparison
+  params = opr_set_params(params,'fabric.out_path','fabric_joint');
 
   param_override.fabric.frm_types = {0,0,-1,-1,-1}; % Only do frames that are SAR processed
 
@@ -35,6 +37,7 @@ if 1
   params = opr_set_params(params,'fabric.block_size',1000);
 
   % Inversion setup
+  params = opr_set_params(params,'fabric.inversion','joint'); % smoothness-regularized joint solve ('stripping' for the exact per-interval solve)
   params = opr_set_params(params,'fabric.num_intervals',10);
   params = opr_set_params(params,'fabric.half_offset',0); % half Tx-Rx separation [m]
   % Firn-ice column model (see ptt.defaultParams). H = local ice thickness;

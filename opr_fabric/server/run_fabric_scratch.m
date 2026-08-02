@@ -1,20 +1,31 @@
 %RUN_FABRIC_SCRATCH Batch fabric inversion on CReSIS-server products.
 %   Runs fabric_task over every frame of the CSARP_polarimetric_unwrap
-%   products (Hoffman/Christianson runs, 2022 + 2023 Antarctica Ground
-%   seasons), writing CSARP_fabric outputs to the user's scratch instead of
-%   the shared season tree. Inputs are reached through per-season symlinks
-%   created under the scratch root, so the opr_* path stubs (one shared
-%   root for in/out) work unchanged.
+%   products (all EAGER traverse seasons 2022-2026; see product_tbl below,
+%   originally Hoffman/Christianson runs for 2022 + 2023 Antarctica Ground
+%   seasons), writing CSARP_fabric_joint outputs (regularized joint
+%   inversion, preserving earlier CSARP_fabric stripping outputs for
+%   comparison) to the user's scratch instead of the shared season tree.
+%   Inputs are reached through per-season symlinks created under the
+%   scratch root, so the opr_* path stubs (one shared root for in/out)
+%   work unchanged.
 %
 %   Rerun-safe: frames whose output file already exists are skipped.
 %
 %   Launch on mem1 with:
 %     /opt/sw/matlab/2024b/bin/matlab -batch "run('<code>/opr_fabric/server/run_fabric_scratch.m')"
 
-data_root = '/cresis/dataproducts/opr_data/accum';
-scratch   = '/kucresis/scratch/hoffmana_sta/fabric';
-seasons   = {'2022_Antarctica_Ground', '2023_Antarctica_Ground'};
-in_name   = 'CSARP_polarimetric_unwrap';
+scratch = '/kucresis/scratch/hoffmana_sta/fabric';
+% One row per input product: {season, data_root, product name, out_path}.
+% 2022/2023: Hoffman/Christianson unwrapped products. 2024_..._Ground2 has
+% two independent processings (Lilien's decimated unwrap and Paden's
+% undecimated nvme product; separate out_paths keep them comparable).
+% 2025_..._Ground2: Paden's product on the nvme root.
+product_tbl = { ...
+  '2022_Antarctica_Ground',  '/cresis/dataproducts/opr_data/accum', 'CSARP_polarimetric_unwrap',         'fabric_joint'; ...
+  '2023_Antarctica_Ground',  '/cresis/dataproducts/opr_data/accum', 'CSARP_polarimetric_unwrap',         'fabric_joint'; ...
+  '2024_Antarctica_Ground2', '/cresis/dataproducts/opr_data/accum', 'CSARP_polarimetric_unwrap_dlilien', 'fabric_joint'; ...
+  '2024_Antarctica_Ground2', '/cresis/nvme/opr_data/accum',         'CSARP_polarimetric',                'fabric_joint_jp'; ...
+  '2025_Antarctica_Ground2', '/cresis/nvme/opr_data/accum',         'CSARP_polarimetric',                'fabric_joint'};
 
 this_dir = fileparts(mfilename('fullpath'));
 proj_root = fileparts(fileparts(this_dir));
@@ -25,8 +36,8 @@ addpath(fullfile(proj_root,'opr_fabric','test','stubs')); % shadow opr_* helpers
 t0 = tic;
 n_done = 0; n_skip = 0; n_fail = 0;
 
-for si = 1:numel(seasons)
-  season = seasons{si};
+for si = 1:size(product_tbl, 1)
+  [season, data_root, in_name, out_path] = product_tbl{si, :};
   in_dir = fullfile(data_root, season, in_name);
   season_root = fullfile(scratch, season);
   if ~exist(season_root,'dir'), mkdir(season_root); end
@@ -49,7 +60,7 @@ for si = 1:numel(seasons)
       if isempty(tok), continue; end % skip figure sidecars etc.
       frm = str2double(tok{1}{2});
 
-      out_fn = fullfile(season_root, 'CSARP_fabric', day_seg, frms(fi).name);
+      out_fn = fullfile(season_root, ['CSARP_' out_path], day_seg, frms(fi).name);
       if exist(out_fn,'file')
         n_skip = n_skip + 1;
         continue;
@@ -65,7 +76,9 @@ for si = 1:numel(seasons)
 
       pf = [];
       pf.in_path = in_name(7:end); % strip 'CSARP_' for the stub
-      pf.out_path = 'fabric';
+      pf.out_path = out_path;
+      pf.inversion = 'joint';
+      pf.reg = 0.05;
       pf.img = 0;
       pf.out_file_exts = {'.png'};
       pf.fc = 750e6;
