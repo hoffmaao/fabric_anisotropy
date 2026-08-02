@@ -55,6 +55,11 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
   drive everything from `run_fabric.m` overrides (current default).
   Note master.m only propagates ctrl_chains for `analysis` generic steps,
   so run via `run_fabric.m` until that one-line change is upstreamed.
+- For whole-season batches that bypass master.m and the param spreadsheets
+  entirely, `server/run_fabric_scratch.m` runs `fabric_task` over every
+  frame through the `test/stubs` opr_* shims, writing `CSARP_fabric`
+  outputs to a user scratch tree instead of the shared season tree; see its
+  header for the paths and the `matlab -batch` launch line.
 
 ## Ground accum radar (accum3 / EAGER) channel mapping
 

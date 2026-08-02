@@ -57,7 +57,22 @@ end
 
 %% Load polarimetric product and assemble the input map
 % =========================================================================
-pol = load(in_fn);
+% Load only the fields the chain uses: the product also carries the full
+% complex ref/sec/sec_reg images (GBs in standardphase products), which
+% fabric processing never touches.
+want = {'interferogram_mlook','interferogram_coherence','snaphu_out_phase', ...
+  'row_offset','Time','GPS_time','Latitude','Longitude','Elevation', ...
+  'Surface','param_records','param_polarimetric'};
+have = whos('-file', in_fn);
+required = {'Time','Surface','interferogram_coherence','interferogram_mlook'};
+missing = setdiff(required, {have.name});
+if ~isempty(missing)
+  warning('Required variable(s) %s missing from polarimetric file. Skipping this frame. Perhaps param.fabric.in_path points at the wrong product. File:\n  %s.', strjoin(missing, ', '), in_fn);
+  success = false;
+  return;
+end
+sel = intersect(want, {have.name});
+pol = load(in_fn, sel{:});
 
 map = [];
 map.Time = pol.Time;
@@ -135,7 +150,10 @@ else
   cmap = jet(256); % Octave fallback
 end
 
-fig_idx = 1; clf(h_fig(fig_idx)); set(h_fig(fig_idx),'WindowStyle','docked');
+% Docking is unavailable in headless batch sessions (-nodisplay)
+dock_en = usejava('desktop');
+fig_idx = 1; clf(h_fig(fig_idx));
+if dock_en, set(h_fig(fig_idx),'WindowStyle','docked'); end
 h_axes(fig_idx) = axes('parent',h_fig(fig_idx));
 mean_bot_depth = mean(dlam_bot_depth,2,'omitnan');
 imagesc(1:Nblk, mean_bot_depth, dlam, 'parent', h_axes(fig_idx));
@@ -148,7 +166,8 @@ xlabel(h_axes(fig_idx),'Block');
 ylabel(h_axes(fig_idx),'Interval bottom depth (m)');
 grid(h_axes(fig_idx),'on');
 
-fig_idx = 2; clf(h_fig(fig_idx)); set(h_fig(fig_idx),'WindowStyle','docked');
+fig_idx = 2; clf(h_fig(fig_idx));
+if dock_en, set(h_fig(fig_idx),'WindowStyle','docked'); end
 h_axes(fig_idx) = axes('parent',h_fig(fig_idx));
 plot(h_axes(fig_idx), 1e9*dtau_blk, (pol.Time - mean(Surface,'omitnan'))*1e6);
 set(h_axes(fig_idx),'YDir','reverse');
