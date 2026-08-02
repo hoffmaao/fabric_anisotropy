@@ -116,6 +116,19 @@ if ~isfield(param.fabric,'num_intervals') || isempty(param.fabric.num_intervals)
   param.fabric.num_intervals = 10;
 end
 
+% inversion: 'stripping' (exact per-interval layer stripping) or 'joint'
+% (smoothness-regularized joint solve; robust to noisy dtau increments
+% that make stripping oscillate and peg the eigenvalue bounds)
+if ~isfield(param.fabric,'inversion') || isempty(param.fabric.inversion)
+  param.fabric.inversion = 'joint';
+end
+
+% reg: regularization strength for the joint inversion (dimensionless
+% relative to the mean data sensitivity; see invertHorizontalFabricJoint)
+if ~isfield(param.fabric,'reg') || isempty(param.fabric.reg)
+  param.fabric.reg = 0.05;
+end
+
 % ref_twtt_offset: two-way time below the surface return where dtau is
 % referenced to zero (avoids surface sidelobes; no birefringence above)
 if ~isfield(param.fabric,'ref_twtt_offset') || isempty(param.fabric.ref_twtt_offset)
