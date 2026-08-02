@@ -158,6 +158,32 @@ for k = 1:size(outj.dlam,1)
 end
 fprintf('Joint mode: max |error| block 1: %.3f\n', max_err_j);
 assert(max_err_j < 0.05, 'joint-mode dlam deviates from truth by %.3f', max_err_j);
+
+% Joint mode saves the per-block regularization diagnostics; stripping mode
+% leaves them NaN (see ptt.invertBlocks)
+assert(all(isfinite(outj.dtau_rms)) && all(isfinite(outj.reg_alpha)), ...
+  'joint mode did not save dtau_rms/reg_alpha');
+assert(all(ismember(outj.dlam_clipped(:), [0;1])), ...
+  'joint-mode dlam_clipped must be 0/1 for inverted blocks');
+assert(all(isnan(out.dtau_rms)) && all(isnan(out.reg_alpha)) ...
+  && all(isnan(out.dlam_clipped(:))), ...
+  'stripping mode must leave the joint-only diagnostics NaN');
+fprintf('Joint diagnostics: rms %.3f ns, alpha %.3f, clipped intervals %d\n', ...
+  outj.dtau_rms(1), outj.reg_alpha(1), sum(outj.dlam_clipped(:) == 1));
+
+% Unknown solver names must fail with the documented error, not a stray
+% formatting error from the message itself (mat2str rejects char in Octave)
+param.fabric.inversion = 'jointt';
+err = [];
+try
+  fabric_task(param);
+catch err
+end
+assert(~isempty(err), 'invalid param.fabric.inversion was accepted');
+assert(strcmp(err.identifier, 'ptt:invertBlocks:inversion'), ...
+  'invalid inversion mode raised %s instead of ptt:invertBlocks:inversion', err.identifier);
+fprintf('Invalid mode rejected: %s\n', err.message);
+
 param.fabric.inversion = 'stripping'; % restore for subsequent sections
 
 %% Coregistration-only mode (detected-power products: no usable phase)
