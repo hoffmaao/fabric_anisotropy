@@ -62,11 +62,14 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
   Note master.m only propagates ctrl_chains for `analysis` generic steps,
   so run via `run_fabric.m` until that one-line change is upstreamed.
 - For whole-season batches that bypass master.m and the param spreadsheets
-  entirely, `server/run_fabric_scratch.m` runs `fabric_task` over every
-  frame through the `test/stubs` opr_* shims, writing `CSARP_fabric_joint`
-  outputs (regularized joint inversion) to a user scratch tree instead of
-  the shared season tree; see its header for the paths and the
-  `matlab -batch` launch line.
+  entirely, `server/run_fabric_scratch.m` runs `fabric_task` (regularized
+  joint inversion) over every frame of each input product in its
+  per-product season table (EAGER traverse seasons 2022-2026, including
+  both independent 2024-25 polarimetric processings) through the
+  `test/stubs` opr_* shims, writing `CSARP_<out_path>` outputs
+  (`fabric_joint`, or `fabric_joint_jp` for the second 2024-25 processing)
+  to a user scratch tree instead of the shared season tree; see its header
+  for the table, paths, and the `matlab -batch` launch line.
 
 ## Ground accum radar (accum3 / EAGER) channel mapping
 
