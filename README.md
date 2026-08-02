@@ -54,6 +54,13 @@ Scripts (each validates or applies the above end to end):
   common-offset layer-stripping method.
 - `scripts/accum_inversion_template.m` - template for real accumulation
   radar picks (fill in section 1).
+- `scripts/figures/` - Python (matplotlib + scipy, no other deps) figure
+  scripts that reproduce the analysis figures from
+  `opr_fabric/server/run_fabric_scratch.m` batch outputs mirrored locally:
+  season transects, per-season depth profiles, and the 2024-25
+  cross-validation of the two independent polarimetric processings. See
+  each script's docstring for usage; the inversion chain itself stays
+  MATLAB/Octave.
 
 ## OPR toolbox integration (`opr_fabric/`)
 
