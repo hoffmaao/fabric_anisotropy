@@ -49,7 +49,7 @@ for si = 1:numel(seasons)
       if isempty(tok), continue; end % skip figure sidecars etc.
       frm = str2double(tok{1}{2});
 
-      out_fn = fullfile(season_root, 'CSARP_fabric', day_seg, frms(fi).name);
+      out_fn = fullfile(season_root, 'CSARP_fabric_joint', day_seg, frms(fi).name);
       if exist(out_fn,'file')
         n_skip = n_skip + 1;
         continue;
@@ -65,7 +65,9 @@ for si = 1:numel(seasons)
 
       pf = [];
       pf.in_path = in_name(7:end); % strip 'CSARP_' for the stub
-      pf.out_path = 'fabric';
+      pf.out_path = 'fabric_joint';
+      pf.inversion = 'joint';
+      pf.reg = 0.05;
       pf.img = 0;
       pf.out_file_exts = {'.png'};
       pf.fc = 750e6;

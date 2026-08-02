@@ -9,7 +9,10 @@ function inv = invertBlocks(blk, map, par, opts)
 %   coherent span below the surface reference depth.
 %
 %   opts fields (optional): num_intervals (10), half_offset (0 m),
-%   min_coverage (0.3), ref_twtt_offset (50e-9 s).
+%   min_coverage (0.3), ref_twtt_offset (50e-9 s), inversion ('stripping'
+%   for the exact per-interval layer stripping, or 'joint' for the
+%   smoothness-regularized joint solve of ptt.invertHorizontalFabricJoint,
+%   recommended for noisy data), reg (0.05; joint mode only).
 %
 %   inv fields (num_intervals x Nblk): dlam, top_depth, bot_depth [m below
 %   surface], dtau_obs, dtau_fit [ns], quality (mean coherence at nodes).
@@ -25,6 +28,9 @@ if ~isfield(opts,'min_coverage') || isempty(opts.min_coverage)
 end
 if ~isfield(opts,'ref_twtt_offset') || isempty(opts.ref_twtt_offset)
   opts.ref_twtt_offset = 50e-9;
+end
+if ~isfield(opts,'inversion') || isempty(opts.inversion)
+  opts.inversion = 'stripping';
 end
 
 Nt = numel(map.Time);
@@ -77,8 +83,14 @@ for b = 1:Nblk
     continue;
   end
 
+  node_coh = interp1(map.Time, blk.coh(:,b), node_twtt);
   try
-    [dlam_prof, inv_out] = ptt.invertHorizontalFabric(obs, par);
+    if strcmp(opts.inversion, 'joint')
+      obs.w = node_coh.^2;
+      [dlam_prof, inv_out] = ptt.invertHorizontalFabricJoint(obs, par, opts);
+    else
+      [dlam_prof, inv_out] = ptt.invertHorizontalFabric(obs, par);
+    end
   catch ME
     warning('ptt:invertBlocks:failed', ...
       'Block %d: inversion failed (%s); skipping.', b, ME.message);
@@ -90,7 +102,7 @@ for b = 1:Nblk
   inv.bot_depth(:,b) = par.H - inv_out.zbot;
   inv.dtau_obs(:,b) = obs.dtau;
   inv.dtau_fit(:,b) = inv_out.dtau_fit;
-  inv.quality(:,b) = interp1(map.Time, blk.coh(:,b), node_twtt);
+  inv.quality(:,b) = node_coh;
 end
 
 end
