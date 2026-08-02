@@ -37,12 +37,15 @@ def load_blocks(pattern):
         d = loadmat(fn)
         dlam, top, bot = d['dlam'], d['dlam_top_depth'], d['dlam_bot_depth']
         qual = d['dlam_quality']
+        clip = d.get('dlam_clipped')
         for b in range(dlam.shape[1]):
             if not np.any(np.isfinite(dlam[:, b])):
                 continue
             col = np.full(DEPTH.size, np.nan)
             for k in range(dlam.shape[0]):
-                ok = np.isfinite(dlam[k, b]) and abs(dlam[k, b]) < 0.6 \
+                pegged = (clip is not None and clip.size and clip[k, b] == 1) \
+                    or abs(dlam[k, b]) > 0.6
+                ok = np.isfinite(dlam[k, b]) and not pegged \
                     and np.isfinite(qual[k, b]) and qual[k, b] > 0.35
                 if ok:
                     m = (DEPTH >= top[k, b]) & (DEPTH < bot[k, b])
