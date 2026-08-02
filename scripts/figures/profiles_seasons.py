@@ -111,6 +111,7 @@ def main():
         'top: season median with interquartile range; bottom: per-segment medians along traverse',
         fontsize=13)
     fig.tight_layout(rect=[0, 0, 1, 0.94])
+    os.makedirs(OUT, exist_ok=True)
     out = os.path.join(OUT, 'profiles_all_seasons.png')
     fig.savefig(out, dpi=140)
     print('saved', out)
