@@ -31,7 +31,13 @@ for si = 1:numel(seasons)
   season_root = fullfile(scratch, season);
   if ~exist(season_root,'dir'), mkdir(season_root); end
   % Symlink the input product into the scratch season root
-  system(sprintf('ln -sfn %s %s', in_dir, fullfile(season_root, in_name)));
+  link_fn = fullfile(season_root, in_name);
+  status = system(sprintf('ln -sfn ''%s'' ''%s''', in_dir, link_fn));
+  if status ~= 0
+    fprintf('[FAIL] %s: could not create symlink %s -> %s; skipping season\n', ...
+      season, link_fn, in_dir);
+    continue;
+  end
 
   segs = dir(in_dir);
   segs = segs([segs.isdir] & ~cellfun('isempty', regexp({segs.name}, '^\d{8}_\d{2}$')));
