@@ -79,8 +79,16 @@ for it = 1:3
     xp = x; xp(j) = xp(j) + delta;
     A(:, j) = (forward(xp) - f0) / delta;
   end
+  if any(~isfinite(A(:)))
+    error('ptt:invertHorizontalFabricJoint:jacobian', ...
+      'Perturbed forward model returned non-finite dtau (reflector unreachable?); Jacobian is not finite.');
+  end
   alpha = opts.reg * trace(A'*W*A) / m;
   dx = -(A'*W*A + alpha*(D'*D)) \ (A'*W*r + alpha*(D'*D)*x);
+  if any(~isfinite(dx))
+    error('ptt:invertHorizontalFabricJoint:solve', ...
+      'Gauss-Newton normal-equation solve returned a non-finite step (ill-conditioned system).');
+  end
   x = x + dx;
   % Keep lam_x and lam_y in [0, h]: |dlam| < h
   x = min(max(x, -h_mid + 1e-6), h_mid - 1e-6);

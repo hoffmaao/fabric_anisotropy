@@ -7,7 +7,8 @@ function ctrl_chain = fabric(param,param_override)
 % between the two synthesized polarizations is estimated by blending the
 % coregistration row offsets (unambiguous, coarse) with the multilooked
 % interferogram phase (precise, 2*pi-ambiguous; SNAPHU-unwrapped when
-% available), then inverted per along-track block by layer stripping
+% available), then inverted per along-track block (smoothness-regularized
+% joint solve by default, or exact layer stripping; param.fabric.inversion)
 % through the Maxwell-Garnett firn model of Rathmann (2026),
 % doi:10.1098/rspa.<pending> (see the +ptt package, which must be on the
 % MATLAB path).

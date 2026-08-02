@@ -32,9 +32,12 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
    - dtau referenced to zero just below the surface return (removes
      channel timing/phase biases and the unwrapping constant),
    - coherence-weighted averaging into along-track blocks,
-   - layer-stripping inversion (ptt.invertHorizontalFabric) through the
-     Maxwell-Garnett firn model for piecewise-constant dlam over
-     `num_intervals` depth intervals,
+   - inversion through the Maxwell-Garnett firn model for
+     piecewise-constant dlam over `num_intervals` depth intervals:
+     smoothness-regularized joint solve
+     (ptt.invertHorizontalFabricJoint, `inversion = 'joint'`, the module
+     default, robust to noisy data) or exact layer stripping
+     (ptt.invertHorizontalFabric, `inversion = 'stripping'`),
    - output `CSARP_fabric/<day_seg>/Data_*.mat` + overview images.
 
 ## Deployment on the CReSIS servers
@@ -57,9 +60,10 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
   so run via `run_fabric.m` until that one-line change is upstreamed.
 - For whole-season batches that bypass master.m and the param spreadsheets
   entirely, `server/run_fabric_scratch.m` runs `fabric_task` over every
-  frame through the `test/stubs` opr_* shims, writing `CSARP_fabric`
-  outputs to a user scratch tree instead of the shared season tree; see its
-  header for the paths and the `matlab -batch` launch line.
+  frame through the `test/stubs` opr_* shims, writing `CSARP_fabric_joint`
+  outputs (regularized joint inversion) to a user scratch tree instead of
+  the shared season tree; see its header for the paths and the
+  `matlab -batch` launch line.
 
 ## Ground accum radar (accum3 / EAGER) channel mapping
 
