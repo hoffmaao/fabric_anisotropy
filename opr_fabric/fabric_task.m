@@ -8,9 +8,11 @@ function [success] = fabric_task(param)
 %                          when available) blended with the coregistration
 %                          row offsets (sign + integer fringe ambiguity)
 %   ptt.blockAverage     - coherence-weighted along-track block averaging
-%   ptt.invertBlocks     - layer-stripping inversion for the horizontal
-%                          fabric contrast dlam = lam_x - lam_y through
-%                          the Maxwell-Garnett firn model (Rathmann 2026)
+%   ptt.invertBlocks     - inversion for the horizontal fabric contrast
+%                          dlam = lam_x - lam_y through the Maxwell-Garnett
+%                          firn model (Rathmann 2026), by exact layer
+%                          stripping or the smoothness-regularized joint
+%                          solve selected by param.fabric.inversion
 % All processing options are taken from the param.fabric struct (see
 % fabric.m), which the +ptt functions read directly.
 %
@@ -135,6 +137,9 @@ dlam_bot_depth = inv.bot_depth;
 dtau_obs = inv.dtau_obs;
 dtau_fit = inv.dtau_fit;
 dlam_quality = inv.quality;
+dlam_clipped = inv.clipped;
+dtau_rms = inv.rms;
+reg_alpha = inv.alpha;
 dtau_blk = blk.dtau;
 coh_blk = blk.coh;
 coverage_blk = blk.coverage;
@@ -199,6 +204,7 @@ file_type = 'fabric';
 
 fprintf('Saving output file:\n  %s\n', out_fn);
 opr_save(out_fn,'dlam','dlam_top_depth','dlam_bot_depth','dlam_quality', ...
+  'dlam_clipped','dtau_rms','reg_alpha', ...
   'dtau_obs','dtau_fit','dtau_blk','coh_blk','coverage_blk','blend_fringes', ...
   'phase_sign','Time','GPS_time','Latitude','Longitude','Elevation','Surface', ...
   'param_fabric','param_polarimetric','param_records','file_type','file_version');

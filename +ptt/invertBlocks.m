@@ -1,12 +1,14 @@
 function inv = invertBlocks(blk, map, par, opts)
-%INVERTBLOCKS Layer-stripping fabric inversion of block-averaged dtau.
+%INVERTBLOCKS Fabric inversion of block-averaged dtau.
 %   inv = INVERTBLOCKS(blk, map, par, opts) inverts each along-track block
 %   (from ptt.blockAverage) for the piecewise-constant horizontal fabric
 %   contrast dlam = lam_x - lam_y over opts.num_intervals depth intervals,
-%   using ptt.invertHorizontalFabric with the firn-ice column model par
-%   (see ptt.defaultParams; par.H must cover the observed depth range).
-%   Interval bottom edges are spaced equally in twtt over the contiguous
-%   coherent span below the surface reference depth.
+%   using the solver selected by opts.inversion (exact per-interval layer
+%   stripping via ptt.invertHorizontalFabric, or the smoothness-regularized
+%   joint solve via ptt.invertHorizontalFabricJoint) with the firn-ice
+%   column model par (see ptt.defaultParams; par.H must cover the observed
+%   depth range). Interval bottom edges are spaced equally in twtt over the
+%   contiguous coherent span below the surface reference depth.
 %
 %   opts fields (optional): num_intervals (10), half_offset (0 m),
 %   min_coverage (0.3), ref_twtt_offset (50e-9 s), inversion ('stripping'
@@ -15,7 +17,11 @@ function inv = invertBlocks(blk, map, par, opts)
 %   recommended for noisy data), reg (0.05; joint mode only).
 %
 %   inv fields (num_intervals x Nblk): dlam, top_depth, bot_depth [m below
-%   surface], dtau_obs, dtau_fit [ns], quality (mean coherence at nodes).
+%   surface], dtau_obs, dtau_fit [ns], quality (mean coherence at nodes),
+%   clipped (joint mode: interval dlam pegged at the eigenvalue bound;
+%   all-false where the stripping path runs). Per-block fields (1 x Nblk):
+%   rms [ns] (coherence-weighted misfit rms) and alpha (regularization
+%   weight), both NaN where the stripping path runs.
 
 if ~isfield(opts,'num_intervals') || isempty(opts.num_intervals)
   opts.num_intervals = 10;
@@ -32,6 +38,10 @@ end
 if ~isfield(opts,'inversion') || isempty(opts.inversion)
   opts.inversion = 'stripping';
 end
+if ~ischar(opts.inversion) || ~any(strcmp(opts.inversion, {'stripping','joint'}))
+  error('ptt:invertBlocks:inversion', ...
+    'opts.inversion must be ''stripping'' or ''joint'' (got %s).', mat2str(opts.inversion));
+end
 
 Nt = numel(map.Time);
 Nblk = numel(blk.starts);
@@ -45,6 +55,9 @@ inv.bot_depth = nan(Nint,Nblk);
 inv.dtau_obs = nan(Nint,Nblk);
 inv.dtau_fit = nan(Nint,Nblk);
 inv.quality = nan(Nint,Nblk);
+inv.clipped = false(Nint,Nblk);
+inv.rms = nan(1,Nblk);
+inv.alpha = nan(1,Nblk);
 
 for b = 1:Nblk
   % Coherent twtt span below the surface reference depth. Real coherence
@@ -103,6 +116,11 @@ for b = 1:Nblk
   inv.dtau_obs(:,b) = obs.dtau;
   inv.dtau_fit(:,b) = inv_out.dtau_fit;
   inv.quality(:,b) = node_coh;
+  if strcmp(opts.inversion, 'joint')
+    inv.clipped(:,b) = inv_out.clipped;
+    inv.rms(b) = inv_out.rms;
+    inv.alpha(b) = inv_out.alpha;
+  end
 end
 
 end
