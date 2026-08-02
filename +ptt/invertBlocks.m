@@ -41,8 +41,14 @@ if ~isfield(opts,'inversion') || isempty(opts.inversion)
   opts.inversion = 'stripping';
 end
 if ~ischar(opts.inversion) || ~any(strcmp(opts.inversion, {'stripping','joint'}))
+  % Octave's mat2str rejects char arrays, so format the two cases separately
+  if ischar(opts.inversion)
+    got = ['''' opts.inversion ''''];
+  else
+    got = sprintf('a %s', class(opts.inversion));
+  end
   error('ptt:invertBlocks:inversion', ...
-    'opts.inversion must be ''stripping'' or ''joint'' (got %s).', mat2str(opts.inversion));
+    'opts.inversion must be ''stripping'' or ''joint'' (got %s).', got);
 end
 
 Nt = numel(map.Time);
