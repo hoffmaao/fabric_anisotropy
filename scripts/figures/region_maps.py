@@ -100,6 +100,7 @@ def main():
             ax.set_title(f'{rname} (no blocks)')
             continue
         pts_la, pts_lo = np.array(pts_la), np.array(pts_lo)
+        pts_lo = (pts_lo - rlo + 180.0) % 360.0 - 180.0 + rlo
         pad_la = max(0.15, 0.35 * np.ptp(pts_la))
         pad_lo = max(0.5, 0.35 * np.ptp(pts_lo))
         ax.set_extent([pts_lo.min() - pad_lo, pts_lo.max() + pad_lo,
