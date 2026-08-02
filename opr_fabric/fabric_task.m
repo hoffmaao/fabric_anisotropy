@@ -51,6 +51,7 @@ in_fn_dir = opr_filename_out(param,param.fabric.in_path);
 in_fn = fullfile(in_fn_dir,[fn_name '.mat']);
 if ~exist(in_fn,'file')
   warning('The polarimetric file does not exist for this frame. Skipping this frame. Perhaps param.fabric.in_path is incorrect or polarimetric.m has not been run. File does not exist:\n  %s.', in_fn);
+  success = false;
   return;
 end
 

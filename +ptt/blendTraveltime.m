@@ -54,7 +54,9 @@ Nt = numel(map.Time);
 Nx = numel(map.Surface);
 dt = map.Time(2) - map.Time(1);
 
+surf_valid = isfinite(map.Surface(:).');
 coh_mask = map.coherence >= opts.coherence_threshold;
+coh_mask(:,~surf_valid) = false;
 
 dtau_phase = map.phase / (2*pi*map.fc);
 
@@ -68,6 +70,7 @@ end
 % Surface referencing (must precede the sign regression, which the channel
 % biases would otherwise contaminate)
 ref_bin = round((map.Surface(:).' + opts.ref_twtt_offset - map.Time(1))/dt) + 1;
+ref_bin(~surf_valid) = 1;
 ref_bin = min(max(ref_bin,1),Nt);
 ref_idx = ref_bin + (0:Nx-1)*Nt;
 dtau_phase = dtau_phase - repmat(dtau_phase(ref_idx),[Nt 1]);
@@ -92,9 +95,16 @@ end
 if opts.phase_sign ~= 0
   phase_sign = sign(opts.phase_sign);
 elseif has_coreg
+  if map.phase_is_unwrapped
+    dtau_coreg_cmp = dtau_coreg;
+  else
+    % Wrapped phase only resolves offsets within +/-1/(2*fc); rewrap the
+    % coreg prediction to the same ambiguous interval before regressing
+    dtau_coreg_cmp = dtau_coreg - round(dtau_coreg*map.fc)/map.fc;
+  end
   sig = coh_mask & isfinite(dtau_coreg) & abs(dtau_coreg) > dt/2;
   if nnz(sig) > 100
-    phase_sign = sign(sum(map.coherence(sig).^2 .* dtau_phase(sig) .* dtau_coreg(sig)));
+    phase_sign = sign(sum(map.coherence(sig).^2 .* dtau_phase(sig) .* dtau_coreg_cmp(sig)));
     if phase_sign == 0, phase_sign = -1; end
   else
     warning('ptt:blendTraveltime:sign', ...
