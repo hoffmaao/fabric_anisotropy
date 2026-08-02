@@ -48,7 +48,7 @@ for b = 1:Nblk
   blk.dtau(:,b) = sum(w(:,cols).*dtau(:,cols),2) ./ wsum;
   blk.coverage(:,b) = sum(info.coh_mask(:,cols),2) / numel(cols);
   blk.coh(:,b) = mean(map.coherence(:,cols),2);
-  blk.Surface(b) = mean(map.Surface(cols));
+  blk.Surface(b) = mean(map.Surface(cols),'omitnan');
 
   if do_block_fringe
     diff_blk = info.dtau_coreg(:,cols) - dtau(:,cols);

@@ -26,8 +26,7 @@ parT.zhat_bco = 1 - 60/parT.H; % bubble close-off at 60 m depth
 parT.lam_x_sfc = 1/3; parT.lam_z_sfc = 1/3;
 % Linear-in-zhat endpoints chosen so dlam ~ -0.3 at 300 m depth
 parT.lam_x_bed = 1/3 - 0.5*2000/300*0.3; parT.lam_z_bed = 1/3;
-if parT.lam_x_bed < -1  % keep as configured; only top 300 m is observed
-end
+% lam_x_bed < -1 is kept as configured; only the top 300 m is observed
 
 %% Synthetic polarimetric product
 fc = 750e6;
