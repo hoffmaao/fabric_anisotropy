@@ -103,6 +103,7 @@ def main():
 
     fig.suptitle('Cross-validation: independent polarimetric processings, same inversion',
                  fontsize=12)
+    os.makedirs(OUT, exist_ok=True)
     out = os.path.join(OUT, 'crossval_2024_lilien_vs_paden.png')
     fig.savefig(out, dpi=140, bbox_inches='tight')
     print('saved', out)

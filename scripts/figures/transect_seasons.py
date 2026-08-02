@@ -91,5 +91,6 @@ fig.colorbar(pc, ax=axes, label=r'$\Delta\lambda = \lambda_{cross} - \lambda_{al
              shrink=0.6)
 fig.suptitle('Horizontal fabric contrast, EAGER traverses 2022-2026 (joint inversion)',
              fontsize=13)
+os.makedirs(OUT, exist_ok=True)
 fig.savefig(f'{OUT}/transect_4season.png', dpi=140, bbox_inches='tight')
 print(f'saved {OUT}/transect_4season.png')
