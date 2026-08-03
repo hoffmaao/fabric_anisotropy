@@ -1,7 +1,8 @@
 """Thwaites shear-margin fabric signature in the flow frame.
 
-Samples ITS_LIVE v2 surface velocity (anonymous S3, windowed read; cached
-locally) at every Thwaites-region inversion block, then:
+Samples ITS_LIVE v2 surface velocity (local mosaic copy if present, else
+anonymous-S3 windowed read; samples cached to an npz so reruns are
+offline) at every Thwaites-region inversion block, then:
   1. classifies blocks into slow / intermediate / fast zones from
      data-driven terciles of the sampled log-speeds (no hard-coded speed
      thresholds); the intermediate tercile straddles the shear margin,
