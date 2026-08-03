@@ -84,6 +84,10 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
   (`fabric_joint`, or `fabric_joint_jp` for the second 2024-25 processing)
   to a user scratch tree instead of the shared season tree; see its header
   for the table, paths, and the `matlab -batch` launch line.
+  `server/run_deltak_scratch.m` is the same kind of batch with
+  `dtau_source = 'deltak'`, restricted to the products that carry the
+  complex ref/sec SLCs, writing `CSARP_fabric_deltak(_jp)` beside the
+  joint results for comparison; see its header.
 
 ## Margin display extracts
 
@@ -161,7 +165,9 @@ Season/data caveats to check before interpreting results:
 a known fabric (with noise, wrong-sign convention, unwrapping constant,
 channel timing bias, decaying coherence), runs the real `fabric_task` with
 stubbed OPR support functions (`test/stubs/`), and asserts the inferred
-dlam matches the truth. Runs in MATLAB or Octave:
+dlam matches the truth in all three `dtau_source` modes - `'phase'`,
+`'coreg'`, and `'deltak'` (the last from synthetic band-limited ref/sec
+SLCs with the true delay applied spectrally). Runs in MATLAB or Octave:
 
 ```sh
 docker run --rm --platform linux/amd64 -v "$PWD/../..":/work \
