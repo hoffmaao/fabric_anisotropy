@@ -2,8 +2,9 @@
 
 Samples ITS_LIVE v2 surface velocity (anonymous S3, windowed read; cached
 locally) at every Thwaites-region inversion block, then:
-  1. locates the shear margin objectively from the along-line speed and
-     lateral shear profile,
+  1. classifies blocks into slow / intermediate / fast zones from
+     data-driven terciles of the sampled log-speeds (no hard-coded speed
+     thresholds); the intermediate tercile straddles the shear margin,
   2. rotates the survey-frame contrast into the FLOW frame under the
      hypothesis that the horizontal principal axes are flow-aligned:
      Lambda = lam_crossflow - lam_alongflow = dlam_measured / cos 2(phi - phi_flow),
@@ -142,6 +143,23 @@ def sample_itslive(lats, lons):
     return speed, flow_az
 
 
+def ridge_a_baseline():
+    """Ridge A (depth, P) from the azimuthal fit; None if data unavailable."""
+    try:
+        import ridge_a_azimuthal as ra
+        profs, heads, wts, _, _ = ra.load_ridge_a(
+            f'{ROOT}/joint_jp/2024_Antarctica_Ground2/*/Data_*.mat')
+        if len(profs) < ra.MIN_BLOCKS:
+            return None
+        P = ra.fit_azimuthal(profs, heads, wts)[0]
+        if not np.any(np.isfinite(P)):
+            return None
+        return ra.DEPTH, P
+    except Exception as e:
+        print(f'Ridge A baseline unavailable: {e}')
+        return None
+
+
 def main():
     blocks = load_thwaites(f'{ROOT}/joint/2023_Antarctica_Ground/*/Data_*.mat')
     print(f'Thwaites blocks: {len(blocks)}')
@@ -158,15 +176,16 @@ def main():
     dist = np.concatenate([[0], np.cumsum(np.minimum(step, 2.0))])
 
     # Flow-frame rotation under the flow-aligned-axes hypothesis
-    alpha = np.radians(2.0 * (heads - flow_az % 180.0))
+    alpha = np.radians(2.0 * ((heads - flow_az) % 180.0))
     c2 = np.cos(alpha)
     Lam = np.where(np.abs(c2)[:, None] >= MIN_COS2,
                    profs / c2[:, None], np.nan)
 
     # Zones from the speed profile (data-driven thirds of log-speed range)
     ls = np.log10(np.maximum(speed, 1.0))
-    z1, z2 = np.percentile(ls, [33, 66])
-    zone = np.digitize(ls, [z1, z2])  # 0 slow, 1 margin/intermediate, 2 fast
+    z1, z2 = np.nanpercentile(ls, [33, 66])
+    zone = np.where(np.isfinite(ls), np.digitize(np.nan_to_num(ls), [z1, z2]),
+                    -1)  # 0 slow, 1 margin/intermediate, 2 fast, -1 no speed
     zone_names = [f'slow (<{10**z1:.0f} m/yr)',
                   f'intermediate ({10**z1:.0f}-{10**z2:.0f} m/yr)',
                   f'fast (>{10**z2:.0f} m/yr)']
@@ -234,14 +253,21 @@ def main():
         n = np.sum(np.isfinite(Lam), axis=0)
     absmed[n < 10] = np.nan
     ax.plot(absmed, DEPTH, 'k-', lw=2, label=r'Thwaites $|\Lambda|$')
+    baseline = ridge_a_baseline()
+    if baseline is not None:
+        ra_depth, ra_P = baseline
+        ax.plot(ra_P, ra_depth, color='tab:red', ls='--', lw=1.5,
+                label='Ridge A $P(z)$')
+    else:
+        ax.annotate('Ridge A P(z) unavailable here\n'
+                    '(plateaus at ~0.12, 1150-1500 m;\ndivide setting)',
+                    xy=(0.05, 0.05), xycoords='axes fraction', fontsize=7)
     ax.invert_yaxis()
     ax.set_xlabel('contrast magnitude')
     ax.set_xlim(0, 0.25)
     ax.grid(alpha=0.3)
     ax.set_title('vs Ridge A strength')
     ax.legend(fontsize=7)
-    ax.annotate('Ridge A P(z) plateaus at ~0.12\n(1150-1500 m; divide setting)',
-                xy=(0.05, 0.05), xycoords='axes fraction', fontsize=7)
 
     # (e) hypothesis misfit: fraction of masked/inconsistent blocks per zone
     ax = fig.add_subplot(gs[2, 2])
