@@ -28,6 +28,10 @@ try:
 except Exception:
     HAVE_CARTOPY = False
 
+if HAVE_CARTOPY:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import antarctic_basemap as ab
+
 ROOT = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser('~/data/opr/fabric_batch')
 OUT = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(__file__), '..', '..', 'figs')
 
@@ -97,20 +101,20 @@ def main():
     all_lat = np.concatenate([d[3] for d in data])
     all_lon = np.concatenate([d[4] for d in data])
     if HAVE_CARTOPY:
-        proj = ccrs.SouthPolarStereo()
+        proj = ab.proj3031()
         ax = fig.add_subplot(gs[:, 0], projection=proj)
         lon_span = np.ptp(all_lon)
         if lon_span > 180:
-            ax.set_extent([-180, 180, -90, -63], ccrs.PlateCarree())
+            extent = (-3.1e6, 3.1e6, -2.7e6, 3.3e6)
         else:
-            pad_lat = max(1.0, 0.2 * np.ptp(all_lat))
-            pad_lon = max(2.0, 0.2 * lon_span)
-            ax.set_extent([all_lon.min() - pad_lon, all_lon.max() + pad_lon,
-                           all_lat.min() - pad_lat, min(-60, all_lat.max() + pad_lat)],
-                          ccrs.PlateCarree())
+            extent = ab.points_extent(all_lat, all_lon, pad_frac=0.2, min_pad_m=1e5)
+        ax.set_extent(extent, crs=proj)
+        has_img = ab.add_imagery(ax, extent, max_px=1000)
         ax.add_feature(cfeature.COASTLINE.with_scale('50m'), lw=0.6)
-        ax.gridlines(draw_labels=True, lw=0.3, color='gray', alpha=0.5,
+        ax.gridlines(draw_labels=True, lw=0.4, alpha=0.6,
+                     color='gray' if not has_img else 'white',
                      x_inline=False, y_inline=True)
+        ab.add_scale_bar(ax, extent)
         # Later surveys revisit earlier sites, so draw in reverse order and
         # render the co-located Lilien processing as open circles
         for name, color, cols, la, lo, hd in reversed(data):
@@ -121,7 +125,7 @@ def main():
                 ax.scatter(lo, la, s=6, color=color, transform=ccrs.PlateCarree(),
                            label=name, zorder=5)
         ax.set_title('Survey coverage')
-        ax.legend(fontsize=8, loc='lower left', markerscale=2)
+        ax.legend(fontsize=8, loc='upper right', markerscale=2)
     else:
         ax = fig.add_subplot(gs[:, 0])
         for name, color, cols, la, lo, hd in data:
