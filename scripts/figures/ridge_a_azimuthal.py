@@ -38,6 +38,7 @@ DEPTH = np.arange(0, 1900, 5.0)
 RIDGE_A = (-86.60, 69.0)
 MAX_DIST_KM = 200.0   # keep only blocks near Ridge A
 MIN_BLOCKS = 12       # minimum azimuth samples per depth for a fit
+MIN_SPREAD = 30.0     # minimum circular heading spread (deg, mod 180) per depth
 EXAMPLE_DEPTHS = [400, 900, 1300, 1600]
 
 
@@ -117,8 +118,11 @@ def fit_azimuthal(profs, heads, wts):
         m = np.isfinite(y)
         if m.sum() < MIN_BLOCKS:
             continue
-        # Require real azimuthal diversity, not one line direction
-        if np.ptp(np.sort(heads[m])) < 30.0:
+        # Require real azimuthal diversity, not one line direction:
+        # circular spread mod 180 from the largest gap on doubled angles
+        ang = np.sort((2.0 * heads[m]) % 360.0)
+        gap = np.diff(ang, append=ang[0] + 360.0).max()
+        if (360.0 - gap) / 2.0 < MIN_SPREAD:
             continue
         X = np.column_stack([np.cos(phi2[m]), np.sin(phi2[m])])
         w = wts[m]
