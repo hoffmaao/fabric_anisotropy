@@ -122,7 +122,10 @@ def main():
         sx, sy = proj.transform_point(slo, sla, ccrs.PlateCarree())[:2]
         if not (extent[0] <= sx <= extent[1] and extent[2] <= sy <= extent[3]):
             sname = f'nearest reference: {sname}'
-        ax.annotate(sname, xy=(0.03, 0.14), xycoords='axes fraction', fontsize=7,
+        # Lower-right corner, clear of the scale bar (lower left) and the
+        # legend (upper right)
+        ax.annotate(sname, xy=(0.97, 0.04), xycoords='axes fraction', fontsize=7,
+                    ha='right', va='bottom',
                     bbox=dict(boxstyle='round,pad=0.15', fc='white', ec='none',
                               alpha=0.7))
         ab.add_scale_bar(ax, extent)
@@ -135,11 +138,16 @@ def main():
     ax.set_extent(loc_extent, crs=proj)
     has_img = ab.add_imagery(ax, loc_extent, max_px=900)
     ax.add_feature(cfeature.COASTLINE.with_scale('110m'), lw=0.5)
+    # Thwaites/WAIS Divide and McMurdo/Taylor Dome markers sit close
+    # together; nudge each pair's labels apart vertically
+    label_offsets = {'Thwaites': (4, 10), 'WAIS Divide / Kamb': (4, -16),
+                     'Taylor Dome': (4, 8), 'McMurdo': (4, -16)}
     for rname, rla, rlo, site in REGIONS:
         ax.plot(rlo, rla, 's', ms=7, mfc='none', mec='crimson', mew=1.5,
                 transform=ccrs.PlateCarree())
         ax.annotate(rname, proj.transform_point(rlo, rla,
-                    ccrs.PlateCarree())[:2], fontsize=8, xytext=(4, 4),
+                    ccrs.PlateCarree())[:2], fontsize=8,
+                    xytext=label_offsets.get(rname, (4, 4)),
                     textcoords='offset points',
                     bbox=dict(boxstyle='round,pad=0.1', fc='white', ec='none',
                               alpha=0.7))
