@@ -227,8 +227,10 @@ def main():
     edges = np.concatenate([[dist[0] - 0.1], (dist[:-1] + dist[1:]) / 2,
                             [dist[-1] + 0.1]])
     depth_edges = np.concatenate([DEPTH, [DEPTH[-1] + 5]])
+    # Data-driven symmetric limits so the fast band does not peg the scale
+    lam_lim = np.nanpercentile(np.abs(Lam), 99)
     pc = ax.pcolormesh(edges, depth_edges, Lam.T, cmap='RdBu_r',
-                       vmin=-0.25, vmax=0.25)
+                       vmin=-lam_lim, vmax=lam_lim)
     if marg:
         ax.axvspan(*marg, color='k', alpha=0.08)
     ax.set_ylim(1500, 0)
@@ -253,7 +255,7 @@ def main():
     ax.axvline(0, color='gray', lw=0.5)
     ax.set_xlabel(r'median $\Lambda$')
     ax.set_ylabel('Depth (m)')
-    ax.set_xlim(-0.25, 0.25)
+    ax.set_xlim(-lam_lim, lam_lim)
     ax.grid(alpha=0.3)
     ax.set_title('Zone medians (flow frame)')
     ax.legend(fontsize=7, loc='lower left')
@@ -276,23 +278,26 @@ def main():
                     xy=(0.05, 0.05), xycoords='axes fraction', fontsize=7)
     ax.invert_yaxis()
     ax.set_xlabel('contrast magnitude')
-    ax.set_xlim(0, 0.25)
+    ax.set_xlim(0, lam_lim)
     ax.grid(alpha=0.3)
     ax.set_title('vs Ridge A strength')
     ax.legend(fontsize=7)
 
     # (e) hypothesis misfit: fraction of masked/inconsistent blocks per zone
     ax = fig.add_subplot(gs[2, 2])
+    spread_max = 0.0
     for zi in range(3):
         m = zone == zi
         if m.sum() < 5:
             continue
         with np.errstate(invalid='ignore'):
             spread = np.nanstd(Lam[m], axis=0)
+        if np.any(np.isfinite(spread)):
+            spread_max = max(spread_max, np.nanmax(spread))
         ax.plot(spread, DEPTH, color=zone_colors[zi], lw=1.5)
     ax.invert_yaxis()
     ax.set_xlabel(r'zone std of $\Lambda$')
-    ax.set_xlim(0, 0.15)
+    ax.set_xlim(0, 1.05 * spread_max if spread_max else 0.15)
     ax.grid(alpha=0.3)
     ax.set_title('Within-zone scatter\n(high = axes not flow-aligned)',
                  fontsize=9)

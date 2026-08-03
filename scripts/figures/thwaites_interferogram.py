@@ -115,14 +115,16 @@ def main():
         img = d[key]
         if key == 'row_offset':
             img = img * dt * 1e9  # bins -> ns
-            lim = np.nanpercentile(np.abs(img), 98)
+            lim = np.nanpercentile(np.abs(img), 99.5)
             vmin, vmax = -lim, lim
         if key == 'phase_unwrapped':
-            lim = np.nanpercentile(np.abs(img - np.nanmedian(img)), 98)
+            lim = np.nanpercentile(np.abs(img - np.nanmedian(img)), 99.9)
             img = img - np.nanmedian(img)
             vmin, vmax = -lim, lim
         if key.startswith('power'):
-            vmin, vmax = np.nanpercentile(img, [8, 99.5])
+            # Full available range: extracts are floor-clipped at -120 dB,
+            # so stretch from the floor to the brightest return
+            vmin, vmax = np.nanmin(img), np.nanmax(img)
         pc = ax.pcolormesh(dist, t_us, img, cmap=cmap, vmin=vmin, vmax=vmax,
                            shading='auto', rasterized=True)
         ax.invert_yaxis()
