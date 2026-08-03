@@ -118,7 +118,7 @@ def main():
                                 (dist[:-1] + dist[1:]) / 2, [dist[-1] + 0.1]])
         depth_edges = np.concatenate([DEPTH, [DEPTH[-1] + 5]])
         pc = ax.pcolormesh(edges, depth_edges, cols, cmap='RdBu_r',
-                           vmin=-0.1, vmax=0.1)
+                           vmin=-0.15, vmax=0.15)
 
         # Segment boundaries and coherent depth range
         segs = [b['seg'] for b in blks]
@@ -136,7 +136,7 @@ def main():
         ax.set_ylabel('Depth (m)')
     axes[-1].set_xlabel('Distance along drive (km, gaps >2 km compressed)')
     if pc is not None:
-        fig.colorbar(pc, ax=axes, shrink=0.6,
+        fig.colorbar(pc, ax=axes, shrink=0.6, extend='both',
                      label=r'$\Delta\lambda = \lambda_{cross} - \lambda_{along}$')
     fig.suptitle('Depth-variable fabric solutions along survey profiles '
                  '(joint inversion; thin vertical lines mark segment boundaries)',

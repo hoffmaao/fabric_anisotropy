@@ -233,7 +233,7 @@ def main():
             ax.set_title(f'{DEPTH[iz]:.0f} m: no fit', fontsize=9)
         ax.set_xlim(0, 180)
         ax.set_xticks([0, 90, 180])
-        ax.set_ylim(-0.13, 0.13)
+        ax.set_ylim(-0.15, 0.15)
         ax.axhline(0, color='gray', lw=0.5)
         ax.grid(alpha=0.3)
         if i == 0:

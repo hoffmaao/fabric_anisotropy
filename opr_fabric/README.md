@@ -71,6 +71,17 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
   to a user scratch tree instead of the shared season tree; see its header
   for the table, paths, and the `matlab -batch` launch line.
 
+## Margin display extracts
+
+For local interferogram QC of the Thwaites eastern-shear-margin crossings
+(`scripts/figures/thwaites_interferogram.py`), a scratch-side
+`extract_margin.py` on mem1 condenses each raw ~1.9 GB
+`CSARP_polarimetric` frame into a compact `margin_<day_seg>.mat` display
+extract: decimated power in dB for both channels, coherence, wrapped and
+SNAPHU-unwrapped phase, coregistration row offsets, and geometry
+(Time/Latitude/Longitude). The raw ref/sec complex images never leave
+the server; rsync the extracts to `~/data/opr/margin/` locally.
+
 ## Ground accum radar (accum3 / EAGER) channel mapping
 
 From the mission defaults and lever_arm.m of recent ground seasons
