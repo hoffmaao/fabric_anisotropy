@@ -58,8 +58,10 @@ Scripts (each validates or applies the above end to end):
   by the regional maps) figure scripts that reproduce the analysis figures
   from `opr_fabric/server/run_fabric_scratch.m` batch outputs mirrored
   locally: season transects, per-season depth profiles, the 2024-25
-  cross-validation of the two independent polarimetric processings, an
-  all-survey summary (coverage map, median profiles, drive orientations;
+  cross-validation of the two independent polarimetric processings, the
+  Ridge A azimuthal inversion (per-depth fit over the grid's drive
+  headings for the horizontal fabric orientation and principal contrast
+  lam1 - lam2), an all-survey summary (coverage map, median profiles, drive orientations;
   the map uses cartopy if installed, else a plain lat/lon scatter),
   along-profile depth sections of the fabric solution per survey region,
   and zoomed regional maps of each survey area with reference-site markers
