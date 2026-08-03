@@ -247,10 +247,13 @@ for frm_idx = 1:length(param.cmd.frms)
 
   % Create task
   % =================================================================
-  dparam.cpu_time = 3600; % Much lighter than polarimetric_task
   if strcmp(param.fabric.dtau_source,'deltak')
-    dparam.mem = 24e9;    % holds ref/sec SLC spectra + band products
+    % The ladder adds two full-frame range FFTs, an ifft pair per sub-band
+    % (12+4+2 bands) and three conv2 passes on top of the normal chain
+    dparam.cpu_time = 7200;
+    dparam.mem = 24e9;      % holds ref/sec SLC spectra + band products
   else
+    dparam.cpu_time = 3600; % Much lighter than polarimetric_task
     dparam.mem = 12e9;
   end
 

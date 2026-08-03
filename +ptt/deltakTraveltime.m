@@ -163,6 +163,12 @@ fprintf('deltak: rounding margins Q %.2f/%.2f, B %.2f/%.2f (median/90th; <<0.5)\
 
 %% Surface referencing (robust shallow-band median per cell column)
 tau_ref = band_ref(tau_B);
+n_unref = nnz(all(~isfinite(tau_ref), 1));
+if n_unref > 0
+  warning('ptt:deltakTraveltime:unreferenced', ...
+    '%d of %d analysis-cell columns have no usable reference band and are excluded from dtau.', ...
+    n_unref, nxc);
+end
 
 %% Interpolate to the full grid for ptt.blockAverage
 ti = min(max(interp1(t_cell, (1:ntc).', map.Time(:), 'linear', 'extrap'), 1), ntc);
@@ -246,12 +252,18 @@ info.deltak = struct('tau_cell', tau_ref, 't_cell', t_cell, ...
   end
 
   function A = band_ref(A)
-    % Subtract a robust shallow-band median per cell column
+    % Subtract a robust shallow-band median per cell column. A column with
+    % no usable reference band (no finite Surface pick in the cell, or the
+    % band falling outside the record) is NaN rather than unreferenced: the
+    % channel timing bias it would otherwise keep is not a delay, and
+    % interp2 would smear it into the valid cells on either side.
     for i = 1:nxc
       band = t_cell > surf_c(i) + dk.ref_band(1) & ...
         t_cell < surf_c(i) + dk.ref_band(2);
       if any(band)
         A(:,i) = A(:,i) - nmed(A(band,i));
+      else
+        A(:,i) = NaN;
       end
     end
   end
