@@ -2,6 +2,10 @@
 *.asv
 *.mex*
 
+# Python
+__pycache__/
+*.pyc
+
 # Generated outputs
 figs/
 opr_fabric/test/output/
