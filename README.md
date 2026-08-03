@@ -39,6 +39,11 @@ units).
   - `ptt.blendTraveltime` - dtau map from interferogram phase blended with
     coregistration offsets (surface referencing, sign detection, fringe
     ambiguity resolution)
+  - `ptt.deltakTraveltime` - absolute dtau map by split-spectrum delta-k
+    over the ref/sec SLC spectra (coarse-to-fine sub-band ladder, no
+    phase unwrapping; alternative to the phase/coreg blend)
+  - `ptt.surfaceReference` - the surface-referencing convention
+    (coherence mask, reference bins) shared by the dtau estimators
   - `ptt.blockAverage` - coherence-weighted along-track block averaging
     with per-block fringe correction
   - `ptt.invertBlocks` - twtt-to-depth mapping and per-block inversion
@@ -69,6 +74,8 @@ Scripts (each validates or applies the above end to end):
   phase, and coregistration offsets from compact server-side extracts;
   the script's docstring says which segments cross the eastern shear
   margin and which sit in the fast band),
+  single-frame scene figures of the eastern-shear-margin crossing and of
+  a Ridge A grid leg (map plus stacked along-track panels),
   an all-survey summary (coverage map, median profiles, drive orientations;
   the map uses cartopy if installed, else a plain lat/lon scatter),
   along-profile depth sections of the fabric solution per survey region,
@@ -84,7 +91,8 @@ Scripts (each validates or applies the above end to end):
 `opr_fabric/` contains a drop-in OPR processing module (`fabric.m`,
 `fabric_task.m`, `run_fabric.m`) that consumes the toolbox's existing
 `CSARP_polarimetric` product (interferogram + coherence + SNAPHU phase +
-coregistration offsets) and produces `CSARP_fabric_joint` profiles of the
+coregistration offsets; in delta-k mode the complex ref/sec SLCs
+instead) and produces `CSARP_fabric_joint` profiles of the
 horizontal fabric contrast. See `opr_fabric/README.md` for the pipeline,
 output naming, and deployment notes, and `opr_fabric/test/` for its
 end-to-end test.
