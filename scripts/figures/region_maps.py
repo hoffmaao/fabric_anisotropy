@@ -112,7 +112,9 @@ def main():
         has_img = ab.add_imagery(ax, extent)
         ax.add_feature(cfeature.COASTLINE.with_scale('10m'), lw=0.6,
                        edgecolor='k' if not has_img else 'yellow')
-        gl = ax.gridlines(draw_labels=True, lw=0.4, alpha=0.6,
+        # Edge (not inline) latitude labels: inline ones land anywhere in
+        # the panel and can collide with the scale bar or annotations
+        gl = ax.gridlines(draw_labels=True, lw=0.4, alpha=0.6, y_inline=False,
                           color='gray' if not has_img else 'white')
         gl.top_labels = False
         gl.right_labels = False
@@ -122,10 +124,15 @@ def main():
         sx, sy = proj.transform_point(slo, sla, ccrs.PlateCarree())[:2]
         if not (extent[0] <= sx <= extent[1] and extent[2] <= sy <= extent[3]):
             sname = f'nearest reference: {sname}'
-        # Lower-right corner, clear of the scale bar (lower left) and the
-        # legend (upper right)
-        ax.annotate(sname, xy=(0.97, 0.04), xycoords='axes fraction', fontsize=7,
-                    ha='right', va='bottom',
+        # Lower-right corner, above the scale bar region (bar + label reach
+        # ~0.12 axes height) and below the legend (upper right). Narrow
+        # portrait panels can't fit the label on one line, so wrap on the
+        # colon and shrink it there.
+        narrow = (extent[1] - extent[0]) < (extent[3] - extent[2])
+        if narrow:
+            sname = sname.replace(': ', ':\n')
+        ax.annotate(sname, xy=(0.97, 0.14), xycoords='axes fraction',
+                    fontsize=6 if narrow else 7, ha='right', va='bottom',
                     bbox=dict(boxstyle='round,pad=0.15', fc='white', ec='none',
                               alpha=0.7))
         ab.add_scale_bar(ax, extent)
