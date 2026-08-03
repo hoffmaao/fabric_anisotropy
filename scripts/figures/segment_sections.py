@@ -71,9 +71,13 @@ def load_blocks(pattern, survey):
                 if ok:
                     m = (DEPTH >= top[k, b]) & (DEPTH < bot[k, b])
                     col[m] = dlam[k, b]
-            blocks.append(dict(col=col, lat=d['Latitude'][0, b],
-                               lon=d['Longitude'][0, b],
-                               gps=d['GPS_time'][0, b], seg=seg, survey=survey))
+            lat, lon = d['Latitude'][0, b], d['Longitude'][0, b]
+            gps = d['GPS_time'][0, b]
+            if not (np.isfinite(lat) and np.isfinite(lon)
+                    and np.isfinite(gps)):
+                continue
+            blocks.append(dict(col=col, lat=lat, lon=lon, gps=gps,
+                               seg=seg, survey=survey))
     return blocks
 
 
