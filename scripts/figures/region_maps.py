@@ -4,7 +4,9 @@ One zoomed map panel per named survey region (Thwaites, Ridge A, Taylor
 Dome, McMurdo, WAIS Divide/Kamb) plus a full-Antarctica locator. Blocks
 are assigned to regions by nearest reference site, so multi-region
 surveys (2023-24 covers Thwaites, WAIS Divide, and McMurdo) appear in
-every panel they visited. Requires cartopy.
+every panel they visited. Panels are EPSG:3031 with LIMA/MOA imagery
+backgrounds (see antarctic_basemap; coastline-only when the mosaics are
+absent), lat/lon graticule labels, and scale bars. Requires cartopy.
 
 Usage: python region_maps.py [fabric_batch_root] [out_dir]
 """
@@ -21,6 +23,9 @@ from scipy.io import loadmat
 
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import antarctic_basemap as ab
 
 ROOT = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser('~/data/opr/fabric_batch')
 OUT = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(__file__), '..', '..', 'figs')
@@ -80,10 +85,10 @@ def main():
         assign[name] = np.argmin(d, axis=0)
 
     fig = plt.figure(figsize=(17, 10))
+    proj = ab.proj3031()
 
     for ri, (rname, rla, rlo, site) in enumerate(REGIONS):
-        ax = fig.add_subplot(2, 3, ri + 1,
-                             projection=ccrs.SouthPolarStereo(central_longitude=rlo))
+        ax = fig.add_subplot(2, 3, ri + 1, projection=proj)
         pts_la, pts_lo = [], []
         for name, color, la, lo in surveys:
             m = assign[name] == ri
@@ -99,34 +104,41 @@ def main():
         if not pts_la:
             ax.set_title(f'{rname} (no blocks)')
             continue
-        pts_la, pts_lo = np.array(pts_la), np.array(pts_lo)
-        pts_lo = (pts_lo - rlo + 180.0) % 360.0 - 180.0 + rlo
-        pad_la = max(0.15, 0.35 * np.ptp(pts_la))
-        pad_lo = max(0.5, 0.35 * np.ptp(pts_lo))
-        ax.set_extent([pts_lo.min() - pad_lo, pts_lo.max() + pad_lo,
-                       pts_la.min() - pad_la, pts_la.max() + pad_la],
-                      ccrs.PlateCarree())
-        ax.add_feature(cfeature.COASTLINE.with_scale('10m'), lw=0.6)
-        gl = ax.gridlines(draw_labels=True, lw=0.3, color='gray', alpha=0.5)
+        # Projected extents sidestep antimeridian wrap entirely
+        extent = ab.points_extent(pts_la, pts_lo)
+        ax.set_extent(extent, crs=proj)
+        has_img = ab.add_imagery(ax, extent)
+        ax.add_feature(cfeature.COASTLINE.with_scale('10m'), lw=0.6,
+                       edgecolor='k' if not has_img else 'yellow')
+        gl = ax.gridlines(draw_labels=True, lw=0.4, alpha=0.6,
+                          color='gray' if not has_img else 'white')
         gl.top_labels = False
         gl.right_labels = False
         sname, sla, slo = site
-        ax.plot(slo, sla, marker='*', ms=12, color='k',
+        ax.plot(slo, sla, marker='*', ms=12, color='k', mec='white', mew=0.8,
                 transform=ccrs.PlateCarree(), zorder=7)
-        ax.annotate(sname, xy=(0.03, 0.03), xycoords='axes fraction', fontsize=7)
+        ax.annotate(sname, xy=(0.03, 0.14), xycoords='axes fraction', fontsize=7,
+                    bbox=dict(boxstyle='round,pad=0.15', fc='white', ec='none',
+                              alpha=0.7))
+        ab.add_scale_bar(ax, extent)
         ax.set_title(rname, fontsize=12)
         ax.legend(fontsize=7, loc='upper right', markerscale=2)
 
     # Locator panel
-    ax = fig.add_subplot(2, 3, 6, projection=ccrs.SouthPolarStereo())
-    ax.set_extent([-180, 180, -90, -63], ccrs.PlateCarree())
+    ax = fig.add_subplot(2, 3, 6, projection=proj)
+    loc_extent = (-3.1e6, 3.1e6, -2.7e6, 3.3e6)
+    ax.set_extent(loc_extent, crs=proj)
+    has_img = ab.add_imagery(ax, loc_extent, max_px=900)
     ax.add_feature(cfeature.COASTLINE.with_scale('110m'), lw=0.5)
     for rname, rla, rlo, site in REGIONS:
         ax.plot(rlo, rla, 's', ms=7, mfc='none', mec='crimson', mew=1.5,
                 transform=ccrs.PlateCarree())
-        ax.annotate(rname, ccrs.SouthPolarStereo().transform_point(rlo, rla,
+        ax.annotate(rname, proj.transform_point(rlo, rla,
                     ccrs.PlateCarree())[:2], fontsize=8, xytext=(4, 4),
-                    textcoords='offset points')
+                    textcoords='offset points',
+                    bbox=dict(boxstyle='round,pad=0.1', fc='white', ec='none',
+                              alpha=0.7))
+    ab.add_scale_bar(ax, loc_extent)
     ax.set_title('Survey regions', fontsize=12)
 
     fig.suptitle('EAGER polarimetric fabric surveys: regional coverage', fontsize=14)
