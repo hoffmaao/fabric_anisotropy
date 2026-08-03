@@ -61,7 +61,10 @@ Scripts (each validates or applies the above end to end):
   cross-validation of the two independent polarimetric processings, the
   Ridge A azimuthal inversion (per-depth fit over the grid's drive
   headings for the horizontal fabric orientation and principal contrast
-  lam1 - lam2), an all-survey summary (coverage map, median profiles, drive orientations;
+  lam1 - lam2), the Thwaites flow-frame analysis (ITS_LIVE velocities
+  sampled at each block rotate the measured contrast into the flow frame
+  across the shear margin, compared against the Ridge A P(z) baseline),
+  an all-survey summary (coverage map, median profiles, drive orientations;
   the map uses cartopy if installed, else a plain lat/lon scatter),
   along-profile depth sections of the fabric solution per survey region,
   and zoomed regional maps of each survey area with reference-site markers
