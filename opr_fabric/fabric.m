@@ -92,6 +92,10 @@ end
 if ~isfield(param.fabric,'dtau_source') || isempty(param.fabric.dtau_source)
   param.fabric.dtau_source = 'phase';
 end
+if ~ischar(param.fabric.dtau_source) ...
+    || ~any(strcmp(param.fabric.dtau_source,{'phase','coreg','deltak'}))
+  error('param.fabric.dtau_source must be ''phase'', ''coreg'' or ''deltak''.');
+end
 
 % blend_coreg_en: resolve integer-fringe offsets of the phase-derived
 % traveltime differences using the coregistration row offsets

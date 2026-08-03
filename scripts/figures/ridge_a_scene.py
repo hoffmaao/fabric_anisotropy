@@ -2,9 +2,10 @@
 
 Companion to thwaites_margin_scene.py at the site where the fabric
 signal is cleanest. Left: EPSG:3031 map of the Ridge A raster grid
-(every 2024-25 joint-inversion block) over MODIS MOA imagery, with the
-scene frame highlighted; ITS_LIVE has no coverage this far south, so
-there is no speed layer. Right: four stacked panels sharing the
+(every 2024-25 joint-inversion block) on a plain background, with the
+scene frame highlighted; MOA over the featureless dome is pure sensor
+noise once stretched, so no imagery is drawn, and ITS_LIVE has no
+coverage this far south, so there is no speed layer. Right: four stacked panels sharing the
 along-frame distance axis - surface/bed elevation (divide context, in
 place of the Thwaites speed panel), HH power, wrapped interferogram
 phase, and the inverted horizontal eigenvalue difference.
@@ -51,6 +52,24 @@ def haversine_km(lat1, lon1, lat2, lon2):
     dp, dl = p2 - p1, np.radians(np.asarray(lon2) - np.asarray(lon1))
     a = np.sin(dp / 2)**2 + np.cos(p1) * np.cos(p2) * np.sin(dl / 2)**2
     return 2 * R * np.arcsin(np.sqrt(a))
+
+
+def block_edges(centers, pad_km=0.5):
+    """pcolormesh edges around block centers; a lone block gets +/- pad."""
+    if centers.size < 2:
+        return np.array([centers[0] - pad_km, centers[0] + pad_km])
+    half = np.diff(centers) / 2
+    return np.concatenate([[centers[0] - half[0]], centers[:-1] + half,
+                           [centers[-1] + half[-1]]])
+
+
+def sym_limit(a, default=0.25):
+    """Symmetric color limit from |a|; default if empty, all-NaN or all-zero."""
+    a = np.asarray(a, dtype=float)
+    finite = np.abs(a[np.isfinite(a)])
+    if finite.size == 0 or finite.max() == 0:
+        return default
+    return float(finite.max())
 
 
 def bearing_deg(lat1, lon1, lat2, lon2):
@@ -233,18 +252,16 @@ def main():
     fig.colorbar(pc, cax=fig.add_subplot(gs[2, 2]),
                  label='interferogram phase (rad)')
 
-    if inv is not None:
+    if inv is not None and len(inv[0]):
         blats, blons, cols = inv
         bdist = np.array([dist_p[np.argmin(haversine_km(lats_p, lons_p,
                                                         la, lo))]
                           for la, lo in zip(blats, blons)])
         order = np.argsort(bdist)
         bdist, cols = bdist[order], cols[order]
-        half = np.diff(bdist) / 2
-        edges = np.concatenate([[bdist[0] - half[0]], bdist[:-1] + half,
-                                [bdist[-1] + half[-1]]])
+        edges = block_edges(bdist)
         depth_edges = np.concatenate([DEPTH, [DEPTH[-1] + 5]])
-        lim = np.nanmax(np.abs(cols))
+        lim = sym_limit(cols)
         pc = ax3.pcolormesh(edges, depth_edges, cols.T, cmap='RdBu_r',
                             vmin=-lim, vmax=lim, shading='auto')
         fig.colorbar(pc, cax=fig.add_subplot(gs[3, 2]),

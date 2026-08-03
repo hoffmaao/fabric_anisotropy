@@ -60,12 +60,8 @@ if ~isfield(dk,'smooth') || isempty(dk.smooth), dk.smooth = 5; end
 if ~isfield(dk,'band_frac') || isempty(dk.band_frac), dk.band_frac = [0.02 0.98]; end
 if ~isfield(dk,'orientation') || isempty(dk.orientation), dk.orientation = 0; end
 if ~isfield(dk,'ref_band') || isempty(dk.ref_band), dk.ref_band = [150e-9 600e-9]; end
-if ~isfield(opts,'coherence_threshold') || isempty(opts.coherence_threshold)
-  opts.coherence_threshold = 0.5;
-end
-if ~isfield(opts,'ref_twtt_offset') || isempty(opts.ref_twtt_offset)
-  opts.ref_twtt_offset = 50e-9;
-end
+% coherence_threshold and ref_twtt_offset are defaulted by
+% ptt.surfaceReference, which owns the referencing convention
 
 [Nt, Nx] = size(slc.ref);
 dt = map.Time(2) - map.Time(1);
@@ -73,8 +69,21 @@ fs = 1/dt;
 fc = map.fc;
 
 %% Range spectra and band support
-R = fft(single(slc.ref), [], 1);
-S = fft(single(slc.sec), [], 1);
+% Non-finite samples must be zeroed first: the FFT would otherwise spread a
+% single NaN over that whole trace, and the 5x5 cell smoothing below over
+% its neighbours, voiding an entire block average downstream.
+R = single(slc.ref);
+S = single(slc.sec);
+bad = ~isfinite(R) | ~isfinite(S);
+if any(bad(:))
+  warning('ptt:deltakTraveltime:nonfinite', ...
+    'Zeroing %d non-finite SLC samples before the range FFT.', nnz(bad));
+  R(bad) = 0;
+  S(bad) = 0;
+end
+bad = [];
+R = fft(R, [], 1);
+S = fft(S, [], 1);
 pw = mean(abs(R(:, 1:max(1,floor(Nx/200)):end)).^2, 2);
 pw = fftshift(pw);
 fbb = ((0:Nt-1).' - floor(Nt/2)) * fs / Nt;
@@ -98,6 +107,7 @@ edgesQ = round(linspace(b0, b1, 5));
 [accQ, dfQ] = stage_cross(edgesQ);
 edgesB = round(linspace(b0, b1, 3));
 [accB, dfB] = stage_cross(edgesB);
+R = []; S = [];   % full-frame spectra are done with; release before smoothing
 fprintf('deltak: df A/Q/B = %.1f/%.1f/%.1f MHz (unambiguous +/- %.0f/%.0f/%.1f ns)\n', ...
   dfA/1e6, dfQ/1e6, dfB/1e6, 1e9/(2*dfA), 1e9/(2*dfQ), 1e9/(2*dfB));
 
@@ -120,10 +130,15 @@ elseif isfield(map,'row_offset') && ~isempty(map.row_offset)
   coreg_c = cellavg(map.row_offset*dt);
   tau_A_r = band_ref(tau_A);
   coreg_r = band_ref(coreg_c);
-  msk = coh_c > 0.35 & isfinite(coreg_r) & abs(coreg_r) > dt/2;
+  msk = coh_c > 0.35 & isfinite(coreg_r) & isfinite(tau_A_r) ...
+    & abs(coreg_r) > dt/2;
   if nnz(msk) > 100
     s = sign(sum(tau_A_r(msk).*coreg_r(msk)));
-    if s == 0, s = -1; end
+    if ~isfinite(s) || s == 0
+      warning('ptt:deltakTraveltime:sign', ...
+        'Orientation regression is degenerate; using -1 (matched filter).');
+      s = -1;
+    end
   else
     warning('ptt:deltakTraveltime:sign', ...
       'Too few coregistration cells for orientation; using -1 (matched filter).');
@@ -154,12 +169,14 @@ ti = min(max(interp1(t_cell, (1:ntc).', map.Time(:), 'linear', 'extrap'), 1), nt
 xi = min(max(interp1(x_cell, (1:nxc).', (1:Nx).', 'linear', 'extrap'), 1), nxc);
 dtau = interp2(tau_ref, xi.', ti, 'linear');
 
-surf_valid = isfinite(map.Surface(:).');
-coh_mask = map.coherence >= opts.coherence_threshold;
-coh_mask(:,~surf_valid) = false;
-ref_bin = round((map.Surface(:).' + opts.ref_twtt_offset - map.Time(1))/dt) + 1;
-ref_bin(~surf_valid) = 1;
-ref_bin = min(max(ref_bin,1),Nt);
+[coh_mask, ref_bin] = ptt.surfaceReference(map, opts);
+
+% Cells left unreferenced (no surface pick anywhere in the cell) stay
+% non-finite: drop them from the mask and zero them so that a single bad
+% cell cannot NaN a whole block average in ptt.blockAverage.
+bad_dtau = ~isfinite(dtau);
+coh_mask(bad_dtau) = false;
+dtau(bad_dtau) = 0;
 
 info.phase_sign = s;
 info.coh_mask = coh_mask;
@@ -178,14 +195,19 @@ info.deltak = struct('tau_cell', tau_ref, 't_cell', t_cell, ...
     acc_full = [];
     prev = [];
     fcs = zeros(1, numel(edges)-1);
+    % One pair of band buffers for the whole ladder stage: only the bins of
+    % the band in hand are ever non-zero, so they are cleared again after
+    % each band rather than reallocated (two full-frame arrays per band).
+    Rb = complex(zeros(Nt, Nx, 'single'));
+    Sb = complex(zeros(Nt, Nx, 'single'));
     for m = 1:numel(edges)-1
       sl = edges(m):edges(m+1)-1;
       un = mod(sl - 1 - floor(Nt/2), Nt) + 1;  % shifted -> unshifted bins
-      Rb = complex(zeros(Nt, Nx, 'single'));
-      Sb = complex(zeros(Nt, Nx, 'single'));
       Rb(un,:) = R(un,:);
       Sb(un,:) = S(un,:);
       Ib = ifft(Sb, [], 1) .* conj(ifft(Rb, [], 1));
+      Rb(un,:) = complex(0,0);
+      Sb(un,:) = complex(0,0);
       fcs(m) = fc + sum(fbb(sl).*pw(sl))/sum(pw(sl));
       if ~isempty(prev)
         x = Ib .* conj(prev);
@@ -195,6 +217,9 @@ info.deltak = struct('tau_cell', tau_ref, 't_cell', t_cell, ...
     end
     acc = cellavg(acc_full);
     df = mean(diff(fcs));
+    % Nested-function variables live in the parent workspace, so the
+    % full-frame temporaries would otherwise stay resident across stages
+    Rb = []; Sb = []; Ib = []; prev = []; x = []; acc_full = [];
   end
 
   function C = cellavg(A)
@@ -211,8 +236,13 @@ info.deltak = struct('tau_cell', tau_ref, 't_cell', t_cell, ...
   end
 
   function r = cellavg_row(v)
-    % Cell means of a per-trace row vector (1 x Nx) -> (1 x nxc)
-    r = mean(reshape(v(1:nxc*xg), xg, nxc), 1);
+    % Cell medians of a per-trace row vector (1 x Nx) -> (1 x nxc). NaN
+    % tolerant: one bad pick must not void the whole cell's referencing.
+    Bv = reshape(v(1:nxc*xg), xg, nxc);
+    r = nan(1, nxc);
+    for ic = 1:nxc
+      r(ic) = nmed(Bv(:,ic));
+    end
   end
 
   function A = band_ref(A)
