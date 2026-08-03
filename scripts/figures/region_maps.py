@@ -69,6 +69,8 @@ def main():
     surveys = []
     for name, pattern, color in SURVEYS:
         la, lo = load_positions(pattern)
+        finite = np.isfinite(la) & np.isfinite(lo)
+        la, lo = la[finite], lo[finite]
         if la.size:
             surveys.append((name, color, la, lo))
     if not surveys:
@@ -117,6 +119,9 @@ def main():
         sname, sla, slo = site
         ax.plot(slo, sla, marker='*', ms=12, color='k', mec='white', mew=0.8,
                 transform=ccrs.PlateCarree(), zorder=7)
+        sx, sy = proj.transform_point(slo, sla, ccrs.PlateCarree())[:2]
+        if not (extent[0] <= sx <= extent[1] and extent[2] <= sy <= extent[3]):
+            sname = f'nearest reference: {sname}'
         ax.annotate(sname, xy=(0.03, 0.14), xycoords='axes fraction', fontsize=7,
                     bbox=dict(boxstyle='round,pad=0.15', fc='white', ec='none',
                               alpha=0.7))
@@ -126,7 +131,7 @@ def main():
 
     # Locator panel
     ax = fig.add_subplot(2, 3, 6, projection=proj)
-    loc_extent = (-3.1e6, 3.1e6, -2.7e6, 3.3e6)
+    loc_extent = ab.ANTARCTICA_EXTENT
     ax.set_extent(loc_extent, crs=proj)
     has_img = ab.add_imagery(ax, loc_extent, max_px=900)
     ax.add_feature(cfeature.COASTLINE.with_scale('110m'), lw=0.5)

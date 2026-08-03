@@ -100,17 +100,20 @@ def main():
     # (a) Coverage map
     all_lat = np.concatenate([d[3] for d in data])
     all_lon = np.concatenate([d[4] for d in data])
+    finite = np.isfinite(all_lat) & np.isfinite(all_lon)
+    all_lat, all_lon = all_lat[finite], all_lon[finite]
     if HAVE_CARTOPY:
         proj = ab.proj3031()
         ax = fig.add_subplot(gs[:, 0], projection=proj)
         lon_span = np.ptp(all_lon)
         if lon_span > 180:
-            extent = (-3.1e6, 3.1e6, -2.7e6, 3.3e6)
+            extent = ab.ANTARCTICA_EXTENT
         else:
             extent = ab.points_extent(all_lat, all_lon, pad_frac=0.2, min_pad_m=1e5)
         ax.set_extent(extent, crs=proj)
         has_img = ab.add_imagery(ax, extent, max_px=1000)
-        ax.add_feature(cfeature.COASTLINE.with_scale('50m'), lw=0.6)
+        ax.add_feature(cfeature.COASTLINE.with_scale('50m'), lw=0.6,
+                       edgecolor='k' if not has_img else 'yellow')
         ax.gridlines(draw_labels=True, lw=0.4, alpha=0.6,
                      color='gray' if not has_img else 'white',
                      x_inline=False, y_inline=True)

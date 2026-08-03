@@ -34,6 +34,9 @@ BASEMAP_DIR = os.environ.get('ANT_BASEMAP_DIR',
 LIMA_FN = os.path.join(BASEMAP_DIR, 'LIMA_Mosaic.jp2')
 MODIS_FN = os.path.join(BASEMAP_DIR, 'MODIS_Mosaic.tif')
 
+# Whole-continent EPSG:3031 extent (xmin, xmax, ymin, ymax) in meters
+ANTARCTICA_EXTENT = (-3.1e6, 3.1e6, -2.7e6, 3.3e6)
+
 
 def proj3031():
     """Cartopy CRS matching the mosaics (EPSG:3031)."""
@@ -44,8 +47,13 @@ def points_extent(lats, lons, pad_frac=0.3, min_pad_m=5e3):
     """Padded EPSG:3031 extent (xmin, xmax, ymin, ymax) around points."""
     proj = proj3031()
     xyz = proj.transform_points(ccrs.PlateCarree(),
-                                np.asarray(lons), np.asarray(lats))
+                                np.asarray(lons, dtype=float),
+                                np.asarray(lats, dtype=float))
     x, y = xyz[:, 0], xyz[:, 1]
+    ok = np.isfinite(x) & np.isfinite(y)
+    if not np.any(ok):
+        raise ValueError('points_extent: no finite lat/lon positions')
+    x, y = x[ok], y[ok]
     pad_x = max(min_pad_m, pad_frac * np.ptp(x))
     pad_y = max(min_pad_m, pad_frac * np.ptp(y))
     return (x.min() - pad_x, x.max() + pad_x, y.min() - pad_y, y.max() + pad_y)
