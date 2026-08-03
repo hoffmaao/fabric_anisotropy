@@ -75,7 +75,6 @@ def main():
     step = haversine_km(lats[:-1], lons[:-1], lats[1:], lons[1:])
     dist = np.concatenate([[0], np.cumsum(step)])
     speed = sample_speed(lats, lons)
-    fc = 750e6
     dt = np.median(np.diff(d['Time'].ravel()))
 
     panels = [
