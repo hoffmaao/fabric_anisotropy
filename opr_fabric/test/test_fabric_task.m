@@ -203,4 +203,79 @@ end
 fprintf('Coreg-only mode: max |error| block 1: %.3f\n', max_err_c);
 assert(max_err_c < 0.1, 'coreg-only dlam deviates from truth by %.3f', max_err_c);
 
+%% Delta-k mode (split-spectrum ladder over synthetic ref/sec SLCs)
+% Band-limited speckle SLCs with the true delay applied EXACTLY to the
+% secondary by piecewise-constant spectral shifts (envelope + carrier,
+% e^{-i 2 pi (fc + f_bb) tau}), mixed with independent noise to match the
+% coherence profile. row_offset keeps its physical meaning (sec later by
+% dtau), which the orientation regression uses.
+fs = 1/dt;
+f_bb = mod((0:Nt-1).'*fs/Nt + fs/2, fs) - fs/2;   % unshifted baseband axis
+Wf = single(exp(-0.5*((abs(f_bb) - 0e6)/110e6).^8));  % band window ~+/-140 MHz
+Cspec = single(complex(randn(Nt,Nx), randn(Nt,Nx))/sqrt(2)) .* Wf;
+C0 = ifft(Cspec, [], 1);
+
+tau_col = dtau_map(:,1) + timing_bias;
+L = 24;
+tau_edges = linspace(min(tau_col), max(tau_col)+eps, L+1);
+sec_common = complex(zeros(Nt, Nx, 'single'));
+for l = 1:L
+  tau_l = (tau_edges(l) + tau_edges(l+1))/2;
+  rows = tau_col >= tau_edges(l) & tau_col < tau_edges(l+1);
+  if ~any(rows), continue; end
+  Sl = ifft(Cspec .* single(exp(-1i*2*pi*(fc + f_bb)*tau_l)), [], 1);
+  sec_common(rows,:) = Sl(rows,:);
+end
+clear Sl;
+
+gam = min(max(repmat(coh_prof, 1, Nx), 0.05), 0.95);
+a = single(sqrt((1 - gam)./gam));
+N1 = ifft(single(complex(randn(Nt,Nx), randn(Nt,Nx))/sqrt(2)) .* Wf, [], 1);
+N2 = ifft(single(complex(randn(Nt,Nx), randn(Nt,Nx))/sqrt(2)) .* Wf, [], 1);
+ref = C0 + a.*N1;
+sec = sec_common + a.*N2;
+clear C0 sec_common N1 N2 Cspec;
+
+% Multilooked interferogram + coherence from the SLCs (schema fields)
+box = ones(9,15)/(9*15);
+num = conv2(sec .* conj(ref), box, 'same');
+den = sqrt(conv2(abs(ref).^2, box, 'same') .* conv2(abs(sec).^2, box, 'same'));
+interferogram_mlook = single(num);
+interferogram_coherence = single(abs(num)./max(den, eps));
+clear num den;
+
+in_dir2 = fullfile(outRoot, 'CSARP_polarimetric_slc', day_seg);
+mkdir(in_dir2);
+save('-v7', fullfile(in_dir2, sprintf('Data_%s_009.mat', day_seg)), ...
+  'interferogram_mlook','interferogram_coherence','row_offset','Time', ...
+  'GPS_time','Latitude','Longitude','Elevation','Surface','Bottom', ...
+  'param_records','param_polarimetric','file_type','file_version', ...
+  'ref','sec');
+clear ref sec interferogram_mlook interferogram_coherence;
+
+param.fabric.dtau_source = 'deltak';
+param.fabric.in_path = 'polarimetric_slc';
+param.fabric.out_path = 'fabric_deltak';
+success = fabric_task(param);
+assert(success, 'fabric_task (deltak mode) did not succeed');
+
+outd = load(fullfile(outRoot, 'CSARP_fabric_deltak', day_seg, ...
+  sprintf('Data_%s_009.mat', day_seg)));
+fprintf('Delta-k phase sign detected: %+d (expected -1)\n', outd.phase_sign);
+assert(outd.phase_sign == -1, 'delta-k orientation regression failed');
+max_err_d = 0;
+fprintf('Delta-k block 1: interval (depth m)   true dlam   inferred\n');
+for k = 1:size(outd.dlam,1)
+  dmid = (outd.dlam_top_depth(k,1) + outd.dlam_bot_depth(k,1))/2;
+  lam_mid = ptt.columnProfiles(parT, 1 - dmid/parT.H);
+  dlam_true_k = lam_mid.lam(1) - lam_mid.lam(2);
+  max_err_d = max(max_err_d, abs(outd.dlam(k,1) - dlam_true_k));
+  fprintf('  %5.0f - %5.0f          %8.3f  %8.3f\n', ...
+    outd.dlam_top_depth(k,1), outd.dlam_bot_depth(k,1), dlam_true_k, outd.dlam(k,1));
+end
+fprintf('Delta-k mode: max |error| block 1: %.3f\n', max_err_d);
+assert(max_err_d < 0.06, 'delta-k dlam deviates from truth by %.3f', max_err_d);
+assert(all(outd.blend_fringes == 0), ...
+  'delta-k mode must not apply fringe blending');
+
 fprintf('\nPASS (%.1f s)\n', toc(t0));

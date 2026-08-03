@@ -21,14 +21,28 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
 3. `fabric.m` / `fabric_task.m` (this module): `fabric_task.m` is a thin
    OPR adapter (file discovery, product loading, output/figure
    conventions) around the pure numerical chain in `+ptt` -
-   `ptt.blendTraveltime` -> `ptt.blockAverage` -> `ptt.invertBlocks` -
-   which reads its options directly from the `param.fabric` struct and is
-   equally callable from standalone scripts and tests. Per frame,
-   - traveltime differences dtau(twtt, x) = t_sec - t_ref from a blend of
-     the two estimators: coregistration `row_offset * dt` fixes the sign
-     and the integer 1/fc fringe ambiguity; the interferogram phase
-     provides sub-ns precision (SNAPHU-unwrapped when present, otherwise
-     wrapped phase with per-pixel fringe resolution),
+   `ptt.blendTraveltime` (or `ptt.deltakTraveltime`) -> `ptt.blockAverage`
+   -> `ptt.invertBlocks` - which reads its options directly from the
+   `param.fabric` struct and is equally callable from standalone scripts
+   and tests. Per frame,
+   - traveltime differences dtau(twtt, x) = t_sec - t_ref from one of
+     three estimators (`param.fabric.dtau_source`):
+     - `'phase'` (default): blend of coregistration `row_offset * dt`
+       (fixes the sign and the integer 1/fc fringe ambiguity) with the
+       interferogram phase (sub-ns precision; SNAPHU-unwrapped when
+       present, otherwise wrapped phase with per-pixel fringe resolution),
+     - `'coreg'`: row offsets alone (detected-power products),
+     - `'deltak'`: split-spectrum ladder over the ref/sec SLC spectra
+       (`ptt.deltakTraveltime`): sub-band interferograms cross-multiplied
+       per pixel then multilooked, coarse-to-fine in synthetic wavelength,
+       giving ABSOLUTE dtau with no phase unwrapping and no fringe
+       blending. Needs `ref` and the unregistered `sec` in the product
+       (~2x task memory). CAUTION: `sec_reg` is envelope-shifted by
+       coregistration and carries no group delay - delta-k must use the
+       raw `sec`. Motivated by SNAPHU region errors and coreg-anchored
+       blend corrections at the low-coherence Thwaites margin (the two
+       failure modes it eliminates); at high-coherence sites it mainly
+       serves as an unwrap-free cross-check.
    - dtau referenced to zero just below the surface return (removes
      channel timing/phase biases and the unwrapping constant),
    - coherence-weighted averaging into along-track blocks,
