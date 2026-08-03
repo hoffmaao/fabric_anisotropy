@@ -54,14 +54,20 @@ Scripts (each validates or applies the above end to end):
   common-offset layer-stripping method.
 - `scripts/accum_inversion_template.m` - template for real accumulation
   radar picks (fill in section 1).
-- `scripts/figures/` - Python (matplotlib + scipy, no other required deps)
-  figure scripts that reproduce the analysis figures from
-  `opr_fabric/server/run_fabric_scratch.m` batch outputs mirrored locally:
-  season transects, per-season depth profiles, the 2024-25 cross-validation
-  of the two independent polarimetric processings, and an all-survey summary
-  (coverage map, median profiles, drive orientations; the map uses cartopy
-  if installed, else a plain lat/lon scatter). See each script's docstring
-  for usage; the inversion chain itself stays MATLAB/Octave.
+- `scripts/figures/` - Python (matplotlib + scipy; cartopy required only
+  by the regional maps) figure scripts that reproduce the analysis figures
+  from `opr_fabric/server/run_fabric_scratch.m` batch outputs mirrored
+  locally: season transects, per-season depth profiles, the 2024-25
+  cross-validation of the two independent polarimetric processings, an
+  all-survey summary (coverage map, median profiles, drive orientations;
+  the map uses cartopy if installed, else a plain lat/lon scatter),
+  along-profile depth sections of the fabric solution per survey region,
+  and zoomed regional maps of each survey area with reference-site markers
+  and an Antarctica locator. The maps overlay LIMA/MODIS MOA satellite imagery
+  when rasterio and the locally downloaded mosaics are present (download
+  commands in `scripts/figures/antarctic_basemap.py`), and fall back to
+  coastline-only otherwise. See each script's docstring for usage; the
+  inversion chain itself stays MATLAB/Octave.
 
 ## OPR toolbox integration (`opr_fabric/`)
 
