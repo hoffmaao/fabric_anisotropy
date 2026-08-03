@@ -227,8 +227,12 @@ def main():
     edges = np.concatenate([[dist[0] - 0.1], (dist[:-1] + dist[1:]) / 2,
                             [dist[-1] + 0.1]])
     depth_edges = np.concatenate([DEPTH, [DEPTH[-1] + 5]])
-    # Data-driven symmetric limits so the fast band does not peg the scale
-    lam_lim = np.nanpercentile(np.abs(Lam), 99)
+    # Data-driven symmetric limits so the fast band does not peg the scale,
+    # falling back to the old fixed limit when no block survived the masking
+    finite_lam = np.abs(Lam[np.isfinite(Lam)])
+    lam_lim = np.percentile(finite_lam, 99) if finite_lam.size else 0.0
+    if not np.isfinite(lam_lim) or lam_lim <= 0:
+        lam_lim = 0.25
     pc = ax.pcolormesh(edges, depth_edges, Lam.T, cmap='RdBu_r',
                        vmin=-lam_lim, vmax=lam_lim)
     if marg:

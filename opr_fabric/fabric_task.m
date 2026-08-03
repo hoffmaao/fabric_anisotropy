@@ -121,6 +121,9 @@ end
 % =========================================================================
 if deltak_en
   slc = struct('ref', pol.ref, 'sec', pol.sec);
+  % Drop the product's own copies: pol stays live through the inversion,
+  % plotting and save, and the SLCs are GB-scale on undecimated frames
+  pol = rmfield(pol, {'ref','sec'});
   [dtau, info] = ptt.deltakTraveltime(slc, map, param.fabric);
   clear slc;
 else

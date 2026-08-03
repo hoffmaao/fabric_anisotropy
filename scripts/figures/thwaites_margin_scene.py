@@ -50,6 +50,24 @@ def haversine_km(lat1, lon1, lat2, lon2):
     return 2 * R * np.arcsin(np.sqrt(a))
 
 
+def block_edges(centers, pad_km=0.5):
+    """pcolormesh edges around block centers; a lone block gets +/- pad."""
+    if centers.size < 2:
+        return np.array([centers[0] - pad_km, centers[0] + pad_km])
+    half = np.diff(centers) / 2
+    return np.concatenate([[centers[0] - half[0]], centers[:-1] + half,
+                           [centers[-1] + half[-1]]])
+
+
+def sym_limit(a, default=0.25):
+    """Symmetric color limit from |a|; default if empty, all-NaN or all-zero."""
+    a = np.asarray(a, dtype=float)
+    finite = np.abs(a[np.isfinite(a)])
+    if finite.size == 0 or finite.max() == 0:
+        return default
+    return float(finite.max())
+
+
 def itslive_window(extent, pad=5e3):
     """(x, y, v) speed window in EPSG:3031 meters; None if unavailable."""
     if not os.path.exists(ITSLIVE_LOCAL):
@@ -198,18 +216,16 @@ def main():
     fig.colorbar(pc, cax=fig.add_subplot(gs[2, 2]),
                  label='interferogram phase (rad)')
 
-    if inv is not None:
+    if inv is not None and len(inv[0]):
         blats, blons, cols = inv
         # Nearest extract trace maps each block onto the distance axis
         bdist = np.array([dist[np.argmin(haversine_km(lats, lons, la, lo))]
                           for la, lo in zip(blats, blons)])
         order = np.argsort(bdist)
         bdist, cols = bdist[order], cols[order]
-        half = np.diff(bdist) / 2
-        edges = np.concatenate([[bdist[0] - half[0]], bdist[:-1] + half,
-                                [bdist[-1] + half[-1]]])
+        edges = block_edges(bdist)
         depth_edges = np.concatenate([DEPTH, [DEPTH[-1] + 5]])
-        lim = np.nanmax(np.abs(cols))
+        lim = sym_limit(cols)
         pc = ax3.pcolormesh(edges, depth_edges, cols.T, cmap='RdBu_r',
                             vmin=-lim, vmax=lim, shading='auto')
         fig.colorbar(pc, cax=fig.add_subplot(gs[3, 2]),
