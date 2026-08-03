@@ -3,7 +3,8 @@
 Each dataset is a survey spanning (potentially very different) flow
 regimes, and even single surveys drive at varying orientations relative to
 the principal fabric axes. This figure summarizes: (a) where each survey
-went (South Polar Stereographic map with coastline), (b) the median
+went (EPSG:3031 map with coastline, imagery background, and scale bar
+when available; see antarctic_basemap), (b) the median
 horizontal eigenvalue-contrast profile with IQR per survey, and (c) the
 distribution of drive headings (mod 180, since dlam is symmetric under
 line reversal) per survey.
