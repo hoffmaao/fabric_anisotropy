@@ -37,6 +37,10 @@ MODIS_FN = os.path.join(BASEMAP_DIR, 'MODIS_Mosaic.tif')
 # Whole-continent EPSG:3031 extent (xmin, xmax, ymin, ymax) in meters
 ANTARCTICA_EXTENT = (-3.1e6, 3.1e6, -2.7e6, 3.3e6)
 
+# LIMA has no Landsat coverage poleward of this latitude; the mosaic
+# fills the pole hole with flat MODIS-derived color
+LIMA_SOUTH_LIMIT = -82.5
+
 
 def proj3031():
     """Cartopy CRS matching the mosaics (EPSG:3031)."""
@@ -98,8 +102,18 @@ def add_imagery(ax, extent, max_px=1400):
         mpl_extent = (ext[0], ext[1], ext[2], ext[3])
         if is_rgb and img.shape[-1] >= 3:
             rgb = img[..., :3]
-            # LIMA nodata is black; fall through to MOA when the window is
-            # mostly outside Landsat coverage (poleward of ~82.5 S)
+            # Fall through to MOA inside LIMA's pole hole. The Quantarctica
+            # JP2 fills it with a flat color statistically indistinguishable
+            # from featureless Landsat snow (its per-channel std is JP2
+            # compression noise, larger than a real WAIS Divide scene's), so
+            # detect it geometrically: skip LIMA when every corner of the
+            # window is poleward of the Landsat coverage limit. Also keep
+            # the black-nodata check for mosaic builds without the fill.
+            cx = np.array([ext[0], ext[1], ext[0], ext[1]])
+            cy = np.array([ext[2], ext[2], ext[3], ext[3]])
+            corner_lat = ccrs.PlateCarree().transform_points(proj, cx, cy)[:, 1]
+            if np.max(corner_lat) < LIMA_SOUTH_LIMIT:
+                continue
             if np.mean(np.all(rgb == 0, axis=-1)) > 0.5:
                 continue
             ax.imshow(rgb, extent=mpl_extent, transform=proj, origin='upper',
