@@ -1,11 +1,12 @@
 """Interferogram-chain QC figure for the Thwaites margin-crossing segment.
 
-One column per product, full chain for a single segment: HH power, VV
-power, coherence, wrapped interferogram phase, SNAPHU-unwrapped phase,
-and coregistration row offsets (as traveltime difference), with the
-ITS_LIVE speed profile on top for margin context. Input is the compact
-extract produced on mem1 by extract_margin.py (see opr_fabric/README for
-the server workflow) and mirrored under ~/data/opr/margin/.
+One stacked panel per product, sharing the distance axis, full chain for
+a single segment: HH power, VV power, coherence, wrapped interferogram
+phase, SNAPHU-unwrapped phase, and coregistration row offsets (as
+traveltime difference), with the ITS_LIVE speed profile on top for
+margin context. Input is the compact extract produced on mem1 by
+extract_margin.py (see "Margin display extracts" in opr_fabric/README.md
+for the server workflow) and mirrored under ~/data/opr/margin/.
 
 Usage: python thwaites_interferogram.py [seg] [extract_dir] [out_dir]
 """
@@ -89,10 +90,16 @@ def main():
     ]
     have = [p for p in panels if p[0] in d]
 
-    fig, axes = plt.subplots(len(have) + 1, 1,
-                             figsize=(14, 2.1 * len(have) + 2.2),
-                             sharex=True,
-                             gridspec_kw={'height_ratios': [0.7] + [1] * len(have)})
+    n = len(have)
+    fig = plt.figure(figsize=(14, 2.1 * n + 2.2), layout='constrained')
+    gs = fig.add_gridspec(n + 1, 2, width_ratios=[1, 0.015],
+                          height_ratios=[0.7] + [1] * n, wspace=0.03)
+    axes = [fig.add_subplot(gs[0, 0])]
+    for i in range(n):
+        axes.append(fig.add_subplot(gs[i + 1, 0], sharex=axes[0]))
+    caxes = [fig.add_subplot(gs[i + 1, 1]) for i in range(n)]
+    for ax in axes[:-1]:
+        ax.tick_params(labelbottom=False)
 
     ax = axes[0]
     ax.plot(dist, speed, 'k-', lw=1.5)
@@ -100,7 +107,7 @@ def main():
     ax.set_title(f'Segment {SEG}: ITS_LIVE speed (margin context)')
     ax.grid(alpha=0.3)
 
-    for ax, (key, label, cmap, vmin, vmax) in zip(axes[1:], have):
+    for ax, cax, (key, label, cmap, vmin, vmax) in zip(axes[1:], caxes, have):
         img = d[key]
         if key == 'row_offset':
             img = img * dt * 1e9  # bins -> ns
@@ -116,15 +123,12 @@ def main():
                            shading='auto', rasterized=True)
         ax.invert_yaxis()
         ax.set_ylabel('TWTT (us)')
-        cb = fig.colorbar(pc, ax=ax, pad=0.01)
+        cb = fig.colorbar(pc, cax=cax)
         cb.set_label(label, fontsize=8)
     axes[-1].set_xlabel('Distance along segment (km)')
-    if axes[1].get_ylim()[0] < axes[1].get_ylim()[1]:
-        pass
     fig.suptitle('Interferogram product chain, Thwaites margin segment '
                  f'{SEG} (2023-24 season, Hoffman/Christianson processing)',
                  fontsize=13)
-    fig.tight_layout(rect=[0, 0, 1, 0.97])
     os.makedirs(OUT, exist_ok=True)
     out = os.path.join(OUT, f'interferogram_chain_{SEG}.png')
     fig.savefig(out, dpi=140, bbox_inches='tight')
