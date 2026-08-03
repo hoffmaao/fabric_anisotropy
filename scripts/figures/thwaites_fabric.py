@@ -1,4 +1,4 @@
-"""Thwaites shear-margin fabric signature in the flow frame.
+"""Thwaites eastern-shear-margin fabric signature in the flow frame.
 
 Samples ITS_LIVE v2 surface velocity (local mosaic copy if present, else
 anonymous-S3 windowed read; samples cached to an npz so reruns are
@@ -287,7 +287,7 @@ def main():
                  fontsize=9)
 
     fig.suptitle('Thwaites line in the flow frame (ITS_LIVE velocities): '
-                 'fabric signature vs margin proximity', fontsize=13)
+                 'fabric signature vs eastern-shear-margin proximity', fontsize=13)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     os.makedirs(OUT, exist_ok=True)
     out = os.path.join(OUT, 'thwaites_fabric.png')

@@ -1,4 +1,4 @@
-"""Interferogram-chain QC figure for the Thwaites margin-crossing segment.
+"""Interferogram-chain QC figure for the Thwaites eastern shear margin.
 
 One stacked panel per product, sharing the distance axis, full chain for
 a single segment: HH power, VV power, coherence, wrapped interferogram
@@ -125,7 +125,8 @@ def main():
         cb = fig.colorbar(pc, cax=cax)
         cb.set_label(label, fontsize=8)
     axes[-1].set_xlabel('Distance along segment (km)')
-    fig.suptitle('Interferogram product chain, Thwaites margin segment '
+    fig.suptitle('Interferogram product chain, Thwaites eastern shear margin '
+                 'segment '
                  f'{SEG} (2023-24 season, Hoffman/Christianson processing)',
                  fontsize=13)
     os.makedirs(OUT, exist_ok=True)
