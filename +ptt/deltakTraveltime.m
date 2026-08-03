@@ -35,6 +35,10 @@ function [dtau, info] = deltakTraveltime(slc, map, opts)
 %     band_frac ([.02 .98]) cumulative-power band support
 %     orientation (0)       spectral orientation s; 0 = regress against
 %                           map.row_offset (row_offset > 0 = sec later)
+%     phase_sign (top-level opts.phase_sign, 0) forced orientation
+%                           override, as in ptt.blendTraveltime; nonzero
+%                           takes precedence over orientation and the
+%                           regression
 %     ref_band ([150e-9 600e-9])  referencing band below the surface
 %     coherence_threshold (opts.*, 0.5)  as in blendTraveltime
 %
@@ -124,7 +128,9 @@ tau_Bw = angle(conv2(real(accB), k3, 'same') + 1i*conv2(imag(accB), k3, 'same'))
 % coregistration offsets (row_offset > 0 = sec arrives later)
 coh_c = cellavg(map.coherence);
 surf_c = cellavg_row(map.Surface);
-if dk.orientation ~= 0
+if isfield(opts,'phase_sign') && ~isempty(opts.phase_sign) && opts.phase_sign ~= 0
+  s = sign(opts.phase_sign);
+elseif dk.orientation ~= 0
   s = sign(dk.orientation);
 elseif isfield(map,'row_offset') && ~isempty(map.row_offset)
   coreg_c = cellavg(map.row_offset*dt);
@@ -138,6 +144,9 @@ elseif isfield(map,'row_offset') && ~isempty(map.row_offset)
       warning('ptt:deltakTraveltime:sign', ...
         'Orientation regression is degenerate; using -1 (matched filter).');
       s = -1;
+    elseif s ~= -1
+      warning('ptt:deltakTraveltime:sign', ...
+        'Orientation regression detected s = %+d, contrary to the matched-filter convention (-1); set opts.phase_sign to force.', s);
     end
   else
     warning('ptt:deltakTraveltime:sign', ...

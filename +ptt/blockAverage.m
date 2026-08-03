@@ -27,7 +27,14 @@ end
 Nt = size(dtau,1);
 Nx = size(dtau,2);
 
+% NaN coherence or dtau samples must carry zero weight AND zero value:
+% NaN*0 = NaN in MATLAB, so either would otherwise NaN the whole row of
+% every block they fall in despite the mask.
 w = map.coherence.^2 .* info.coh_mask;
+bad = ~isfinite(w) | ~isfinite(dtau);
+w(bad) = 0;
+dtau_w = dtau;
+dtau_w(bad) = 0;
 
 blk.starts = 1:opts.block_size:Nx;
 Nblk = numel(blk.starts);
@@ -45,7 +52,7 @@ for b = 1:Nblk
   cols = blk.starts(b):min(blk.starts(b)+opts.block_size-1,Nx);
   blk.cols{b} = cols;
   wsum = sum(w(:,cols),2);
-  blk.dtau(:,b) = sum(w(:,cols).*dtau(:,cols),2) ./ wsum;
+  blk.dtau(:,b) = sum(w(:,cols).*dtau_w(:,cols),2) ./ wsum;
   blk.coverage(:,b) = sum(info.coh_mask(:,cols),2) / numel(cols);
   blk.coh(:,b) = mean(map.coherence(:,cols),2);
   blk.Surface(b) = mean(map.Surface(cols),'omitnan');

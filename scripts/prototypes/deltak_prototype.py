@@ -239,9 +239,6 @@ def main():
     tau_C_r = surface_ref(tau_C)
     snap_tau_r = surface_ref(snap_c / (2 * np.pi * FC))
 
-    lowc = coh_c < 0.2
-    for name, a in [('A', tau_A_r), ('C', tau_C_r)]:
-        pass
     # agreement stats
     d_sn = (tau_C_r - snap_tau_r) * FC   # in fringes at fc
     ok = coh_c > 0.3
