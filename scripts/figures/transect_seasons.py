@@ -76,7 +76,7 @@ for ax, season in zip(axes, seasons):
                             [s['dist'][-1] + 0.25]])
     depth_edges = np.concatenate([s['depth'], [s['depth'][-1] + 5]])
     pc = ax.pcolormesh(edges, depth_edges, s['cols'], cmap='RdBu_r',
-                       vmin=-0.1, vmax=0.1)
+                       vmin=-0.15, vmax=0.15)
     ax.invert_yaxis(); ax.set_ylabel('Depth (m)')
     ax.set_title(f"{season.replace('_', ' ')}: {s['n_frames']} frames, "
                  f"{s['n_tot']} blocks, {s['n_peg']} pegged "
@@ -87,7 +87,7 @@ axes[-1].set_xlabel('Along-traverse distance (km, segment gaps compressed)')
 if pc is None:
     print(f'no data found under {ROOT}/{product}; nothing to plot')
     sys.exit(1)
-fig.colorbar(pc, ax=axes, label=r'$\Delta\lambda = \lambda_{cross} - \lambda_{along}$',
+fig.colorbar(pc, ax=axes, extend='both', label=r'$\Delta\lambda = \lambda_{cross} - \lambda_{along}$',
              shrink=0.6)
 fig.suptitle('Horizontal fabric contrast, EAGER traverses 2022-2026 (joint inversion)',
              fontsize=13)
