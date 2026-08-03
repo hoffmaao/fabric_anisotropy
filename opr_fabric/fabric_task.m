@@ -59,14 +59,25 @@ end
 
 %% Load polarimetric product and assemble the input map
 % =========================================================================
-% Load only the fields the chain uses: the product also carries the full
-% complex ref/sec/sec_reg images (GBs in standardphase products), which
-% fabric processing never touches.
-want = {'interferogram_mlook','interferogram_coherence','snaphu_out_phase', ...
-  'row_offset','Time','GPS_time','Latitude','Longitude','Elevation', ...
-  'Surface','param_records','param_polarimetric'};
+% Load only the fields the chain uses. The product also carries the full
+% complex ref/sec/sec_reg images (GBs in standardphase products): the
+% phase/coreg modes never touch them, but dtau_source = 'deltak' needs
+% the ref and UNREGISTERED sec SLCs (coregistration shifts the envelope,
+% which removes exactly the group delay delta-k measures).
+deltak_en = isfield(param.fabric,'dtau_source') ...
+  && strcmp(param.fabric.dtau_source,'deltak');
+if deltak_en
+  want = {'interferogram_coherence','row_offset','Time','GPS_time', ...
+    'Latitude','Longitude','Elevation','Surface','param_records', ...
+    'param_polarimetric','ref','sec'};
+  required = {'Time','Surface','interferogram_coherence','ref','sec'};
+else
+  want = {'interferogram_mlook','interferogram_coherence','snaphu_out_phase', ...
+    'row_offset','Time','GPS_time','Latitude','Longitude','Elevation', ...
+    'Surface','param_records','param_polarimetric'};
+  required = {'Time','Surface','interferogram_coherence','interferogram_mlook'};
+end
 have = whos('-file', in_fn);
-required = {'Time','Surface','interferogram_coherence','interferogram_mlook'};
 missing = setdiff(required, {have.name});
 if ~isempty(missing)
   warning('Required variable(s) %s missing from polarimetric file. Skipping this frame. Perhaps param.fabric.in_path points at the wrong product. File:\n  %s.', strjoin(missing, ', '), in_fn);
@@ -82,7 +93,11 @@ map.Surface = pol.Surface;
 map.fc = fc;
 map.coherence = abs(pol.interferogram_coherence);
 
-if param.fabric.use_snaphu_phase && isfield(pol,'snaphu_out_phase')
+if deltak_en
+  % Delta-k derives dtau from the SLC spectra directly; no phase field
+  map.phase = [];
+  map.phase_is_unwrapped = true;
+elseif param.fabric.use_snaphu_phase && isfield(pol,'snaphu_out_phase')
   map.phase = pol.snaphu_out_phase;
   map.phase_is_unwrapped = true;
 else
@@ -104,7 +119,13 @@ end
 
 %% Traveltime differences, block averaging, inversion
 % =========================================================================
-[dtau, info] = ptt.blendTraveltime(map, param.fabric);
+if deltak_en
+  slc = struct('ref', pol.ref, 'sec', pol.sec);
+  [dtau, info] = ptt.deltakTraveltime(slc, map, param.fabric);
+  clear slc;
+else
+  [dtau, info] = ptt.blendTraveltime(map, param.fabric);
+end
 phase_sign = info.phase_sign;
 fprintf('Phase sign: %+d\n', phase_sign);
 
