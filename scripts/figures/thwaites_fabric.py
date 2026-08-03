@@ -209,6 +209,15 @@ def main():
     for zi in range(3):
         m = zone == zi
         ax.scatter(dist[m], speed[m], s=10, color=zone_colors[zi], zorder=5)
+    # Eastern shear margin: the sharp lateral gradient where the flow band
+    # meets near-stagnant interior ice (speed falls ~100 -> ~15 m/yr)
+    east = dist > dist.max() / 2
+    in_marg = east & (speed < 100) & (speed > 15)
+    marg = (dist[in_marg].min(), dist[in_marg].max()) if np.any(in_marg) else None
+    if marg:
+        ax.axvspan(*marg, color='k', alpha=0.08)
+        ax.annotate('eastern shear margin', xy=(np.mean(marg), 0.9),
+                    xycoords=('data', 'axes fraction'), ha='center', fontsize=9)
     ax.set_xlabel('Distance along drive (km)')
     ax.set_title('Speed (colored by zone) and line-to-flow geometry')
     ax.grid(alpha=0.3)
@@ -220,6 +229,8 @@ def main():
     depth_edges = np.concatenate([DEPTH, [DEPTH[-1] + 5]])
     pc = ax.pcolormesh(edges, depth_edges, Lam.T, cmap='RdBu_r',
                        vmin=-0.25, vmax=0.25)
+    if marg:
+        ax.axvspan(*marg, color='k', alpha=0.08)
     ax.set_ylim(1500, 0)
     ax.set_ylabel('Depth (m)')
     ax.set_title(r'Flow-frame contrast $\Lambda = \lambda_{\perp flow} - '
