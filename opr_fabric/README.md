@@ -73,8 +73,9 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
 
 ## Margin display extracts
 
-For local interferogram QC of the Thwaites eastern-shear-margin crossings
-(`scripts/figures/thwaites_interferogram.py`), a scratch-side
+For local interferogram QC of the Thwaites line segments
+(`scripts/figures/thwaites_interferogram.py`; its docstring says which
+segments cross the eastern shear margin), a scratch-side
 `extract_margin.py` on mem1 condenses each raw ~1.9 GB
 `CSARP_polarimetric` frame into a compact `margin_<day_seg>.mat` display
 extract: decimated power in dB for both channels, coherence, wrapped and
