@@ -96,6 +96,8 @@ def main():
         blk['region'] = int(np.argmin(d))
 
     fig, axes = plt.subplots(len(REGIONS), 1, figsize=(15, 14))
+    # Room for each panel's tick labels under the next panel's title
+    fig.subplots_adjust(hspace=0.45)
     pc = None
     for ri, (rname, _, _) in enumerate(REGIONS):
         ax = axes[ri]
