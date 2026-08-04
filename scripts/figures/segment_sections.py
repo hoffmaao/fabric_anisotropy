@@ -59,6 +59,7 @@ def load_blocks(pattern, survey):
         dlam, top, bot = d['dlam'], d['dlam_top_depth'], d['dlam_bot_depth']
         qual = d['dlam_quality']
         clip = d.get('dlam_clipped')
+        itp = d.get('dlam_interpolated')
         for b in range(dlam.shape[1]):
             if not np.any(np.isfinite(dlam[:, b])):
                 continue
@@ -66,7 +67,10 @@ def load_blocks(pattern, survey):
             for k in range(dlam.shape[0]):
                 pegged = (clip is not None and clip.size and clip[k, b] == 1) \
                     or abs(dlam[k, b]) > 0.6
-                ok = np.isfinite(dlam[k, b]) and not pegged \
+                # dtau interpolated across a masked gap (e.g. a waveform-
+                # combine seam) rather than measured at this node
+                filled = itp is not None and itp.size and itp[k, b] == 1
+                ok = np.isfinite(dlam[k, b]) and not pegged and not filled \
                     and np.isfinite(qual[k, b]) and qual[k, b] > 0.35
                 if ok:
                     m = (DEPTH >= top[k, b]) & (DEPTH < bot[k, b])
