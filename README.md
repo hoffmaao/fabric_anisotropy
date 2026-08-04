@@ -84,8 +84,8 @@ units).
     below it; `scripts/figures/fabric_qc.py` is the single definition of
     that predicate, and the figure scripts drop both the way they drop
     pegged ones - the unmasked coherence in `dlam_quality` cannot tell
-    them apart from measured nodes (`deltak_vs_joint.py` is the one
-    holdout: it still filters only pegged intervals).
+    them apart from measured nodes (`deltak_vs_joint.py` compares two
+    chains, so it drops an interval flagged in either one).
   - `ptt.twttDepthMap` - vertical twtt vs depth from the column model
 
 Scripts (each validates or applies the above end to end):
