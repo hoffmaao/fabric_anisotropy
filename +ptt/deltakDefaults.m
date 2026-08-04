@@ -19,5 +19,6 @@ if ~isfield(dk,'smooth') || isempty(dk.smooth), dk.smooth = 5; end
 if ~isfield(dk,'band_frac') || isempty(dk.band_frac), dk.band_frac = [0.02 0.98]; end
 if ~isfield(dk,'orientation') || isempty(dk.orientation), dk.orientation = 0; end
 if ~isfield(dk,'ref_band') || isempty(dk.ref_band), dk.ref_band = [150e-9 600e-9]; end
+if ~isfield(dk,'ref_min_cells') || isempty(dk.ref_min_cells), dk.ref_min_cells = 2; end
 
 end

@@ -35,6 +35,7 @@ import cartopy.crs as ccrs
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import antarctic_basemap as ab
+from fabric_qc import interpolated_intervals
 
 ROOT = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser('~/data/opr/fabric_batch')
 OUT = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(__file__), '..', '..', 'figs')
@@ -73,7 +74,7 @@ def load_thwaites(pattern):
         dlam, top, bot = d['dlam'], d['dlam_top_depth'], d['dlam_bot_depth']
         qual = d['dlam_quality']
         clip = d.get('dlam_clipped')
-        itp = d.get('dlam_interpolated')
+        itp = interpolated_intervals(d)
         blat = d['Latitude'][0, :]
         blon = d['Longitude'][0, :]
         nb = dlam.shape[1]
@@ -92,9 +93,7 @@ def load_thwaites(pattern):
             for k in range(dlam.shape[0]):
                 pegged = (clip is not None and clip.size and clip[k, b] == 1) \
                     or abs(dlam[k, b]) > 0.6
-                # dtau interpolated across a masked gap (e.g. a waveform-
-                # combine seam) rather than measured at this node
-                filled = itp is not None and itp.size and itp[k, b] == 1
+                filled = itp is not None and itp[k, b]
                 ok = np.isfinite(dlam[k, b]) and not pegged and not filled \
                     and np.isfinite(qual[k, b]) and qual[k, b] > 0.35
                 if ok:

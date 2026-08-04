@@ -38,8 +38,7 @@ function seam = imgCombSeam(map, opts)
 %   0.89 us, steps down to 0.857 by 0.92 us, and only recovers by ~1.1 us,
 %   while the mean power kink reverses sign at 0.99 us. The band is
 %   therefore [t_comb - k*window, t_comb + (1+k)*window] for
-%   k = seam_mask_win, which at the default k = 1 spans 0.8-1.1 us there
-%   and 7-10 us for the 8 us / 1 us settings.
+%   k = seam_mask_win.
 %
 %   Delta-k needs a wider band. ptt.deltakTraveltime resolves its ladder
 %   integers from a tau_A smoothed with a dk.smooth boxcar on the analysis
@@ -48,8 +47,19 @@ function seam = imgCombSeam(map, opts)
 %   seam-contaminated tau_A - and a contaminated tau_A does not bias the
 %   result slightly, it moves it by a whole 1/dfQ step. The band grows by
 %   that reach (300 ns at the defaults) so that every cell whose smoothing
-%   window touched the seam is dropped. The phase and coregistration
-%   estimators do no cell smoothing and keep the un-widened band.
+%   window touched the seam is dropped, i.e. [t_comb - k*window - reach,
+%   t_comb + (1+k)*window + reach]. The phase and coregistration estimators
+%   do no cell smoothing and keep the un-widened band.
+%
+%   The two bands cost very different amounts of record. Measured on the
+%   6601-bin accum3 frame 20250108_02_009 at the default k = 1, per
+%   dtau_source:
+%     phase / coreg   0.9 us / 0.1 us:  0.8-1.1 us,    90 bins  (1.4%)
+%                     8 us / 1 us:      7-10 us,      900 bins (13.6%)
+%     deltak          0.9 us / 0.1 us:  0.5-1.4 us,   270 bins  (4.1%)
+%                     8 us / 1 us:      6.7-10.3 us, 1080 bins (16.4%)
+%   Budget delta-k coverage against the delta-k rows, not the phase ones:
+%   the reach triples the cost on the 0.9 us settings.
 %
 %   OPR places the boundary at max(Surface*mult, t_comb), so a finite mult
 %   makes it track the surface and the mask becomes column-dependent; the

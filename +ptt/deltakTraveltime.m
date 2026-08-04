@@ -42,6 +42,9 @@ function [dtau, info] = deltakTraveltime(slc, map, opts)
 %                           takes precedence over orientation and the
 %                           regression
 %     ref_band ([150e-9 600e-9])  referencing band below the surface
+%     ref_min_cells (2)     analysis cells the referencing band must keep
+%                           after the waveform-combine seam cells are
+%                           excluded; below it the column is unreferenced
 %     coherence_threshold (opts.*, 0.5)  as in blendTraveltime
 %
 %   info: phase_sign (the detected/forced orientation s), coh_mask,
@@ -95,6 +98,15 @@ ntc = floor(Nt/tg);
 nxc = floor(Nx/xg);
 t_cell = map.Time(1) + ((0:ntc-1).' + 0.5)*tg*dt;
 x_cell = ((0:nxc-1) + 0.5)*xg;
+
+% The ladder integers come from a tau_A smoothed over the analysis cells,
+% so a cell whose smoothing window merely touched a waveform-combine seam
+% is already resolved to the wrong 1/dfQ step: ask for the widened band
+% (ptt.imgCombSeam takes the reach from the same ptt.deltakDefaults). The
+% same cells are kept out of the referencing median in band_ref, so the
+% estimator and ptt.surfaceReference agree on which cells are usable.
+opts.seam_mask_deltak = true;
+seam_cell = seam_cells();
 
 %% Ladder stages: per-pixel cross products, multilook after differencing
 edgesA = round(linspace(b0, b1, dk.n_sub+1));
@@ -167,8 +179,8 @@ tau_ref = band_ref(tau_B);
 n_unref = nnz(all(~isfinite(tau_ref), 1));
 if n_unref > 0
   warning('ptt:deltakTraveltime:unreferenced', ...
-    '%d of %d analysis-cell columns have no usable reference band and are excluded from dtau.', ...
-    n_unref, nxc);
+    '%d of %d analysis-cell columns keep fewer than %d usable reference cells (no surface pick, band outside the record, or the waveform-combine seam) and are excluded from dtau.', ...
+    n_unref, nxc, dk.ref_min_cells);
 end
 
 %% Interpolate to the full grid for ptt.blockAverage
@@ -176,11 +188,6 @@ ti = min(max(interp1(t_cell, (1:ntc).', map.Time(:), 'linear', 'extrap'), 1), nt
 xi = min(max(interp1(x_cell, (1:nxc).', (1:Nx).', 'linear', 'extrap'), 1), nxc);
 dtau = interp2(tau_ref, xi.', ti, 'linear');
 
-% The ladder integers come from a tau_A smoothed over the analysis cells,
-% so a cell whose smoothing window merely touched a waveform-combine seam
-% is already resolved to the wrong 1/dfQ step: ask for the widened band
-% (ptt.imgCombSeam takes the reach from the same ptt.deltakDefaults).
-opts.seam_mask_deltak = true;
 [coh_mask, ref_bin] = ptt.surfaceReference(map, opts);
 
 % Cells left unreferenced (no surface pick anywhere in the cell) stay
@@ -257,16 +264,52 @@ info.deltak = struct('tau_cell', tau_ref, 't_cell', t_cell, ...
     end
   end
 
+  function C = seam_cells()
+    % Analysis cells the widened waveform-combine seam band covers, as
+    % (ntc x 1) when the band is column-independent and (ntc x nxc) when a
+    % boundary tracks the surface. The band itself is never recomputed
+    % here: it comes from ptt.imgCombSeam, the same mask
+    % ptt.surfaceReference applies to the coherence. A cell is judged by
+    % the sample at its centre, t_cell, because the widened band already
+    % carries the neighbourhood reach - testing every sample in the cell
+    % would count that half-cell twice and swallow the cell next door.
+    if isfield(opts,'seam_mask_en') && ~isempty(opts.seam_mask_en) ...
+        && ~opts.seam_mask_en
+      C = false(ntc, 1);
+      return;
+    end
+    sm = ptt.imgCombSeam(map, opts);
+    if ~any(sm(:))
+      C = false(ntc, 1);
+      return;
+    end
+    ci = (0:ntc-1).'*tg + floor(tg/2) + 1;   % bin at each t_cell
+    if size(sm,2) == 1
+      C = sm(ci);
+    else
+      C = sm(ci,:);
+    end
+    sm = [];
+  end
+
   function A = band_ref(A)
-    % Subtract a robust shallow-band median per cell column. A column with
-    % no usable reference band (no finite Surface pick in the cell, or the
-    % band falling outside the record) is NaN rather than unreferenced: the
-    % channel timing bias it would otherwise keep is not a delay, and
-    % interp2 would smear it into the valid cells on either side.
+    % Subtract a robust shallow-band median per cell column, over the cells
+    % the seam mask leaves usable. A column that keeps fewer than
+    % dk.ref_min_cells of them (no finite Surface pick in the cell, the band
+    % falling outside the record, or the seam swallowing it) is NaN rather
+    % than unreferenced: the channel timing bias it would otherwise keep is
+    % not a delay, and interp2 would smear it into the valid cells on either
+    % side. Referencing off a single surviving cell is not robust enough to
+    % be worth preferring to that.
     for i = 1:nxc
       band = t_cell > surf_c(i) + dk.ref_band(1) & ...
         t_cell < surf_c(i) + dk.ref_band(2);
-      if any(band)
+      if size(seam_cell,2) == 1
+        band = band & ~seam_cell;
+      else
+        band = band & ~seam_cell(:,i);
+      end
+      if nnz(band) >= dk.ref_min_cells
         A(:,i) = A(:,i) - nmed(A(band,i));
       else
         A(:,i) = NaN;

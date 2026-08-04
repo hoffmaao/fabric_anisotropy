@@ -22,6 +22,9 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy.io import loadmat
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fabric_qc import interpolated_intervals
+
 try:
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
@@ -63,7 +66,7 @@ def load_dataset(pattern):
         dlam, top, bot = d['dlam'], d['dlam_top_depth'], d['dlam_bot_depth']
         qual = d['dlam_quality']
         clip = d.get('dlam_clipped')
-        itp = d.get('dlam_interpolated')
+        itp = interpolated_intervals(d)
         blat = d['Latitude'][0, :]
         blon = d['Longitude'][0, :]
         # Headings between consecutive blocks of the frame, mod 180
@@ -77,9 +80,7 @@ def load_dataset(pattern):
             for k in range(dlam.shape[0]):
                 pegged = (clip is not None and clip.size and clip[k, b] == 1) \
                     or abs(dlam[k, b]) > 0.6
-                # dtau interpolated across a masked gap (e.g. a waveform-
-                # combine seam) rather than measured at this node
-                filled = itp is not None and itp.size and itp[k, b] == 1
+                filled = itp is not None and itp[k, b]
                 ok = np.isfinite(dlam[k, b]) and not pegged and not filled \
                     and np.isfinite(qual[k, b]) and qual[k, b] > 0.35
                 if ok:

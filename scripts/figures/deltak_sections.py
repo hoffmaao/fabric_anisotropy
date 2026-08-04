@@ -11,9 +11,11 @@ along-profile depth sections, one panel per product:
 
 Blocks from all frames are ordered by GPS time and drawn on a common
 depth grid; pegged intervals (|dlam| at the 2/3 bound) are hatched out
-as NaN, and so are intervals flagged by dlam_interpolated - nodes whose
-dtau was interpolated across a masked gap (a waveform-combine seam, or a
-run of incoherent bins) rather than measured there.
+as NaN, and so are the intervals a dlam_interpolated node contaminates -
+a node whose dtau was interpolated across a masked gap (a waveform-combine
+seam, or a run of incoherent bins) rather than measured there, plus the
+interval below it, since layer stripping differences consecutive nodes
+(see fabric_qc.interpolated_intervals).
 
 Usage: python deltak_sections.py [fabric_batch_dir] [out_dir]
 """
@@ -27,6 +29,9 @@ import numpy as np
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy.io import loadmat
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fabric_qc import interpolated_intervals
 
 BATCH = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser(
     '~/data/opr/fabric_batch')
@@ -67,10 +72,7 @@ def load_blocks(product_dir, seg_prefix=''):
         dlam = col2d(d['dlam'])
         top = col2d(d['dlam_top_depth'])
         bot = col2d(d['dlam_bot_depth'])
-        # Nodes fabricated by interpolating dtau across a masked gap; absent
-        # from products written before the seam mask existed
-        itp = d.get('dlam_interpolated')
-        itp = col2d(itp) if itp is not None and np.size(itp) else None
+        itp = interpolated_intervals(d)
         gps = np.atleast_1d(d['GPS_time'])
         lat = np.atleast_1d(d['Latitude'])
         lon = np.atleast_1d(d['Longitude'])
@@ -97,7 +99,7 @@ def section(blocks):
         v = b['dlam'].copy()
         v[np.abs(v) >= 0.98 * BOUND] = np.nan  # pegged at the bound
         if b['interp'] is not None:
-            v[b['interp'] == 1] = np.nan       # interpolated across a gap
+            v[b['interp']] = np.nan            # fabricated across a gap
         for i in range(len(v)):
             if np.isfinite(b['top'][i]) and np.isfinite(b['bot'][i]):
                 rows = (zc >= b['top'][i]) & (zc < b['bot'][i])
