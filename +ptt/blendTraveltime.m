@@ -52,8 +52,6 @@ dt = map.Time(2) - map.Time(1);
 
 [coh_mask, ref_bin] = ptt.surfaceReference(map, opts);
 
-dtau_phase = map.phase / (2*pi*map.fc);
-
 has_coreg = isfield(map,'row_offset') && ~isempty(map.row_offset);
 if has_coreg
   dtau_coreg = map.row_offset * dt;
@@ -64,13 +62,13 @@ end
 % Surface referencing (must precede the sign regression, which the channel
 % biases would otherwise contaminate)
 ref_idx = ref_bin + (0:Nx-1)*Nt;
-dtau_phase = dtau_phase - repmat(dtau_phase(ref_idx),[Nt 1]);
 if has_coreg
   dtau_coreg = dtau_coreg - repmat(dtau_coreg(ref_idx),[Nt 1]);
 end
 
 % Coregistration-only mode: dtau is the referenced row offsets; no phase
-% sign or fringe logic applies
+% sign or fringe logic applies, and map.phase may be empty (detected-power
+% products have none, and the per-stage runner's coreg leg passes none)
 if strcmp(opts.dtau_source,'coreg')
   assert(has_coreg, 'dtau_source=''coreg'' requires map.row_offset.');
   dtau = dtau_coreg;
@@ -81,6 +79,9 @@ if strcmp(opts.dtau_source,'coreg')
   info.ref_bin = ref_bin;
   return;
 end
+
+dtau_phase = map.phase / (2*pi*map.fc);
+dtau_phase = dtau_phase - repmat(dtau_phase(ref_idx),[Nt 1]);
 
 % Phase sign: dtau = s*phase/(2*pi*fc)
 if opts.phase_sign ~= 0
