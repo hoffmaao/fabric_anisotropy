@@ -1,4 +1,9 @@
-"""Interferogram-chain QC figure for the Thwaites eastern shear margin.
+"""Interferogram-chain QC figure for Thwaites line segments.
+
+Segments at the line's east end (20240105_04 through 20240108_01) cross
+the eastern shear margin (the sharp lateral gradient at km ~80-100 of the
+drive); the westernmost segments (20240101_02/03) sit inside the fast
+band.
 
 One stacked panel per product, sharing the distance axis, full chain for
 a single segment: HH power, VV power, coherence, wrapped interferogram
@@ -110,14 +115,16 @@ def main():
         img = d[key]
         if key == 'row_offset':
             img = img * dt * 1e9  # bins -> ns
-            lim = np.nanpercentile(np.abs(img), 98)
+            lim = np.nanpercentile(np.abs(img), 99.5)
             vmin, vmax = -lim, lim
         if key == 'phase_unwrapped':
-            lim = np.nanpercentile(np.abs(img - np.nanmedian(img)), 98)
+            lim = np.nanpercentile(np.abs(img - np.nanmedian(img)), 99.9)
             img = img - np.nanmedian(img)
             vmin, vmax = -lim, lim
         if key.startswith('power'):
-            vmin, vmax = np.nanpercentile(img, [8, 99.5])
+            # Full available range: extracts are floor-clipped at -120 dB,
+            # so stretch from the floor to the brightest return
+            vmin, vmax = np.nanmin(img), np.nanmax(img)
         pc = ax.pcolormesh(dist, t_us, img, cmap=cmap, vmin=vmin, vmax=vmax,
                            shading='auto', rasterized=True)
         ax.invert_yaxis()
@@ -125,8 +132,7 @@ def main():
         cb = fig.colorbar(pc, cax=cax)
         cb.set_label(label, fontsize=8)
     axes[-1].set_xlabel('Distance along segment (km)')
-    fig.suptitle('Interferogram product chain, Thwaites eastern shear margin '
-                 'segment '
+    fig.suptitle('Interferogram product chain, Thwaites line segment '
                  f'{SEG} (2023-24 season, Hoffman/Christianson processing)',
                  fontsize=13)
     os.makedirs(OUT, exist_ok=True)

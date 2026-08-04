@@ -21,14 +21,28 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
 3. `fabric.m` / `fabric_task.m` (this module): `fabric_task.m` is a thin
    OPR adapter (file discovery, product loading, output/figure
    conventions) around the pure numerical chain in `+ptt` -
-   `ptt.blendTraveltime` -> `ptt.blockAverage` -> `ptt.invertBlocks` -
-   which reads its options directly from the `param.fabric` struct and is
-   equally callable from standalone scripts and tests. Per frame,
-   - traveltime differences dtau(twtt, x) = t_sec - t_ref from a blend of
-     the two estimators: coregistration `row_offset * dt` fixes the sign
-     and the integer 1/fc fringe ambiguity; the interferogram phase
-     provides sub-ns precision (SNAPHU-unwrapped when present, otherwise
-     wrapped phase with per-pixel fringe resolution),
+   `ptt.blendTraveltime` (or `ptt.deltakTraveltime`) -> `ptt.blockAverage`
+   -> `ptt.invertBlocks` - which reads its options directly from the
+   `param.fabric` struct and is equally callable from standalone scripts
+   and tests. Per frame,
+   - traveltime differences dtau(twtt, x) = t_sec - t_ref from one of
+     three estimators (`param.fabric.dtau_source`):
+     - `'phase'` (default): blend of coregistration `row_offset * dt`
+       (fixes the sign and the integer 1/fc fringe ambiguity) with the
+       interferogram phase (sub-ns precision; SNAPHU-unwrapped when
+       present, otherwise wrapped phase with per-pixel fringe resolution),
+     - `'coreg'`: row offsets alone (detected-power products),
+     - `'deltak'`: split-spectrum ladder over the ref/sec SLC spectra
+       (`ptt.deltakTraveltime`): sub-band interferograms cross-multiplied
+       per pixel then multilooked, coarse-to-fine in synthetic wavelength,
+       giving ABSOLUTE dtau with no phase unwrapping and no fringe
+       blending. Needs `ref` and the unregistered `sec` in the product
+       (~2x task memory). CAUTION: `sec_reg` is envelope-shifted by
+       coregistration and carries no group delay - delta-k must use the
+       raw `sec`. Motivated by SNAPHU region errors and coreg-anchored
+       blend corrections at the low-coherence Thwaites margin (the two
+       failure modes it eliminates); at high-coherence sites it mainly
+       serves as an unwrap-free cross-check.
    - dtau referenced to zero just below the surface return (removes
      channel timing/phase biases and the unwrapping constant),
    - coherence-weighted averaging into along-track blocks,
@@ -70,11 +84,16 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
   (`fabric_joint`, or `fabric_joint_jp` for the second 2024-25 processing)
   to a user scratch tree instead of the shared season tree; see its header
   for the table, paths, and the `matlab -batch` launch line.
+  `server/run_deltak_scratch.m` is the same kind of batch with
+  `dtau_source = 'deltak'`, restricted to the products that carry the
+  complex ref/sec SLCs, writing `CSARP_fabric_deltak(_jp)` beside the
+  joint results for comparison; see its header.
 
 ## Margin display extracts
 
-For local interferogram QC of the Thwaites eastern-shear-margin crossings
-(`scripts/figures/thwaites_interferogram.py`), a scratch-side
+For local interferogram QC of the Thwaites line segments
+(`scripts/figures/thwaites_interferogram.py`; its docstring says which
+segments cross the eastern shear margin), a scratch-side
 `extract_margin.py` on mem1 condenses each raw ~1.9 GB
 `CSARP_polarimetric` frame into a compact `margin_<day_seg>.mat` display
 extract: decimated power in dB for both channels, coherence, wrapped and
@@ -146,7 +165,9 @@ Season/data caveats to check before interpreting results:
 a known fabric (with noise, wrong-sign convention, unwrapping constant,
 channel timing bias, decaying coherence), runs the real `fabric_task` with
 stubbed OPR support functions (`test/stubs/`), and asserts the inferred
-dlam matches the truth. Runs in MATLAB or Octave:
+dlam matches the truth in all three `dtau_source` modes - `'phase'`,
+`'coreg'`, and `'deltak'` (the last from synthetic band-limited ref/sec
+SLCs with the true delay applied spectrally). Runs in MATLAB or Octave:
 
 ```sh
 docker run --rm --platform linux/amd64 -v "$PWD/../..":/work \
