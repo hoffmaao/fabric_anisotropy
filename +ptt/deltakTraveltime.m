@@ -45,6 +45,11 @@ function [dtau, info] = deltakTraveltime(slc, map, opts)
 %     ref_min_cells (2)     analysis cells the referencing band must keep
 %                           after the waveform-combine seam cells are
 %                           excluded; below it the column is unreferenced
+%     ref_extend_max (1e-6) how much deeper than ref_band(2) the band may
+%                           step to reach ref_min_cells usable cells when
+%                           the seam ate into it; past the cap the column
+%                           is unreferenced rather than referenced off
+%                           something that is no longer a shallow band
 %     coherence_threshold (opts.*, 0.5)  as in blendTraveltime
 %
 %   info: phase_sign (the detected/forced orientation s), coh_mask,
@@ -107,6 +112,7 @@ x_cell = ((0:nxc-1) + 0.5)*xg;
 % estimator and ptt.surfaceReference agree on which cells are usable.
 opts.seam_mask_deltak = true;
 seam_cell = seam_cells();
+n_ref_extended = 0;
 
 %% Ladder stages: per-pixel cross products, multilook after differencing
 edgesA = round(linspace(b0, b1, dk.n_sub+1));
@@ -176,6 +182,12 @@ fprintf('deltak: rounding margins Q %.2f/%.2f, B %.2f/%.2f (median/90th; <<0.5)\
 
 %% Surface referencing (robust shallow-band median per cell column)
 tau_ref = band_ref(tau_B);
+if n_ref_extended > 0
+  warning('ptt:deltakTraveltime:refExtended', ...
+    '%d of %d analysis-cell columns kept fewer than %g reference cells inside %.0f ns of the surface, so the band was stepped up to %.0f ns deeper to reach them.', ...
+    n_ref_extended, nxc, dk.ref_min_cells, dk.ref_band(2)*1e9, ...
+    dk.ref_extend_max*1e9);
+end
 n_unref = nnz(all(~isfinite(tau_ref), 1));
 if n_unref > 0
   warning('ptt:deltakTraveltime:unreferenced', ...
@@ -287,29 +299,57 @@ info.deltak = struct('tau_cell', tau_ref, 't_cell', t_cell, ...
     if size(sm,2) == 1
       C = sm(ci);
     else
-      C = sm(ci,:);
+      % ptt.imgCombSeam resolves the surface-tracking case per TRACE;
+      % reduce onto the cell columns band_ref indexes, the way cellavg
+      % and cellavg_row do, so a cell column is judged by its own traces
+      Bs = reshape(sm(ci, 1:nxc*xg), ntc, xg, nxc);
+      C = reshape(any(Bs, 2), ntc, nxc);
+      Bs = [];
     end
     sm = [];
   end
 
   function A = band_ref(A)
     % Subtract a robust shallow-band median per cell column, over the cells
-    % the seam mask leaves usable. A column that keeps fewer than
-    % dk.ref_min_cells of them (no finite Surface pick in the cell, the band
-    % falling outside the record, or the seam swallowing it) is NaN rather
-    % than unreferenced: the channel timing bias it would otherwise keep is
-    % not a delay, and interp2 would smear it into the valid cells on either
-    % side. Referencing off a single surviving cell is not robust enough to
-    % be worth preferring to that.
+    % the seam mask leaves usable. Where the seam has eaten into the
+    % declared band the far edge steps DEEPER - never shallower, the near
+    % edge is pinned by the surface - by at most dk.ref_extend_max, taking
+    % the shallowest dk.ref_min_cells usable cells it finds. That keeps a
+    % column referenced instead of lost when the record starts too late for
+    % the declared window to hold enough cells on its own; the cap is there
+    % because this is supposed to be a shallow-band zero level, and a
+    % reference taken that much deeper already carries whatever dtau the
+    % column has accumulated by then.
+    %
+    % A column that still keeps fewer than dk.ref_min_cells (no finite
+    % Surface pick in the cell, the band falling outside the record, or the
+    % seam swallowing it beyond the cap) is NaN rather than unreferenced:
+    % the channel timing bias it would otherwise keep is not a delay, and
+    % interp2 would smear it into the valid cells on either side. That is
+    % per column - it costs those traces, never the frame - and the count
+    % is reported by the ptt:deltakTraveltime:unreferenced warning.
+    % Referencing off a single surviving cell is not robust enough to be
+    % worth preferring to either.
+    nmin = max(1, round(dk.ref_min_cells));
+    n_ref_extended = 0;
     for i = 1:nxc
-      band = t_cell > surf_c(i) + dk.ref_band(1) & ...
-        t_cell < surf_c(i) + dk.ref_band(2);
       if size(seam_cell,2) == 1
-        band = band & ~seam_cell;
+        usable = ~seam_cell;
       else
-        band = band & ~seam_cell(:,i);
+        usable = ~seam_cell(:,i);
       end
-      if nnz(band) >= dk.ref_min_cells
+      usable = usable & t_cell > surf_c(i) + dk.ref_band(1);
+      band = usable & t_cell < surf_c(i) + dk.ref_band(2);
+      if nnz(band) < nmin
+        deeper = find(usable & ...
+          t_cell < surf_c(i) + dk.ref_band(2) + dk.ref_extend_max);
+        if numel(deeper) >= nmin
+          band = false(ntc,1);
+          band(deeper(1:nmin)) = true;
+          n_ref_extended = n_ref_extended + 1;
+        end
+      end
+      if nnz(band) >= nmin
         A(:,i) = A(:,i) - nmed(A(band,i));
       else
         A(:,i) = NaN;
