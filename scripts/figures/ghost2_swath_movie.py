@@ -53,6 +53,21 @@ C_ICE = 1.68e8  # m/s, as in the other figure scripts
 BAND_COLORS = ['#0072B2', '#E69F00', '#009E73', '#CC79A7']
 
 
+def angle_deg(f, name):
+    """Steering angles in degrees, or None if absent.
+
+    Mirrors extract_swath.angle_deg (the two scripts run on different
+    machines, so the helper is duplicated rather than imported):
+    products differ on whether the angle vectors sit inside Tomo or at
+    the top level, and they are stored in radians either way, so the
+    conversion to degrees happens here, once, on the .mat side.
+    """
+    node = f['Tomo'] if 'Tomo' in f and name in f['Tomo'] else f
+    if name not in node:
+        return None
+    return np.degrees(np.squeeze(np.asarray(node[name])))
+
+
 def load_tomo(fn):
     """Load an OPR tomographic frame (v7.3 mat).
 
@@ -66,21 +81,23 @@ def load_tomo(fn):
     with h5py.File(fn, 'r') as f:
         if 'Tomo' in f:
             img = np.asarray(f['Tomo']['img'])
-            theta = np.squeeze(np.asarray(f['Tomo']['theta']))
+            theta_deg = angle_deg(f, 'theta')
         elif 'Data' in f and np.asarray(f['Data']).ndim == 3:
             img = np.asarray(f['Data'])
-            theta = np.squeeze(np.asarray(f['Theta']))
+            theta_deg = angle_deg(f, 'Theta')
         else:
             raise ValueError(
                 '%s has no Tomo/img or 3D Data variable: not a '
                 'tomographic frame (music3D product)' % fn)
+        if theta_deg is None:
+            raise ValueError('%s has no steering-angle vector' % fn)
         img = np.transpose(img, (2, 1, 0))  # -> Nt x Nsv x Nx
         if img.dtype.names is not None:
             img = img['real'] + 1j * img['imag']
         if np.iscomplexobj(img):
             img = np.abs(img) ** 2
         out['img'] = img.astype(np.float64)
-        out['theta_deg'] = np.degrees(theta)
+        out['theta_deg'] = theta_deg
         out['time'] = np.squeeze(np.asarray(f['Time']))
         out['lat'] = np.squeeze(np.asarray(f['Latitude']))
         out['lon'] = np.squeeze(np.asarray(f['Longitude']))
@@ -98,8 +115,7 @@ def load_extract(fn):
     dbq = z['img_dbq'].astype(np.float32)  # (Nx, Nsv, Ntm) uint8
     img_db = (dbq * ((z['db_max'] - z['db_min']) / 255.0) +
               z['db_min']).transpose(2, 1, 0)  # -> Nt x Nsv x Nx
-    theta = np.asarray(z['theta'])
-    theta_deg = np.degrees(theta) if np.abs(theta).max() < 3.2 else theta
+    theta_deg = np.asarray(z['theta'], float)  # extract stores degrees
     out = {'img_db': img_db, 'theta_deg': theta_deg,
            'time': z['time'], 'lat': z['lat'], 'lon': z['lon'],
            'elev': z['elev'], 'surface': z['surface'],
@@ -290,8 +306,9 @@ def main():
     else:
         t = load_tomo(args[0])
 
+    shape = t['img_db'].shape if 'img_db' in t else t['img'].shape
     print('cube: %d fast-time x %d angles x %d rlines, theta %.1f..%.1f deg'
-          % (cube_db(t).shape + (t['theta_deg'][0], t['theta_deg'][-1])))
+          % (shape + (t['theta_deg'][0], t['theta_deg'][-1])))
     print('wrote', look_angle_energy(t, out_dir))
     print('wrote', swath_movie(t, out_dir))
 
