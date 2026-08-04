@@ -88,6 +88,12 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
   `dtau_source = 'deltak'`, restricted to the products that carry the
   complex ref/sec SLCs, writing `CSARP_fabric_deltak(_jp)` beside the
   joint results for comparison; see its header.
+  `server/run_deltak_stages.m` is a single-frame diagnostic, not a
+  batch: it runs all three estimators over one polarimetric frame and
+  saves a depth profile for every rung of the delta-k ladder beside the
+  phase estimators, to locate where the Ridge A delta-k amplitude is
+  lost; `scripts/figures/deltak_stages.py` plots the result (see both
+  headers).
 
 ## Margin display extracts
 
