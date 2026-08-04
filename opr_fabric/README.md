@@ -163,7 +163,9 @@ Season/data caveats to check before interpreting results:
 
 `test/test_fabric_task.m` builds a synthetic CSARP_polarimetric frame from
 a known fabric (with noise, wrong-sign convention, unwrapping constant,
-channel timing bias, decaying coherence), runs the real `fabric_task` with
+channel timing bias, decaying coherence, and a waveform image-combination
+seam declared in `param.array.img_comb` that only the seam mask can
+remove), runs the real `fabric_task` with
 stubbed OPR support functions (`test/stubs/`), and asserts the inferred
 dlam matches the truth in all three `dtau_source` modes - `'phase'`,
 `'coreg'`, and `'deltak'` (the last from synthetic band-limited ref/sec

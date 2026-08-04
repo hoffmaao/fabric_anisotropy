@@ -52,9 +52,10 @@ units).
     grids, 8 us with a 1 us guard on the deeper settings, none on
     single-image frames) instead of being hardcoded, placed with the same
     surface-relative formula `img_combine.m` uses, and the masked band
-    runs forward from the boundary because that is the way OPR blends. Applied by `ptt.surfaceReference`, so every dtau
-    estimator inherits it; disable with `param.fabric.seam_mask_en =
-    false` or retune the guard with `param.fabric.seam_mask_win`. Delta-k
+    runs forward from the boundary because that is the way OPR blends.
+    Applied by `ptt.surfaceReference`, so every dtau estimator inherits
+    it; disable with `param.fabric.seam_mask_en = false` or retune the
+    guard with `param.fabric.seam_mask_win`. Delta-k
     gets a wider band: it resolves its ladder integers from a tau_A
     smoothed over analysis cells, so every cell whose smoothing window
     touched the seam is dropped too (`ptt.deltakDefaults` is the one
@@ -63,10 +64,10 @@ units).
     bands cost very different amounts of record - measured on the
     6601-bin accum3 frame 20250108_02_009 at the default guard:
 
-    | `dtau_source`    | 0.9 us / 0.1 us blend    | 8 us / 1 us blend           |
-    | ---------------- | ------------------------ | --------------------------- |
-    | `phase`, `coreg` | 0.8-1.1 us, 90 (1.4%)    | 7-10 us, 900 bins (13.6%)   |
-    | `deltak`         | 0.5-1.4 us, 270 (4.1%)   | 6.7-10.3 us, 1080 (16.4%)   |
+    | `dtau_source`    | 0.9 us / 0.1 us blend        | 8 us / 1 us blend              |
+    | ---------------- | ---------------------------- | ------------------------------ |
+    | `phase`, `coreg` | 0.8-1.1 us, 90 bins (1.4%)   | 7-10 us, 900 bins (13.6%)      |
+    | `deltak`         | 0.5-1.4 us, 270 bins (4.1%)  | 6.7-10.3 us, 1080 bins (16.4%) |
 
     Budget a delta-k run against the `deltak` row: the reach triples the
     cost on the 0.9 us settings.
@@ -81,9 +82,10 @@ units).
     `dlam_quality`/`dlam_clipped`. Layer stripping differences consecutive
     nodes, so a fabricated node corrupts its own interval and the one
     below it; `scripts/figures/fabric_qc.py` is the single definition of
-    that predicate, and every figure script drops both the way it drops
+    that predicate, and the figure scripts drop both the way they drop
     pegged ones - the unmasked coherence in `dlam_quality` cannot tell
-    them apart from measured nodes.
+    them apart from measured nodes (`deltak_vs_joint.py` is the one
+    holdout: it still filters only pegged intervals).
   - `ptt.twttDepthMap` - vertical twtt vs depth from the column model
 
 Scripts (each validates or applies the above end to end):
