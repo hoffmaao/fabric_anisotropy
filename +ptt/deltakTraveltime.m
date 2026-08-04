@@ -55,7 +55,10 @@ function [dtau, info] = deltakTraveltime(slc, map, opts)
 %   info: phase_sign (the detected/forced orientation s), coh_mask,
 %   dtau_coreg = [] (delta-k needs no fringe blending), phase_is_unwrapped
 %   = true, ref_bin, and diagnostics under info.deltak (cell-grid taus,
-%   band frequencies, ladder rounding margins).
+%   band frequencies, ladder rounding margins, and the surface-referenced
+%   per-rung cell taus under .stage - tau_A/tau_Q/tau_B - so the ladder
+%   can be compared rung by rung against the phase estimators; see
+%   opr_fabric/server/run_deltak_stages.m).
 %
 %   The full-carrier refinement (resolving the fc fringe integer from
 %   stage B) is deliberately NOT applied: on real data the carrier phase
@@ -181,6 +184,13 @@ fprintf('deltak: rounding margins Q %.2f/%.2f, B %.2f/%.2f (median/90th; <<0.5)\
   nmed(mQ(:)), prctile_ish(mQ(:),90), nmed(mB(:)), prctile_ish(mB(:),90));
 
 %% Surface referencing (robust shallow-band median per cell column)
+% The A and Q rungs are referenced with the SAME band so the per-stage
+% diagnostic (opr_fabric/server/run_deltak_stages.m) compares like with
+% like; band_ref resets its extension counter per call, so referencing
+% them first leaves the warnings below describing the tau_B pass exactly
+% as before.
+stage_A = band_ref(tau_A);
+stage_Q = band_ref(tau_Q);
 tau_ref = band_ref(tau_B);
 if n_ref_extended > 0
   warning('ptt:deltakTraveltime:refExtended', ...
@@ -196,9 +206,9 @@ if n_unref > 0
 end
 
 %% Interpolate to the full grid for ptt.blockAverage
-ti = min(max(interp1(t_cell, (1:ntc).', map.Time(:), 'linear', 'extrap'), 1), ntc);
-xi = min(max(interp1(x_cell, (1:nxc).', (1:Nx).', 'linear', 'extrap'), 1), nxc);
-dtau = interp2(tau_ref, xi.', ti, 'linear');
+% ptt.cellToGrid is the one definition of this resampling, shared with
+% the per-stage diagnostic runner so the two cannot drift apart.
+dtau = ptt.cellToGrid(tau_ref, t_cell, x_cell, map.Time, Nx);
 
 [coh_mask, ref_bin] = ptt.surfaceReference(map, opts);
 
@@ -217,7 +227,8 @@ info.ref_bin = ref_bin;
 info.deltak = struct('tau_cell', tau_ref, 't_cell', t_cell, ...
   'x_cell', x_cell, 'df', [dfA dfQ dfB], ...
   'margin_Q', [nmed(mQ(:)) prctile_ish(mQ(:),90)], ...
-  'margin_B', [nmed(mB(:)) prctile_ish(mB(:),90)]);
+  'margin_B', [nmed(mB(:)) prctile_ish(mB(:),90)], ...
+  'stage', struct('tau_A', stage_A, 'tau_Q', stage_Q, 'tau_B', tau_ref));
 
 %% ---- nested helpers ------------------------------------------------
   function [acc, df] = stage_cross(edges)
