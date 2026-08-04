@@ -57,7 +57,18 @@ units).
     gets a wider band: it resolves its ladder integers from a tau_A
     smoothed over analysis cells, so every cell whose smoothing window
     touched the seam is dropped too (`ptt.deltakDefaults` is the one
-    definition of that cell geometry).
+    definition of that cell geometry, and `ptt.deltakTraveltime` keeps
+    those cells out of its shallow referencing median as well). The two
+    bands cost very different amounts of record - measured on the
+    6601-bin accum3 frame 20250108_02_009 at the default guard:
+
+    | `dtau_source`    | 0.9 us / 0.1 us blend    | 8 us / 1 us blend           |
+    | ---------------- | ------------------------ | --------------------------- |
+    | `phase`, `coreg` | 0.8-1.1 us, 90 (1.4%)    | 7-10 us, 900 bins (13.6%)   |
+    | `deltak`         | 0.5-1.4 us, 270 (4.1%)   | 6.7-10.3 us, 1080 (16.4%)   |
+
+    Budget a delta-k run against the `deltak` row: the reach triples the
+    cost on the 0.9 us settings.
   - `ptt.blockAverage` - coherence-weighted along-track block averaging
     with per-block fringe correction
   - `ptt.invertBlocks` - twtt-to-depth mapping and per-block inversion
@@ -66,9 +77,12 @@ units).
     gap, the node's dtau is interpolated across it so the joint solve
     keeps a continuous chain, and the node is flagged in
     `inv.interpolated`, saved as `dlam_interpolated` next to
-    `dlam_quality`/`dlam_clipped`. The figure scripts drop those intervals
-    the way they drop pegged ones - the unmasked coherence in
-    `dlam_quality` cannot tell them apart from measured nodes.
+    `dlam_quality`/`dlam_clipped`. Layer stripping differences consecutive
+    nodes, so a fabricated node corrupts its own interval and the one
+    below it; `scripts/figures/fabric_qc.py` is the single definition of
+    that predicate, and every figure script drops both the way it drops
+    pegged ones - the unmasked coherence in `dlam_quality` cannot tell
+    them apart from measured nodes.
   - `ptt.twttDepthMap` - vertical twtt vs depth from the column model
 
 Scripts (each validates or applies the above end to end):
