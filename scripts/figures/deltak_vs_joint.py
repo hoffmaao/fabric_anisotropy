@@ -70,8 +70,9 @@ def load_pairs(spec):
     ok = (np.isfinite(dk) & np.isfinite(jt) &
           (np.abs(dk) < 0.98 * BOUND) & (np.abs(jt) < 0.98 * BOUND))
     return {'keys': keys, 'dk': dk[ok], 'jt': jt[ok], 'depth': depth[ok],
-            'n_all': dk.size, 'rms_dk': np.concatenate(rms_dk),
-            'rms_jt': np.concatenate(rms_jt)}
+            'n_all': dk.size,
+            'rms_dk': np.concatenate(rms_dk) if rms_dk else np.array([]),
+            'rms_jt': np.concatenate(rms_jt) if rms_jt else np.array([])}
 
 
 def stats(tag, p):
@@ -93,6 +94,10 @@ ra = load_pairs(RIDGE_A)
 stats('Ridge A (jp)', ra)
 th = load_pairs(THWAITES)
 stats('Thwaites', th)
+
+if ra['dk'].size == 0:
+    sys.exit('Ridge A: no unpegged paired intervals under %s; '
+             'nothing to plot' % BATCH)
 
 fig, axes = plt.subplots(1, 2, figsize=(11, 5))
 ax = axes[0]
@@ -122,6 +127,7 @@ fig.suptitle('Delta-k vs joint inversion, Ridge A grid '
              '(%d frames, unpegged intervals)' % len(ra['keys']),
              fontsize=12)
 fig.tight_layout()
+os.makedirs(OUT, exist_ok=True)
 out = os.path.join(OUT, 'deltak_vs_joint_ridge_a.png')
 fig.savefig(out, dpi=200, bbox_inches='tight')
 print('wrote', out)

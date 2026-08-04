@@ -130,6 +130,7 @@ for ax, (prod, title, seg_prefix) in zip(axes, PRODUCTS):
 fig.suptitle('Delta-k fabric inversion: horizontal eigenvalue difference',
              fontsize=13)
 fig.tight_layout(rect=[0, 0, 1, 0.97])
+os.makedirs(OUT, exist_ok=True)
 out = os.path.join(OUT, 'deltak_fabric_sections.png')
 fig.savefig(out, dpi=200, bbox_inches='tight')
 print('wrote', out)
