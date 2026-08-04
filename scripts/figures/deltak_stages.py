@@ -146,8 +146,8 @@ def main():
     ax1.set_xlabel(r'RMS $\Delta(\Delta\tau)$ per %.0f ns (ns)' % (step * 1e9))
     ax1.set_title('Retained increment (what the inversion reads)')
     ax1.set_xlim(left=0)
+    ax0.invert_yaxis()  # once: the sharey axis is common to both panels
     for ax in (ax0, ax1):
-        ax.invert_yaxis()
         ax.grid(alpha=0.3)
     ax0.axvline(0, color='0.5', lw=0.8)
     ax0.legend(loc='lower right', fontsize=8)
