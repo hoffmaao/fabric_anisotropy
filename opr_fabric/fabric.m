@@ -81,12 +81,20 @@ if ~isfield(param.fabric,'use_snaphu_phase') || isempty(param.fabric.use_snaphu_
 end
 
 % dtau_source: 'phase' (default; needs phase-preserved input products like
-% standardphase_*) or 'coreg' (traveltime differences from coregistration
+% standardphase_*), 'coreg' (traveltime differences from coregistration
 % row offsets alone; the only valid choice when the polarimetric product
 % was formed from detected-power echograms such as the public
-% CSARP_standard_* files, where interferogram phase is meaningless)
+% CSARP_standard_* files, where interferogram phase is meaningless), or
+% 'deltak' (split-spectrum ladder over the ref/sec SLC spectra: absolute
+% dtau per pixel with NO phase unwrapping and no fringe blending; needs
+% the polarimetric product saved with ref and the unregistered sec, and
+% more task memory; see ptt.deltakTraveltime and param.fabric.deltak)
 if ~isfield(param.fabric,'dtau_source') || isempty(param.fabric.dtau_source)
   param.fabric.dtau_source = 'phase';
+end
+if ~ischar(param.fabric.dtau_source) ...
+    || ~any(strcmp(param.fabric.dtau_source,{'phase','coreg','deltak'}))
+  error('param.fabric.dtau_source must be ''phase'', ''coreg'' or ''deltak''.');
 end
 
 % blend_coreg_en: resolve integer-fringe offsets of the phase-derived
@@ -239,8 +247,15 @@ for frm_idx = 1:length(param.cmd.frms)
 
   % Create task
   % =================================================================
-  dparam.cpu_time = 3600; % Much lighter than polarimetric_task
-  dparam.mem = 12e9;
+  if strcmp(param.fabric.dtau_source,'deltak')
+    % The ladder adds two full-frame range FFTs, an ifft pair per sub-band
+    % (12+4+2 bands) and three conv2 passes on top of the normal chain
+    dparam.cpu_time = 7200;
+    dparam.mem = 24e9;      % holds ref/sec SLC spectra + band products
+  else
+    dparam.cpu_time = 3600; % Much lighter than polarimetric_task
+    dparam.mem = 12e9;
+  end
 
   ctrl = cluster_new_task(ctrl,sparam,dparam,'dparam_save',0);
 

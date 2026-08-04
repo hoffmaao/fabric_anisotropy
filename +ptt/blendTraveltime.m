@@ -34,12 +34,8 @@ function [dtau, info] = blendTraveltime(map, opts)
 %   info: phase_sign, coh_mask, dtau_coreg (referenced; [] if none),
 %   phase_is_unwrapped, ref_bin.
 
-if ~isfield(opts,'coherence_threshold') || isempty(opts.coherence_threshold)
-  opts.coherence_threshold = 0.5;
-end
-if ~isfield(opts,'ref_twtt_offset') || isempty(opts.ref_twtt_offset)
-  opts.ref_twtt_offset = 50e-9;
-end
+% coherence_threshold and ref_twtt_offset are defaulted by
+% ptt.surfaceReference, which owns the referencing convention
 if ~isfield(opts,'phase_sign') || isempty(opts.phase_sign)
   opts.phase_sign = 0;
 end
@@ -54,9 +50,7 @@ Nt = numel(map.Time);
 Nx = numel(map.Surface);
 dt = map.Time(2) - map.Time(1);
 
-surf_valid = isfinite(map.Surface(:).');
-coh_mask = map.coherence >= opts.coherence_threshold;
-coh_mask(:,~surf_valid) = false;
+[coh_mask, ref_bin] = ptt.surfaceReference(map, opts);
 
 dtau_phase = map.phase / (2*pi*map.fc);
 
@@ -69,9 +63,6 @@ end
 
 % Surface referencing (must precede the sign regression, which the channel
 % biases would otherwise contaminate)
-ref_bin = round((map.Surface(:).' + opts.ref_twtt_offset - map.Time(1))/dt) + 1;
-ref_bin(~surf_valid) = 1;
-ref_bin = min(max(ref_bin,1),Nt);
 ref_idx = ref_bin + (0:Nx-1)*Nt;
 dtau_phase = dtau_phase - repmat(dtau_phase(ref_idx),[Nt 1]);
 if has_coreg
