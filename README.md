@@ -59,10 +59,17 @@ Scripts (each validates or applies the above end to end):
   common-offset layer-stripping method.
 - `scripts/accum_inversion_template.m` - template for real accumulation
   radar picks (fill in section 1).
+- `scripts/extract_swath.py` - run on mem1 (not locally): reduces a full
+  rds `CSARP_music3D` tomographic frame to a compact npz that can be
+  rsynced off the server - a multilooked uint8 dB cube, deliberately
+  quantized because it only ever becomes movie frames, plus the
+  look-angle energy reductions that are used quantitatively, kept at
+  full precision. Look angles are written in degrees under `theta_deg`.
 - `scripts/figures/` - Python (matplotlib + scipy; cartopy required only
   by the regional maps) figure scripts that reproduce the analysis figures
-  from `opr_fabric/server/run_fabric_scratch.m` batch outputs mirrored
-  locally: season transects, per-season depth profiles, the 2024-25
+  from the `opr_fabric/server/run_fabric_scratch.m` and
+  `run_deltak_scratch.m` batch outputs mirrored locally:
+  season transects, per-season depth profiles, the 2024-25
   cross-validation of the two independent polarimetric processings, the
   Ridge A azimuthal inversion (per-depth fit over the grid's drive
   headings for the horizontal fabric orientation and principal contrast
@@ -79,12 +86,26 @@ Scripts (each validates or applies the above end to end):
   an all-survey summary (coverage map, median profiles, drive orientations;
   the map uses cartopy if installed, else a plain lat/lon scatter),
   along-profile depth sections of the fabric solution per survey region,
+  the delta-k vs joint-chain validation (per-interval dlam scatter and
+  difference histogram at Ridge A, printed stats for Thwaites as well),
+  the matching delta-k eigenvalue-difference depth sections along both
+  traverses (the Ridge A panel is flagged unvalidated there because
+  delta-k is amplitude-suppressed against the joint chain at that site),
   and zoomed regional maps of each survey area with reference-site markers
   and an Antarctica locator. The maps overlay LIMA/MODIS MOA satellite imagery
   when rasterio and the locally downloaded mosaics are present (download
   commands in `scripts/figures/antarctic_basemap.py`), and fall back to
   coastline-only otherwise. See each script's docstring for usage; the
   inversion chain itself stays MATLAB/Octave.
+- `scripts/figures/ghost2_swath_movie.py` is the one figure script outside
+  that batch-output family: it renders a look-angle sweep movie (one
+  along-track radargram per steering angle, TWTT axis, rotating beam icon)
+  and an energy-vs-look-angle plot from the rds GHOST2 swath data that
+  rode the same 2024-25 traverse train. It reads either a raw
+  `CSARP_music3D` .mat (on the server, via h5py) or the `extract_swath.py`
+  npz (locally), writes .mp4 when ffmpeg is available and .gif otherwise,
+  and `--selftest` exercises it on a synthetic cube where the real,
+  server-only data is unavailable.
 
 ## OPR toolbox integration (`opr_fabric/`)
 
