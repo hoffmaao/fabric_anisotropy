@@ -93,6 +93,21 @@ map.Surface = pol.Surface;
 map.fc = fc;
 map.coherence = abs(pol.interferogram_coherence);
 
+% Waveform-combine boundaries, so ptt.surfaceReference can drop the seams
+% (ptt.imgCombSeam). Prefer the polarimetric product's own array settings:
+% they describe how the images this interferogram was formed from were
+% stitched. param_records is the fallback for products that did not carry
+% their array params forward.
+map.img_comb = [];
+for pname = {'param_polarimetric','param_records'}
+  p = pname{1};
+  if isfield(pol,p) && isstruct(pol.(p)) && isfield(pol.(p),'array') ...
+      && isfield(pol.(p).array,'img_comb') && ~isempty(pol.(p).array.img_comb)
+    map.img_comb = pol.(p).array.img_comb;
+    break;
+  end
+end
+
 if deltak_en
   % Delta-k derives dtau from the SLC spectra directly; no phase field
   map.phase = [];

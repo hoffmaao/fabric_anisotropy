@@ -109,6 +109,25 @@ if ~isfield(param.fabric,'coherence_threshold') || isempty(param.fabric.coherenc
   param.fabric.coherence_threshold = 0.5;
 end
 
+% seam_mask_en: exclude the fast-time samples straddling the waveform
+% image-combination boundaries, where the trace is a weighted blend of a
+% short and a long pulse (different bandwidth, gain and system delay) and
+% the interferometric phase is not an ice property. The boundaries come
+% from the product's own param.array.img_comb, so they follow the frame
+% (0.9 us / 0.1 us blend on the accum3 grids, 8 us / 1 us on the deeper
+% settings, none on single-image frames). See ptt.imgCombSeam.
+if ~isfield(param.fabric,'seam_mask_en') || isempty(param.fabric.seam_mask_en)
+  param.fabric.seam_mask_en = true;
+end
+
+% seam_mask_win: guard width as a multiple of the blend window each
+% boundary declares. The masked band is asymmetric - OPR crossfades over
+% [t_comb, t_comb+window], so the contamination runs forward - and spans
+% [t_comb - k*window, t_comb + (1+k)*window] for k = seam_mask_win.
+if ~isfield(param.fabric,'seam_mask_win') || isempty(param.fabric.seam_mask_win)
+  param.fabric.seam_mask_win = 1;
+end
+
 % min_coverage: minimum fraction of coherent pixels for a (bin, block) to
 % contribute to the averaged dtau profile
 if ~isfield(param.fabric,'min_coverage') || isempty(param.fabric.min_coverage)
