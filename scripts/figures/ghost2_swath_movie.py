@@ -153,8 +153,9 @@ def synthetic_tomo(nt=500, nsv=61, nx=240, seed=0):
     for x in range(nx):
         img[surf_bin[x], :, x] += 3e3 * np.exp(-(ang / 6.0) ** 2)
         for lay in range(80, 380, 45):  # internal layers, specular
-            img[surf_bin[x] + lay, :, x] += \
-                300 * np.exp(-(ang / 4.0) ** 2) * (1 + 0.3 * np.sin(lay + x / 30))
+            img[surf_bin[x] + lay, :, x] += (
+                300 * np.exp(-(ang / 4.0) ** 2) *
+                (1 + 0.3 * np.sin(lay + x / 30)))
         bed = surf_bin[x] + 400 + int(20 * np.cos(x / 40))
         if bed < nt:
             img[bed, :, x] += 100 * np.exp(-(ang / 25.0) ** 2)
