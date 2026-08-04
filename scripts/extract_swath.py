@@ -4,7 +4,12 @@ Streams Tomo.img (Nt x Nsv x Nx in MATLAB order), multilooks in
 fast-time, quantizes dB to uint8 for the movie cube, and computes
 angle-energy reductions (full record + depth bands) at full precision
 BEFORE quantization. Writes a compressed npz next to nothing else.
-Steering angles are stored in the npz already converted to DEGREES.
+
+Steering angles are stored in the npz already converted to DEGREES,
+under the keys 'theta_deg' and 'theta_cal_deg'. Extracts written before
+that contract carry the .mat vectors verbatim (i.e. RADIANS) under the
+bare keys 'theta'/'theta_cal'; the key name, not the magnitude, is what
+tells a reader which one it has.
 
 Usage: python3 extract_swath.py <music_frame.mat> <out.npz> [ml]
 """
@@ -26,8 +31,8 @@ def angle_deg(f, name):
     Products differ on whether the angle vectors sit inside Tomo or at
     the top level; they are stored in radians either way, so the
     conversion to degrees happens here, once, on the .mat side. The npz
-    written below therefore carries degrees, and readers of the extract
-    must not convert again.
+    written below therefore carries degrees under the '*_deg' key names,
+    and readers of those keys must not convert again.
     """
     node = f['Tomo'] if 'Tomo' in f and name in f['Tomo'] else f
     if name not in node:
@@ -99,7 +104,7 @@ del db
 np.savez_compressed(
     out, img_dbq=dbq, db_min=vmin, db_max=vmax, ml=ML,
     time=time[:Ntm * ML].reshape(Ntm, ML).mean(axis=1),
-    theta=theta, theta_cal=theta_cal,
+    theta_deg=theta, theta_cal_deg=theta_cal,
     lat=lat, lon=lon, elev=elev, surface=surf, bottom=bot,
     data2d_db=10 * np.log10(np.maximum(
         data2d, np.finfo(np.float32).tiny)).astype(np.float32),

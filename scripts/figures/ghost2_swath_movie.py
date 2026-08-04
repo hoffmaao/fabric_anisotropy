@@ -28,6 +28,9 @@ Rather than pulling a multi-GB frame, run extract_swath.py on mem1
 (scratch swath/ dir) to reduce it to a compressed npz (multilooked
 uint8 dB cube + full-precision angle-energy reductions) and rsync
 that; this script accepts either the raw .mat or the .npz extract.
+Current extracts store look angles in degrees under 'theta_deg';
+extracts predating that contract hold radians under a bare 'theta',
+which this script converts on load.
 
 Usage: python ghost2_swath_movie.py <tomo_mat_or_npz> [out_dir]
        python ghost2_swath_movie.py --selftest [out_dir]
@@ -110,12 +113,23 @@ def load_tomo(fn):
 
 
 def load_extract(fn):
-    """Load the compact npz written by extract_swath.py on mem1."""
+    """Load the compact npz written by extract_swath.py on mem1.
+
+    The look-angle key name carries the units: 'theta_deg' is the
+    current contract (degrees). A bare 'theta' means an extract written
+    before that contract, which copied the .mat vector verbatim and is
+    therefore in RADIANS.
+    """
     z = np.load(fn)
     dbq = z['img_dbq'].astype(np.float32)  # (Nx, Nsv, Ntm) uint8
     img_db = (dbq * ((z['db_max'] - z['db_min']) / 255.0) +
               z['db_min']).transpose(2, 1, 0)  # -> Nt x Nsv x Nx
-    theta_deg = np.asarray(z['theta'], float)  # extract stores degrees
+    if 'theta_deg' in z:
+        theta_deg = np.asarray(z['theta_deg'], float)
+    else:
+        theta_deg = np.degrees(np.asarray(z['theta'], float))
+        print('note: %s is a legacy extract (bare "theta" key); '
+              'converting look angles from radians to degrees' % fn)
     out = {'img_db': img_db, 'theta_deg': theta_deg,
            'time': z['time'], 'lat': z['lat'], 'lon': z['lon'],
            'elev': z['elev'], 'surface': z['surface'],
