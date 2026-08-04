@@ -44,6 +44,16 @@ units).
     phase unwrapping; alternative to the phase/coreg blend)
   - `ptt.surfaceReference` - the surface-referencing convention
     (coherence mask, reference bins) shared by the dtau estimators
+  - `ptt.imgCombSeam` - fast-time mask of the waveform image-combination
+    seams, where the trace is a crossfade of a short and a long pulse
+    rather than an ice property. The boundaries are read per frame from
+    the product's own `param.array.img_comb` (0.9 us with a 0.1 us blend
+    on the accum3 grids, 8 us with a 1 us blend on the deeper settings,
+    none on single-image frames) instead of being hardcoded, and the
+    masked band runs forward from the boundary because that is the way
+    OPR crossfades. Applied by `ptt.surfaceReference`, so every dtau
+    estimator inherits it; disable with `param.fabric.seam_mask_en =
+    false` or retune the guard with `param.fabric.seam_mask_win`.
   - `ptt.blockAverage` - coherence-weighted along-track block averaging
     with per-block fringe correction
   - `ptt.invertBlocks` - twtt-to-depth mapping and per-block inversion
