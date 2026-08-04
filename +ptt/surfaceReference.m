@@ -11,7 +11,7 @@ function [coh_mask, ref_bin, surf_valid] = surfaceReference(map, opts)
 %                 clamped into [1 Nt]; 1 where the pick is invalid (1 x Nx)
 %
 %   map fields used: Time (Nt x 1, uniform), Surface (1 x Nx), coherence,
-%   and optionally img_comb (see ptt.imgCombSeam).
+%   and optionally img_comb / img_comb_mult (see ptt.imgCombSeam).
 %   opts fields (optional): coherence_threshold (0.5),
 %   ref_twtt_offset (50e-9 s), seam_mask_en (true), seam_mask_win (1).
 

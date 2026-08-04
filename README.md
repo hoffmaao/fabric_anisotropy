@@ -47,11 +47,12 @@ units).
   - `ptt.imgCombSeam` - fast-time mask of the waveform image-combination
     seams, where the trace is a crossfade of a short and a long pulse
     rather than an ice property. The boundaries are read per frame from
-    the product's own `param.array.img_comb` (0.9 us with a 0.1 us blend
-    on the accum3 grids, 8 us with a 1 us blend on the deeper settings,
-    none on single-image frames) instead of being hardcoded, and the
-    masked band runs forward from the boundary because that is the way
-    OPR crossfades. Applied by `ptt.surfaceReference`, so every dtau
+    the product's own `param.array.img_comb` / `img_comb_mult` (0.9 us
+    after the surface return with a 0.1 us image-1 guard on the accum3
+    grids, 8 us with a 1 us guard on the deeper settings, none on
+    single-image frames) instead of being hardcoded, placed with the same
+    surface-relative formula `img_combine.m` uses, and the masked band
+    runs forward from the boundary because that is the way OPR blends. Applied by `ptt.surfaceReference`, so every dtau
     estimator inherits it; disable with `param.fabric.seam_mask_en =
     false` or retune the guard with `param.fabric.seam_mask_win`. Delta-k
     gets a wider band: it resolves its ladder integers from a tau_A

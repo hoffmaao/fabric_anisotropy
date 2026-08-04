@@ -53,15 +53,21 @@ coh_prof = 0.9 ./ (1 + exp((depth_map - 300)/25));
 coh_prof(t_rel < 0) = 0.05;   % no coherence above the surface
 coherence = max(0.01, repmat(coh_prof, 1, Nx) + 0.03*randn(Nt, Nx));
 
-% Waveform image-combination seam: OPR crossfades two waveform images over
-% [t_comb, t_comb+window], where the trace is a blend of a short and a long
-% pulse rather than an ice property. Declare it the way a real product does
-% (param.array.img_comb = [t_comb mult window], mult = -Inf pinning the
-% boundary to a fixed traveltime) and contaminate the crossfade to match: a
-% bogus group delay and a coherence step that still clears the coherence
-% threshold, so only ptt.imgCombSeam can remove it.
-seam_t_comb = 1.5e-6;
-seam_win = 0.1e-6;
+% Waveform image-combination seam: OPR blends two waveform images forward
+% from the boundary it computes as max(min(max(0,Surface)*img_comb_mult,
+% Surface + img_comb(1)), img_comb(2)), where the trace is a mix of a
+% short and a long pulse rather than an ice property. Declare it the way a
+% real product does (param.array.img_comb = [t_after t_min guard], with
+% t_after the combine time AFTER the surface return, t_min = -Inf, and no
+% img_comb_mult so it defaults to Inf) and contaminate the blend at
+% Surface + t_after to match: a bogus group delay and a coherence step
+% that still clears the coherence threshold, so only ptt.imgCombSeam can
+% remove it. The nonzero Surface makes the surface-relative reading
+% distinguishable from an absolute-traveltime one: misreading t_after as
+% absolute would put the band 0.3 us (three guard widths) too shallow.
+seam_t_after = 1.2e-6;            % [s] combine time after the surface return
+seam_t_comb = surf_twtt + seam_t_after;  % absolute boundary OPR computes
+seam_win = 0.1e-6;                % [s] image-1 guard time (band scale)
 seam_bias = 3e-9;                 % [s] spurious delay across the blend
 in_seam = Time >= seam_t_comb & Time <= seam_t_comb + seam_win;
 dtau_map(in_seam,:) = dtau_map(in_seam,:) + seam_bias;
@@ -87,7 +93,7 @@ Elevation = 3000*ones(1,Nx);
 Bottom = nan(1,Nx);
 param_records = struct('note','synthetic');
 param_polarimetric = struct('note','synthetic', ...
-  'array', struct('img_comb', [seam_t_comb -Inf seam_win]));
+  'array', struct('img_comb', [seam_t_after -Inf seam_win]));
 file_type = 'polarimetric';
 file_version = '1';
 

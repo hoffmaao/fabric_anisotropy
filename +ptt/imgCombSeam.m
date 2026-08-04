@@ -9,36 +9,58 @@ function seam = imgCombSeam(map, opts)
 %   is not a property of the ice there. Masking those samples keeps the
 %   seam out of the block averages.
 %
-%   The mask is (Nt x 1) when every boundary sits at a fixed traveltime -
-%   the common mult = -Inf case, where the band is the same in every column
-%   - and (Nt x Nx) only when a boundary tracks the surface (finite mult).
-%   Callers must handle both, e.g. coh_mask(seam,:) vs coh_mask(seam).
-%
 %   The boundaries are read from the product's own metadata rather than
-%   hardcoded, because they differ per frame: the accum3 grids combine at
-%   0.9 us with a 0.1 us blend, the deeper settings at 8 us with a 1 us
-%   blend, and single-image frames declare no boundary at all.
+%   hardcoded, because they differ per frame: the accum3 grids combine
+%   0.9 us after the surface return with a 0.1 us image-1 guard, the deeper
+%   settings 8 us after with a 1 us guard, and single-image frames declare
+%   no boundary at all.
 %
-%   map fields used: Time (Nt x 1, uniform), Surface (1 x Nx, read only
-%   when a boundary tracks the surface), and img_comb - the
-%   param.array.img_comb vector carried through by fabric_task, laid out as
-%   [t_comb mult window] per boundary (3*(Nimg-1) elements). An empty or
-%   absent img_comb masks nothing.
+%   Each boundary is placed where OPR's img_combine.m actually combines:
+%     t_c = max(min(max(0,Surface)*img_comb_mult, Surface + ic(1)), ic(2))
+%   with ic = img_comb(3b-2:3b) for boundary b, where ic(1) is the combine
+%   time AFTER the surface return, ic(2) the minimum absolute combine time
+%   (-Inf on every in-scope frame), and img_comb_mult the separate
+%   param.array surface multiplier, defaulted to Inf when the product does
+%   not carry it so the min() term drops out. ic(3) is the guard time at
+%   the end of image 1 - roughly the image-1 pulse duration - and scales
+%   the masked band (see below).
 %
-%   opts fields (optional): seam_mask_win (1), guard width as a multiple
-%   of the blend window each boundary declares (see below); 0 keeps only
-%   the half-sample guard, and seam_mask_en (ptt.surfaceReference) is what
-%   turns the mask off. seam_mask_deltak (false), set by
-%   ptt.deltakTraveltime to widen the band by the analysis-cell reach.
+%   map fields used: Time (Nt x 1, uniform), Surface (1 x Nx), img_comb
+%   ([t_after t_min guard] per boundary, 3*(Nimg-1) elements) and
+%   optionally img_comb_mult, both carried through from param.array by
+%   fabric_task. An empty or absent img_comb masks nothing.
 %
-%   The masked band is ASYMMETRIC. OPR crossfades over [t_comb, t_comb +
-%   window], so the samples before the boundary are clean and the
-%   contamination runs forward. On 20250108_02_009 (boundary 0.9 us,
-%   window 0.1 us) the mean coherence holds its 0.968 baseline right up to
-%   0.89 us, steps down to 0.857 by 0.92 us, and only recovers by ~1.1 us,
-%   while the mean power kink reverses sign at 0.99 us. The band is
-%   therefore [t_comb - k*window, t_comb + (1+k)*window] for
-%   k = seam_mask_win.
+%   Because ic(1) is surface-relative the boundary tracks the surface pick
+%   per column, so the mask is (Nt x Nx) in general; it collapses to
+%   (Nt x 1) when the surface picks are all identical (or all missing) and
+%   every column shares the same band. Callers must handle both, e.g.
+%   coh_mask(seam,:) vs coh_mask(seam). A column with no finite surface
+%   pick resolves to t_c = ic(2), which is what OPR's min/max arithmetic
+%   computes there; with the usual ic(2) = -Inf that column masks nothing,
+%   matching OPR clamping the combine to the top of the record where no
+%   in-ice samples are blended.
+%
+%   opts fields (optional): seam_mask_win (1), mask half-width as a
+%   multiple of the ic(3) guard each boundary declares (see below); 0
+%   keeps only the half-sample guard, and seam_mask_en
+%   (ptt.surfaceReference) is what turns the mask off. seam_mask_deltak
+%   (false), set by ptt.deltakTraveltime to widen the band by the
+%   analysis-cell reach.
+%
+%   The masked band is ASYMMETRIC. OPR blends forward from the boundary,
+%   so the samples before it are clean and the contamination runs deeper.
+%   On 20250108_02_009 (boundary 0.9 us, guard 0.1 us) the mean coherence
+%   holds its 0.968 baseline right up to 0.89 us, steps down to 0.857 by
+%   0.92 us, and only recovers by ~1.1 us, while the mean power kink
+%   reverses sign at 0.99 us. The band is therefore
+%   [t_c - k*ic(3), t_c + (1+k)*ic(3)] for k = seam_mask_win.
+%
+%   OPR's own crossfade is img_comb_bins wide (default 1 bin), far
+%   narrower than ic(3). The ic(3)-scaled band here is NOT a reading of
+%   the crossfade width: it is deliberate masking of the matched-filter
+%   settling zone around the splice, which the coherence data above show
+%   is contaminated over roughly the image-1 pulse duration either side,
+%   not over one bin.
 %
 %   Delta-k needs a wider band. ptt.deltakTraveltime resolves its ladder
 %   integers from a tau_A smoothed with a dk.smooth boxcar on the analysis
@@ -47,8 +69,8 @@ function seam = imgCombSeam(map, opts)
 %   seam-contaminated tau_A - and a contaminated tau_A does not bias the
 %   result slightly, it moves it by a whole 1/dfQ step. The band grows by
 %   that reach (300 ns at the defaults) so that every cell whose smoothing
-%   window touched the seam is dropped, i.e. [t_comb - k*window - reach,
-%   t_comb + (1+k)*window + reach]. The phase and coregistration estimators
+%   window touched the seam is dropped, i.e. [t_c - k*ic(3) - reach,
+%   t_c + (1+k)*ic(3) + reach]. The phase and coregistration estimators
 %   do no cell smoothing and keep the un-widened band.
 %
 %   The two bands cost very different amounts of record. Measured on the
@@ -60,10 +82,6 @@ function seam = imgCombSeam(map, opts)
 %                     8 us / 1 us:      6.7-10.3 us, 1080 bins (16.4%)
 %   Budget delta-k coverage against the delta-k rows, not the phase ones:
 %   the reach triples the cost on the 0.9 us settings.
-%
-%   OPR places the boundary at max(Surface*mult, t_comb), so a finite mult
-%   makes it track the surface and the mask becomes column-dependent; the
-%   common mult = -Inf pins it to the fixed traveltime t_comb.
 
 Nt = numel(map.Time);
 
@@ -74,7 +92,7 @@ end
 ic = map.img_comb(:).';
 if mod(numel(ic),3) ~= 0
   warning('ptt:imgCombSeam:layout', ...
-    'img_comb has %d elements; expected a multiple of 3 ([t_comb mult window] per boundary). No seam masked.', ...
+    'img_comb has %d elements; expected a multiple of 3 ([t_after t_min guard] per boundary). No seam masked.', ...
     numel(ic));
   seam = false(Nt,1);
   return;
@@ -91,6 +109,13 @@ if ~isscalar(opts.seam_mask_win) || ~isfinite(opts.seam_mask_win) ...
   return;
 end
 
+% The separate surface multiplier img_combine.m applies; its input check
+% defaults it to Inf, which makes the min() term drop out below.
+mult = Inf;
+if isfield(map,'img_comb_mult') && ~isempty(map.img_comb_mult)
+  mult = map.img_comb_mult;
+end
+
 t = map.Time(:);
 dt = t(2) - t(1);
 
@@ -104,41 +129,40 @@ if isfield(opts,'seam_mask_deltak') && ~isempty(opts.seam_mask_deltak) ...
   reach = (max(0,(dk.smooth-1)/2) + 1)*cell_dt;
 end
 
-% A boundary pinned to a fixed traveltime masks the same rows in every
-% column; only one that tracks the surface (finite mult) needs the full
-% (Nt x Nx) mask.
-t_combs = ic(1:3:end);
-mults = ic(2:3:end);
-col_dep = any(isfinite(t_combs) & isfinite(mults));
+% The boundary is surface-relative, so it varies across columns only
+% through the surface pick: when every pick is identical (or every pick is
+% missing) all columns share one band and the mask stays (Nt x 1);
+% otherwise it needs the full (Nt x Nx).
+surf = map.Surface(:).';
+finite_surf = surf(isfinite(surf));
+col_dep = numel(unique(finite_surf)) > 1 ...
+  || (~isempty(finite_surf) && numel(finite_surf) < numel(surf));
 if col_dep
-  Nx = numel(map.Surface);
-  seam = false(Nt, Nx);
-  surf = map.Surface(:).';
+  seam = false(Nt, numel(surf));
 else
+  if isempty(finite_surf)
+    surf = NaN;   % every column resolves to t_c = ic(2), as in OPR
+  else
+    surf = finite_surf(1);
+  end
   seam = false(Nt, 1);
 end
 
 for b = 1:numel(ic)/3
-  t_comb = t_combs(b);
-  mult   = mults(b);
-  win    = ic(3*b);
-  if ~isfinite(t_comb)
-    continue;
-  end
+  t_after = ic(3*b-2);
+  t_min   = ic(3*b-1);
+  win     = ic(3*b);
   if ~isfinite(win)
-    % A malformed window must still remove the boundary itself, not fall
+    % A malformed guard must still remove the boundary itself, not fall
     % through to a comparison against NaN that masks nothing
     warning('ptt:imgCombSeam:window', ...
-      'Boundary %d declares a non-finite blend window; masking the boundary sample only.', b);
+      'Boundary %d declares a non-finite image-1 guard time; masking the boundary sample only.', b);
     win = 0;
   end
-  if isfinite(mult)
-    t_c = max(surf*mult, t_comb);
-    % Columns with no surface pick fall back to the fixed traveltime
-    t_c(~isfinite(t_c)) = t_comb;
-  else
-    t_c = t_comb;
-  end
+  % OPR's boundary, elementwise over columns. MATLAB's min/max drop a NaN
+  % side, so a column with no surface pick resolves to t_min, and a
+  % non-finite t_c masks nothing through the comparisons below.
+  t_c = max(min(max(0,surf)*mult, surf + t_after), t_min);
   % A zero-width blend is still a discontinuity: keep half a sample either
   % side so the boundary sample itself is always removed.
   guard = max(opts.seam_mask_win*abs(win), dt/2) + reach;
