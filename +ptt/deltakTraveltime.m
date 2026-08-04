@@ -27,7 +27,9 @@ function [dtau, info] = deltakTraveltime(slc, map, opts)
 %   map: as for ptt.blendTraveltime (Time, Surface, fc, coherence, and
 %   optionally row_offset for the orientation regression).
 %
-%   opts fields used (all optional, under opts.deltak unless noted):
+%   opts fields used (all optional, under opts.deltak unless noted, and
+%   defaulted by ptt.deltakDefaults so ptt.imgCombSeam can widen the seam
+%   band by the same analysis-cell reach):
 %     n_sub (12)            narrow sub-bands for stage A
 %     cell_twtt (100e-9)    analysis-cell fast-time extent [s]
 %     cell_ntr (31)         analysis-cell trace count
@@ -53,17 +55,7 @@ function [dtau, info] = deltakTraveltime(slc, map, opts)
 %   fringe level (registration application details / channel dispersion),
 %   so the synthetic-wavelength stage-B product is the deliverable.
 
-if ~isfield(opts,'deltak') || isempty(opts.deltak)
-  opts.deltak = struct();
-end
-dk = opts.deltak;
-if ~isfield(dk,'n_sub') || isempty(dk.n_sub), dk.n_sub = 12; end
-if ~isfield(dk,'cell_twtt') || isempty(dk.cell_twtt), dk.cell_twtt = 100e-9; end
-if ~isfield(dk,'cell_ntr') || isempty(dk.cell_ntr), dk.cell_ntr = 31; end
-if ~isfield(dk,'smooth') || isempty(dk.smooth), dk.smooth = 5; end
-if ~isfield(dk,'band_frac') || isempty(dk.band_frac), dk.band_frac = [0.02 0.98]; end
-if ~isfield(dk,'orientation') || isempty(dk.orientation), dk.orientation = 0; end
-if ~isfield(dk,'ref_band') || isempty(dk.ref_band), dk.ref_band = [150e-9 600e-9]; end
+dk = ptt.deltakDefaults(opts);
 % coherence_threshold and ref_twtt_offset are defaulted by
 % ptt.surfaceReference, which owns the referencing convention
 
@@ -184,6 +176,11 @@ ti = min(max(interp1(t_cell, (1:ntc).', map.Time(:), 'linear', 'extrap'), 1), nt
 xi = min(max(interp1(x_cell, (1:nxc).', (1:Nx).', 'linear', 'extrap'), 1), nxc);
 dtau = interp2(tau_ref, xi.', ti, 'linear');
 
+% The ladder integers come from a tau_A smoothed over the analysis cells,
+% so a cell whose smoothing window merely touched a waveform-combine seam
+% is already resolved to the wrong 1/dfQ step: ask for the widened band
+% (ptt.imgCombSeam takes the reach from the same ptt.deltakDefaults).
+opts.seam_mask_deltak = true;
 [coh_mask, ref_bin] = ptt.surfaceReference(map, opts);
 
 % Cells left unreferenced (no surface pick anywhere in the cell) stay

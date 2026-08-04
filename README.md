@@ -53,12 +53,22 @@ units).
     masked band runs forward from the boundary because that is the way
     OPR crossfades. Applied by `ptt.surfaceReference`, so every dtau
     estimator inherits it; disable with `param.fabric.seam_mask_en =
-    false` or retune the guard with `param.fabric.seam_mask_win`.
+    false` or retune the guard with `param.fabric.seam_mask_win`. Delta-k
+    gets a wider band: it resolves its ladder integers from a tau_A
+    smoothed over analysis cells, so every cell whose smoothing window
+    touched the seam is dropped too (`ptt.deltakDefaults` is the one
+    definition of that cell geometry).
   - `ptt.blockAverage` - coherence-weighted along-track block averaging
     with per-block fringe correction
   - `ptt.invertBlocks` - twtt-to-depth mapping and per-block inversion
     (exact layer stripping or the regularized joint solve, selected by
-    `opts.inversion`)
+    `opts.inversion`). Where the seam mask (or an incoherent run) leaves a
+    gap, the node's dtau is interpolated across it so the joint solve
+    keeps a continuous chain, and the node is flagged in
+    `inv.interpolated`, saved as `dlam_interpolated` next to
+    `dlam_quality`/`dlam_clipped`. The figure scripts drop those intervals
+    the way they drop pegged ones - the unmasked coherence in
+    `dlam_quality` cannot tell them apart from measured nodes.
   - `ptt.twttDepthMap` - vertical twtt vs depth from the column model
 
 Scripts (each validates or applies the above end to end):

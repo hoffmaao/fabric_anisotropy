@@ -18,9 +18,17 @@ function inv = invertBlocks(blk, map, par, opts)
 %
 %   inv fields (num_intervals x Nblk): dlam, top_depth, bot_depth [m below
 %   surface], dtau_obs, dtau_fit [ns], quality (mean coherence at nodes),
-%   clipped (joint mode: 1 where the interval dlam is pegged at the
-%   eigenvalue bound, 0 where it fitted interior; NaN where the block was
-%   skipped or the stripping path runs). Per-block fields (1 x Nblk):
+%   interpolated (1 where the node's dtau_obs was filled by interpolating
+%   across a run of masked/incoherent bins rather than measured there - the
+%   waveform-combine seams of ptt.imgCombSeam leave such gaps, and
+%   inv.quality does not see them because it is the unmasked coherence; 0
+%   where the bracketing samples are the immediate neighbours; NaN where
+%   the block was skipped), clipped (joint mode: 1 where the interval dlam
+%   is pegged at the eigenvalue bound, 0 where it fitted interior; NaN
+%   where the block was skipped or the stripping path runs). The joint
+%   solve still fits the interpolated nodes - it wants a continuous chain -
+%   so the flag is how a consumer tells fabricated nodes from measured
+%   ones. Per-block fields (1 x Nblk):
 %   rms [ns] (coherence-weighted misfit rms) and alpha (regularization
 %   weight), both NaN where the block was skipped or the stripping path
 %   runs.
@@ -63,6 +71,7 @@ inv.bot_depth = nan(Nint,Nblk);
 inv.dtau_obs = nan(Nint,Nblk);
 inv.dtau_fit = nan(Nint,Nblk);
 inv.quality = nan(Nint,Nblk);
+inv.interpolated = nan(Nint,Nblk);
 inv.clipped = nan(Nint,Nblk);
 inv.rms = nan(1,Nblk);
 inv.alpha = nan(1,Nblk);
@@ -103,6 +112,14 @@ for b = 1:Nblk
   if any(~isfinite(obs.dtau))
     continue;
   end
+  % A node is measured only where the two finite samples the interpolation
+  % bracketed it with are the immediate neighbours; anywhere else its dtau
+  % was fabricated across a gap (a seam mask, or a run of incoherent bins)
+  % and nothing else in inv records that.
+  idx_fin = find(fin);
+  i_prev = interp1(map.Time(fin), idx_fin, node_twtt, 'previous');
+  i_next = interp1(map.Time(fin), idx_fin, node_twtt, 'next');
+  node_filled = double(i_next - i_prev > 1);
 
   node_coh = interp1(map.Time, blk.coh(:,b), node_twtt);
   try
@@ -124,6 +141,7 @@ for b = 1:Nblk
   inv.dtau_obs(:,b) = obs.dtau;
   inv.dtau_fit(:,b) = inv_out.dtau_fit;
   inv.quality(:,b) = node_coh;
+  inv.interpolated(:,b) = node_filled;
   if strcmp(opts.inversion, 'joint')
     inv.clipped(:,b) = double(inv_out.clipped);
     inv.rms(b) = inv_out.rms;

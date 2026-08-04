@@ -36,9 +36,13 @@ coh_mask(:,~surf_valid) = false;
 % ice property; drop them before anything averages over fast time.
 if opts.seam_mask_en
   seam = ptt.imgCombSeam(map, opts);
-  n_seam = nnz(seam(:,surf_valid));
-  if n_seam > 0
-    coh_mask(seam) = false;
+  if any(seam(:))
+    if size(seam,2) == 1
+      % Column-independent band: a row selector, not a full-frame mask
+      coh_mask(seam,:) = false;
+    else
+      coh_mask(seam) = false;
+    end
     fprintf('Seam mask: %d of %d bins removed at the waveform-combine boundaries\n', ...
       nnz(any(seam,2)), Nt);
   end

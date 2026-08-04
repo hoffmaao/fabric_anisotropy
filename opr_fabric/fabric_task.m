@@ -176,6 +176,10 @@ dlam_bot_depth = inv.bot_depth;
 dtau_obs = inv.dtau_obs;
 dtau_fit = inv.dtau_fit;
 dlam_quality = inv.quality;
+% 1 where the interval's dtau observation was interpolated across a gap
+% (waveform-combine seam, incoherent run) rather than measured there;
+% dlam_quality cannot show this, it is the unmasked coherence
+dlam_interpolated = inv.interpolated;
 dlam_clipped = inv.clipped;
 dtau_rms = inv.rms;
 reg_alpha = inv.alpha;
@@ -243,7 +247,7 @@ file_type = 'fabric';
 
 fprintf('Saving output file:\n  %s\n', out_fn);
 opr_save(out_fn,'dlam','dlam_top_depth','dlam_bot_depth','dlam_quality', ...
-  'dlam_clipped','dtau_rms','reg_alpha', ...
+  'dlam_interpolated','dlam_clipped','dtau_rms','reg_alpha', ...
   'dtau_obs','dtau_fit','dtau_blk','coh_blk','coverage_blk','blend_fringes', ...
   'phase_sign','Time','GPS_time','Latitude','Longitude','Elevation','Surface', ...
   'param_fabric','param_polarimetric','param_records','file_type','file_version');

@@ -11,7 +11,9 @@ along-profile depth sections, one panel per product:
 
 Blocks from all frames are ordered by GPS time and drawn on a common
 depth grid; pegged intervals (|dlam| at the 2/3 bound) are hatched out
-as NaN.
+as NaN, and so are intervals flagged by dlam_interpolated - nodes whose
+dtau was interpolated across a masked gap (a waveform-combine seam, or a
+run of incoherent bins) rather than measured there.
 
 Usage: python deltak_sections.py [fabric_batch_dir] [out_dir]
 """
@@ -65,13 +67,18 @@ def load_blocks(product_dir, seg_prefix=''):
         dlam = col2d(d['dlam'])
         top = col2d(d['dlam_top_depth'])
         bot = col2d(d['dlam_bot_depth'])
+        # Nodes fabricated by interpolating dtau across a masked gap; absent
+        # from products written before the seam mask existed
+        itp = d.get('dlam_interpolated')
+        itp = col2d(itp) if itp is not None and np.size(itp) else None
         gps = np.atleast_1d(d['GPS_time'])
         lat = np.atleast_1d(d['Latitude'])
         lon = np.atleast_1d(d['Longitude'])
         for b in range(dlam.shape[1]):
             blocks.append({'gps': gps[b], 'lat': lat[b], 'lon': lon[b],
                            'dlam': dlam[:, b], 'top': top[:, b],
-                           'bot': bot[:, b]})
+                           'bot': bot[:, b],
+                           'interp': None if itp is None else itp[:, b]})
     blocks.sort(key=lambda k: k['gps'])
     return blocks
 
@@ -89,6 +96,8 @@ def section(blocks):
     for j, b in enumerate(blocks):
         v = b['dlam'].copy()
         v[np.abs(v) >= 0.98 * BOUND] = np.nan  # pegged at the bound
+        if b['interp'] is not None:
+            v[b['interp'] == 1] = np.nan       # interpolated across a gap
         for i in range(len(v)):
             if np.isfinite(b['top'][i]) and np.isfinite(b['bot'][i]):
                 rows = (zc >= b['top'][i]) & (zc < b['bot'][i])

@@ -33,6 +33,7 @@ def load_season(season, product):
         d = loadmat(fn)
         dlam, top, bot, qual = d['dlam'], d['dlam_top_depth'], d['dlam_bot_depth'], d['dlam_quality']
         clip = d.get('dlam_clipped')
+        itp = d.get('dlam_interpolated')
         for b in range(dlam.shape[1]):
             if not np.any(np.isfinite(dlam[:, b])):
                 continue
@@ -41,6 +42,10 @@ def load_season(season, product):
             if clip is not None and clip.size:
                 pegged |= clip[:, b] == 1
             n_peg += int(np.any(pegged))
+            # dtau interpolated across a masked gap (e.g. a waveform-combine
+            # seam) rather than measured at these nodes
+            if itp is not None and itp.size:
+                pegged |= itp[:, b] == 1
             col = np.full(depth_grid.size, np.nan)
             for k in range(dlam.shape[0]):
                 ok = np.isfinite(dlam[k, b]) and not pegged[k] \
