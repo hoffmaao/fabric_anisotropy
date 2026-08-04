@@ -95,7 +95,7 @@ def increment_rms(t, v, step, band):
 def main():
     fn = sys.argv[1]
     d = loadmat(fn, squeeze_me=True)
-    surf = np.nanmean(np.atleast_1d(np.asarray(d['Surface'], float)))
+    surf = float(d['surf_mean'])
     t_full = np.asarray(d['Time'], float).ravel() - surf
     t_cell = np.asarray(d['t_cell'], float).ravel() - surf
     tag = '%s_%03d' % (str(d['day_seg']), int(d['frm']))
@@ -126,14 +126,17 @@ def main():
             ax1.plot(1e9 * dv, 1e6 * tc, ls, color=c, lw=lw, alpha=alpha,
                      label=label)
 
+    # ptt.imgCombSeam places each combine at surface + ic(1) in absolute
+    # TWTT and masks [t_c - win, t_c + 2*win], so on this below-surface
+    # axis the band is [ic(1) - win, ic(1) + 2*win].
     ic = np.atleast_1d(np.asarray(d.get('img_comb', []), float)).ravel()
     for b in range(ic.size // 3):
-        t_comb, win = ic[3 * b], ic[3 * b + 2]
-        if not np.isfinite(t_comb):
+        t_after, win = ic[3 * b], ic[3 * b + 2]
+        if not np.isfinite(t_after):
             continue
         for ax in (ax0, ax1):
-            ax.axhspan(1e6 * (t_comb - win - surf),
-                       1e6 * (t_comb + 2 * win - surf),
+            ax.axhspan(1e6 * (t_after - win),
+                       1e6 * (t_after + 2 * win),
                        color='0.85', zorder=0,
                        label='_' if b else 'waveform-combine seam (masked)')
 

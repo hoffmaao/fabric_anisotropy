@@ -37,7 +37,6 @@ this_dir = fileparts(mfilename('fullpath'));
 proj_root = fileparts(fileparts(this_dir));
 addpath(proj_root);                               % +ptt
 addpath(fullfile(proj_root,'opr_fabric'));
-addpath(fullfile(proj_root,'opr_fabric','test','stubs'));
 
 in_fn = fullfile(data_root, season, in_name, day_seg, ...
   sprintf('Data_%s_%03d.mat', day_seg, frm));
@@ -52,7 +51,7 @@ need = {'ref','sec','interferogram_coherence','Time','Surface'};
 missing = setdiff(need, names);
 assert(isempty(missing), 'Frame lacks %s (delta-k needs the SLCs).', strjoin(missing,', '));
 
-want = intersect({'ref','sec','interferogram_coherence','interferogram_mlook', ...
+want = intersect({'ref','sec','interferogram_coherence', ...
   'snaphu_out_phase','row_offset','Time','Surface','param_polarimetric', ...
   'param_records'}, names);
 pol = load(in_fn, want{:});
@@ -182,11 +181,11 @@ img_comb = map.img_comb;
 
 %% Report the amplitude by depth band, which is what the figure quantifies
 fprintf('\nProfile standard deviation by TWTT band below surface (ns):\n');
-s0 = mean(Surface(isfinite(Surface)));
+surf_mean = mean(Surface(isfinite(Surface)));
 bands = [0 2; 2 5; 5 10; 10 20]*1e-6;
 fprintf('  %-12s %8s %8s %8s %8s %8s\n','band(us)','A','Q','B','snaphu','coreg');
 for bi = 1:size(bands,1)
-  sel = Time(:) - s0 >= bands(bi,1) & Time(:) - s0 < bands(bi,2);
+  sel = Time(:) - surf_mean >= bands(bi,1) & Time(:) - surf_mean < bands(bi,2);
   fprintf('  %-12s %8.3f %8.3f %8.3f %8.3f %8.3f\n', ...
     sprintf('%g-%g', bands(bi,1)*1e6, bands(bi,2)*1e6), ...
     1e9*nanstd_local(prof_A(sel)), 1e9*nanstd_local(prof_Q(sel)), ...
@@ -200,9 +199,10 @@ out_dir = fullfile(scratch, 'stages');
 if ~exist(out_dir,'dir'), mkdir(out_dir); end
 out_fn = fullfile(out_dir, sprintf('deltak_stages_%s_%03d.mat', day_seg, frm));
 fprintf('\nSaving %s\n', out_fn);
-save(out_fn, '-v7', 'Time', 'Surface', 't_cell', 'prof_A', 'prof_Q', 'prof_B', ...
-  'prof_deltak', 'prof_snaphu', 'prof_coreg', 'coverage', 'coh', 'df', ...
-  'margin_Q', 'margin_B', 'phase_sign_dk', 'img_comb', 'day_seg', 'frm');
+save(out_fn, '-v7', 'Time', 'Surface', 'surf_mean', 't_cell', 'prof_A', ...
+  'prof_Q', 'prof_B', 'prof_deltak', 'prof_snaphu', 'prof_coreg', ...
+  'coverage', 'coh', 'df', 'margin_Q', 'margin_B', 'phase_sign_dk', ...
+  'img_comb', 'day_seg', 'frm');
 
 fprintf('Done.\n');
 
