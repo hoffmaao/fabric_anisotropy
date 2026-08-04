@@ -125,6 +125,11 @@ Scripts (each validates or applies the above end to end):
   along-profile depth sections of the fabric solution per survey region,
   the delta-k vs joint-chain validation (per-interval dlam scatter and
   difference histogram at Ridge A, printed stats for Thwaites as well),
+  the per-stage delta-k ladder diagnostic (`deltak_stages.py`, from the
+  single-frame extract written by
+  `opr_fabric/server/run_deltak_stages.m`: dtau profiles and retained
+  depth increments per ladder rung against the phase estimators, to
+  locate where the Ridge A amplitude is lost),
   the matching delta-k eigenvalue-difference depth sections along both
   traverses (the Ridge A panel is flagged unvalidated there because
   delta-k is amplitude-suppressed against the joint chain at that site),
