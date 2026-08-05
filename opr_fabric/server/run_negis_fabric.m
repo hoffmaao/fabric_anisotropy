@@ -75,14 +75,31 @@ else
   fprintf('  repositioned lat %.4f..%.4f lon %.4f..%.4f\n', ...
     min(Latitude), max(Latitude), min(Longitude), max(Longitude));
 
-  % 2. cull the stops
+  % 2. cull the stops. Traces the GPS file does not cover are dropped by
+  % the same step but are a different failure, so they are counted apart -
+  % a day file that misses the frame would otherwise read as a traverse
+  % that never moved. A trace whose predecessor has no position has no
+  % measurable step, so it is kept rather than called stopped.
   R = 6371e3;
   p = deg2rad(Latitude); dl = diff(deg2rad(Longitude)); dp = diff(p);
   a = sin(dp/2).^2 + cos(p(1:end-1)).*cos(p(2:end)).*sin(dl/2).^2;
-  step = 2*R*asin(sqrt(a));
-  keep = [true, step >= MIN_STEP_M];
-  fprintf('  culling %d of %d traces where the vehicle was stopped\n', ...
-    nnz(~keep), Nx);
+  step = [Inf, 2*R*asin(sqrt(a))];
+  located = isfinite(Latitude) & isfinite(Longitude);
+  stopped = located & [false, located(1:end-1)] & step < MIN_STEP_M;
+  keep = located & ~stopped;
+  fprintf('  culling %d of %d traces: %d stopped, %d with no GPS coverage\n', ...
+    nnz(~keep), Nx, nnz(stopped), nnz(~located));
+  if any(~located)
+    warning('run_negis_fabric:gpsCoverage', ...
+      '%s frame %d: %d of %d traces (%.1f%%) fall outside the day GPS file', ...
+      day_seg, frm, nnz(~located), Nx, 100*nnz(~located)/Nx);
+  end
+  if nnz(keep) < COH_WIN(2)
+    error('run_negis_fabric:tooFewTraces', ...
+      ['%s frame %d: only %d traces survive the cull, fewer than the ' ...
+       '%d-trace coherence boxcar. Check the day GPS file covers this ' ...
+       'frame.'], day_seg, frm, nnz(keep), COH_WIN(2));
+  end
   H.Data = H.Data(:, keep); V.Data = V.Data(:, keep);
   Latitude = Latitude(keep); Longitude = Longitude(keep);
   GPS_time = H.GPS_time(keep); Elevation = H.Elevation(keep);
@@ -181,7 +198,11 @@ function pr = H_param_records_from(fn)
 % that supplies neither has to report that, not abort the repackaging
 % after the full HH/VV load, crop and coherence convolution have run.
 d = load(fn, 'param_records', 'param_qlook');
-pr = d.param_records;
+pr = struct();
+if H_has(d, {'param_records'}) && isstruct(d.param_records) ...
+    && isscalar(d.param_records)
+  pr = d.param_records;
+end
 if ~isfield(pr, 'array') || ~isstruct(pr.array)
   pr.array = struct();
 end
