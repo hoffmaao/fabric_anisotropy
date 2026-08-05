@@ -173,18 +173,50 @@ fprintf('\nfabric_task returned %d (%.1f min)\n', ok, toc(t1)/60);
 function pr = H_param_records_from(fn)
 % param_records straight from the qlook product, so array.img_comb and
 % img_comb_mult reach ptt.imgCombSeam unmodified.
+%
+% Both fields are optional downstream - imgCombSeam masks nothing without
+% img_comb and defaults img_comb_mult to Inf - and where a qlook product
+% keeps them differs by season (some carry a param_qlook.array copy, some
+% only param_qlook.qlook). Every lookup is therefore guarded: a product
+% that supplies neither has to report that, not abort the repackaging
+% after the full HH/VV load, crop and coherence convolution have run.
 d = load(fn, 'param_records', 'param_qlook');
 pr = d.param_records;
-if ~isfield(pr, 'array') || ~isfield(pr.array, 'img_comb') ...
-    || isempty(pr.array.img_comb)
-  pr.array = d.param_qlook.array;
+if ~isfield(pr, 'array') || ~isstruct(pr.array)
+  pr.array = struct();
 end
-if ~isfield(pr.array, 'img_comb_mult') || isempty(pr.array.img_comb_mult)
-  if isfield(d.param_qlook, 'qlook') ...
-      && isfield(d.param_qlook.qlook, 'img_comb_mult')
-    pr.array.img_comb_mult = d.param_qlook.qlook.img_comb_mult;
+if ~isfield(pr.array, 'img_comb') || isempty(pr.array.img_comb)
+  if H_has(d, {'param_qlook','array'})
+    pr.array = d.param_qlook.array;
   end
 end
-fprintf('  img_comb = %s, mult = %s\n', mat2str(pr.array.img_comb), ...
-  mat2str(pr.array.img_comb_mult));
+if ~isfield(pr.array, 'img_comb') || isempty(pr.array.img_comb)
+  pr.array.img_comb = H_get(d, {'param_qlook','qlook','img_comb'});
+end
+if ~isfield(pr.array, 'img_comb_mult') || isempty(pr.array.img_comb_mult)
+  pr.array.img_comb_mult = H_get(d, {'param_qlook','qlook','img_comb_mult'});
+end
+fprintf('  img_comb = %s, mult = %s\n', H_show(pr.array.img_comb), ...
+  H_show(pr.array.img_comb_mult));
+end
+
+function tf = H_has(s, path)
+tf = true;
+for k = 1:numel(path)
+  if ~isstruct(s) || ~isscalar(s) || ~isfield(s, path{k}), tf = false; return; end
+  s = s.(path{k});
+end
+end
+
+function v = H_get(s, path)
+v = [];
+if ~H_has(s, path), return; end
+for k = 1:numel(path)
+  s = s.(path{k});
+end
+v = s;
+end
+
+function str = H_show(v)
+if isempty(v), str = '<absent>'; else, str = mat2str(v); end
 end

@@ -17,6 +17,19 @@
 % onto GPS_time is the layer positions by another route, and it is the
 % only route that covers the complex segments.
 %
+% Traces the traverse stopped for are culled BEFORE the multilook. They
+% multilook to HIGH coherence with random range phase, so no coherence
+% test downstream removes them, and an azimuth cell that straddles a stop
+% boundary mixes stopped and moving traces permanently - culling after the
+% looks (as negis_two_panel.py used to be the only place to do) cannot
+% undo that. This is the same criterion run_negis_fabric.m applies on the
+% inversion path.
+%
+% RE-RUN REQUIRED: the pre-cull extracts already on mem1 were written
+% without it and their boundary columns are contaminated. Delete
+% stages/negis_ifg_*.mat and re-run this script before regenerating the
+% NEGIS figures.
+%
 % For each requested frame this writes a multilooked interferogram,
 % coherence, repositioned trajectory and a power-based surface pick,
 % small enough to copy back for figures.
@@ -31,6 +44,7 @@ frames = { '20240620_01', 3; '20240619_01', 4; '20240620_02', 2; ...
 
 NR = 4;    % range looks
 NA = 4;    % azimuth looks
+MIN_STEP_M = 1.0;   % below this along-track step the vehicle was stopped
 
 for fi = 1:size(frames, 1)
   day_seg = frames{fi, 1};
@@ -64,6 +78,21 @@ for fi = 1:size(frames, 1)
   fprintf('  repositioned: lat %.4f..%.4f lon %.4f..%.4f\n', ...
     min(Latitude), max(Latitude), min(Longitude), max(Longitude));
 
+  % --- cull the stops, before any looks are taken. Data, GPS_time,
+  % Elevation and the repositioned coordinates go together so every axis
+  % stays aligned with the traces that survive.
+  Rearth = 6371e3;
+  p = deg2rad(Latitude); dl = diff(deg2rad(Longitude)); dp = diff(p);
+  a = sin(dp/2).^2 + cos(p(1:end-1)).*cos(p(2:end)).*sin(dl/2).^2;
+  step = 2*Rearth*asin(sqrt(a));
+  keep = [true, step >= MIN_STEP_M];
+  fprintf('  culling %d of %d traces where the vehicle was stopped\n', ...
+    nnz(~keep), Nx);
+  H.Data = H.Data(:, keep); V.Data = V.Data(:, keep);
+  Latitude = Latitude(keep); Longitude = Longitude(keep);
+  H.GPS_time = H.GPS_time(keep); H.Elevation = H.Elevation(keep);
+  Nx = nnz(keep);
+
   % --- surface pick from HH power (Surface is NaN in these products)
   pw = abs(H.Data).^2;
   [~, si] = max(pw, [], 1);
@@ -90,14 +119,15 @@ for fi = 1:size(frames, 1)
   power_vv = single(power_vv);
   clear I pw;
 
-  Time = H.Time(1:NR:ntc*NR);
-  Time = Time(1:ntc);
-  ix = 1:NA:nxc*NA; ix = ix(1:nxc);
-  Latitude_ml = Latitude(ix);
-  Longitude_ml = Longitude(ix);
-  Surface_ml = Surface(ix);
-  Elevation_ml = H.Elevation(ix);
-  GPS_time_ml = H.GPS_time(ix);
+  % Label each cell with its CENTRE: interferogram_mlook is the sum over
+  % the whole cell, so taking the first sample/trace would put both axes
+  % half a cell shallower/earlier than the data they annotate.
+  Time = mean(reshape(H.Time(1:ntc*NR), NR, ntc), 1).';
+  Latitude_ml = mean(reshape(Latitude(1:nxc*NA), NA, nxc), 1);
+  Longitude_ml = mean(reshape(Longitude(1:nxc*NA), NA, nxc), 1);
+  Surface_ml = mean(reshape(Surface(1:nxc*NA), NA, nxc), 1);
+  Elevation_ml = mean(reshape(H.Elevation(1:nxc*NA), NA, nxc), 1);
+  GPS_time_ml = mean(reshape(H.GPS_time(1:nxc*NA), NA, nxc), 1);
   looks = [NR NA];
 
   fprintf('  multilooked to %d x %d, median coherence %.3f\n', ...

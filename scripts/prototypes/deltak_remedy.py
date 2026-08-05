@@ -1,5 +1,10 @@
 """Stage-A remedy prototype: deramped coherent multilook for delta-k.
 
+PARKED - THIS REMEDY DOES NOT RESOLVE THE SUPPRESSION. Read the outcome
+at the bottom of this docstring before treating anything here as working,
+and do NOT port it into ptt.deltakTraveltime on the strength of these
+numbers.
+
 The per-stage diagnostic (run_deltak_stages.m, Job 2) located the Ridge A
 delta-k suppression AT STAGE A: all three ladder rungs miss the smooth
 ~5 ns dtau ramp at 10-22 us that SNAPHU and the coregistration offsets
@@ -36,10 +41,27 @@ cell, and cancels in the cross product. Both regimes are safe - no
 gating needed, which is what makes this preferable to picking between
 average-then-difference and difference-then-average per cell.
 
-Validated on the local Ridge A SLC subset (Data_20250108_02_009) against
-SNAPHU, the coregistration offsets, and the joint block product. Success
-criterion: the remedied stage B recovers the deep ramp (band std within
-~2x of SNAPHU below 10 us) without breaking the shallow agreement.
+Run on the local Ridge A SLC subset (Data_20250108_02_009) against
+SNAPHU, the coregistration offsets, and the joint block product. The
+success criterion was that the remedied stage B recover the deep ramp -
+band std within ~2x of SNAPHU below 10 us - without breaking the shallow
+agreement.
+
+OUTCOME: it does not. The deramped coherent multilook does tighten the
+ladder rounding margins and it does raise the 5-10 us band std, to 0.89 ns
+against 0.46 ns for the shipped chain and 0.49 ns for SNAPHU. But 10-20 us
+stays at 0.56 ns against SNAPHU's 1.16 ns, and - the part that actually
+blocks this - BOTH chains still ANTI-CORRELATE with SNAPHU over 5-22 us:
+corr -0.61 remedied, -0.75 shipped. So the stage-A suppression is not
+resolved, and the anti-correlation is unexplained: a remedy that recovered
+the missing amplitude would have to correlate with the estimator it is
+being judged against, and neither does. Recovering more variance while
+still pointing the wrong way is not evidence the mechanism above is the
+right diagnosis.
+
+The investigation is therefore PARKED pending an explanation of the
+anti-correlation, not concluded. The mechanism and rationale above are
+kept because they are the hypothesis under test; they are not a result.
 
 Usage: /opt/anaconda3/bin/python deltak_remedy.py [out_dir]
 """

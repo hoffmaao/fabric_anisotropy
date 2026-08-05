@@ -139,6 +139,46 @@ Scripts (each validates or applies the above end to end):
   commands in `scripts/figures/antarctic_basemap.py`), and fall back to
   coastline-only otherwise. See each script's docstring for usage; the
   inversion chain itself stays MATLAB/Octave.
+- The SCAR talk figures are a subset of `scripts/figures/` with their own
+  conventions (see "SCAR figure inputs and outputs" below):
+  - `scar_two_panel.py` - survey overview + wrapped interferogram for
+    Thwaites and Ridge A: the whole survey over log-scale ITS_LIVE speed
+    with all lines white and the focused profile black, red start / white
+    end markers repeated on the map inset and at the interferogram's left
+    and right edges, no legends, plain black scale bars.
+  - `negis_two_panel.py` - the same slide for the NEGIS onset at EGRIP,
+    on a Greenland polar stereographic projection, from the
+    `negis_interferogram.m` extract; it can raise the look count locally
+    because that extract ships the un-normalised power sums.
+  - `scar_style.py` - the one definition of the styling constants,
+    end markers, scale bar, panel geometry and track-azimuth/geometry
+    helpers those figures share, so the three site slides cannot drift
+    apart. Also used by the two section figures below.
+  - `fabric_sections.py` - per-site 2D dlam sections from
+    `opr_fabric/server/run_sections.m`, each cell blended toward grey by
+    its node coherence (a diverging ramp cannot reuse the interferogram's
+    fade-to-black), with a two-dimensional key for that mapping.
+  - `fabric_three_sites.py` - the cross-site depth-profile comparison.
+    Magnitudes are NOT directly comparable: dlam is the difference of the
+    two horizontal eigenvalues on each profile's own axis and its
+    perpendicular, and those azimuths differ per site, which is why both
+    figures name them.
+- `scripts/prototypes/deltak_remedy.py` - a PARKED investigation into the
+  delta-k stage-A suppression at Ridge A (deramped coherent multilook
+  before the cross products). It runs and reports, but it does not resolve
+  the suppression and its deep profile still anti-correlates with SNAPHU;
+  the docstring states the numbers. Not wired into `+ptt`.
+
+### SCAR figure inputs and outputs
+
+Those figures follow this project's usual convention of keeping mirrored
+products out of git. Their INPUT data - ITS_LIVE velocity windows streamed
+from S3, the NEGIS track and interferogram extracts pulled off mem1, the
+`fabric_sections.mat` stage - is staged under `~/data/opr/scar`, override
+with the `SCAR_DATA` environment variable. Their OUTPUT goes wherever the
+`<out_dir>` argument points, which for the talk is
+`~/presentations/SCAR_figures`, outside the repo; unlike the rest of
+`scripts/figures/`, they do not write to `figs/`.
 - `scripts/figures/ghost2_swath_movie.py` is the one figure script outside
   that batch-output family: it renders a look-angle sweep movie (one
   along-track radargram per steering angle, TWTT axis, rotating beam icon)

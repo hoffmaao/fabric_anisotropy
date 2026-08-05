@@ -7,14 +7,8 @@ One PNG per site:
          the bottom-right corner
   right  the wrapped polarimetric interferogram of the focused profile
 
-Slide styling (Andrew, 4 Aug): no legends - the titles already name the
-segment, and a legend box eats map area on a projected slide. The
-profile's two ENDS carry the map-to-interferogram correspondence
-instead of a distance-marker ladder: a red marker at the start and a
-white marker at the end, both with a black outline, drawn on the map
-inset AND at the matching left/right edges of the interferogram. Two
-unambiguous ends read from the back of a room where five graded viridis
-dots do not.
+Slide styling, the end markers and the shared panel geometry live in
+scar_style.py, so this figure and the NEGIS one cannot drift apart.
 
 The black profile line is drawn over a thin white casing so it stays
 legible where the speed field is dark (slow ice is exactly where these
@@ -35,145 +29,38 @@ import matplotlib
 import numpy as np
 
 matplotlib.use('Agg')
-import matplotlib.patheffects as pe        # noqa: E402
 import matplotlib.pyplot as plt            # noqa: E402
-from matplotlib import transforms          # noqa: E402
 from matplotlib.colors import LogNorm      # noqa: E402
 from scipy.io import loadmat               # noqa: E402
 
 warnings.filterwarnings('ignore')
 
-REPO = os.path.expanduser('~/projects/fabric_anisotropy')
-sys.path.insert(0, os.path.join(REPO, 'scripts', 'figures'))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import antarctic_basemap as ab            # noqa: E402
 import cartopy.crs as ccrs                # noqa: E402
+import scar_style as sty                  # noqa: E402
+from scar_style import (DATA, DPI, PROFILE_C, PROFILE_FX,  # noqa: E402
+                        PROFILE_LW, TRACK_C)
 
 OUT = sys.argv[1]
-# Inputs that are data, not code: ITS_LIVE windows streamed from S3, the
-# NEGIS track/interferogram extracts pulled off mem1. They live beside the
-# rest of the mirrored products rather than in the repo.
-DATA = os.path.expanduser(os.environ.get('SCAR_DATA', '~/data/opr/scar'))
 
 ACCUM = os.path.expanduser('~/data/opr/accum/2024_Antarctica_Ground2')
 BATCH = os.path.expanduser('~/data/opr/fabric_batch')
 MARGIN = os.path.expanduser('~/data/opr/margin')
 
-FIGSIZE = (13.0, 5.8)
-DPI = 200
-
-# Profile endpoints: start red, end white, both outlined black. The same
-# pair marks the interferogram's left and right edges, which is what
-# makes the correspondence readable without a legend.
-END_FACES = ('#e8000b', '#ffffff')
-END_SIZE = 130
-END_EDGE = 1.6
-
-TRACK_C = 'white'       # every survey line
-PROFILE_C = 'black'     # the focused profile
-PROFILE_LW = 2.8
-# Thin white casing under the black profile line, so it survives the dark
-# end of the speed ramp - slow ice is exactly where these profiles sit -
-# without the casing widening into something that reads as a white line
-PROFILE_FX = [pe.withStroke(linewidth=PROFILE_LW + 1.4, foreground='white')]
-
-
-def locator_box(ax, zext, proj, color='white'):
-    """Outline the zoom window on the main map.
-
-    Dashed, where the inset's own frame is solid: at slide size the two
-    rectangles are otherwise the same white box and it is not obvious
-    which one is the magnified view.
-    """
-    ax.plot([zext[0], zext[1], zext[1], zext[0], zext[0]],
-            [zext[2], zext[2], zext[3], zext[3], zext[2]],
-            '--', color=color, lw=1.0, dashes=(4, 2), transform=proj,
-            zorder=9)
-
-
-def cumdist_km(lats, lons):
-    R = 6371.0
-    p = np.radians(np.asarray(lats))
-    dl = np.radians(np.diff(np.asarray(lons)))
-    dp = np.diff(p)
-    a = np.sin(dp / 2)**2 + np.cos(p[:-1]) * np.cos(p[1:]) * np.sin(dl / 2)**2
-    return np.concatenate([[0], np.cumsum(2 * R * np.arcsin(np.sqrt(a)))])
-
 
 def scale_bar_br(ax, extent, frac=0.25):
-    """Plain black scale bar in the BOTTOM-RIGHT corner.
+    """Shared bottom-right scale bar, on the Antarctic projection.
 
-    No white casing on the bar and no white box behind the label: every
-    site places the bar over the pale end of its background, so the
-    casing only added visual weight.
+    The bar length uses antarctic_basemap's rounding rule, so it matches
+    the other EPSG:3031 figures in that family.
     """
-    width = extent[1] - extent[0]
-    height = extent[3] - extent[2]
-    length = ab._nice_length(frac * width)
-    x1 = extent[1] - 0.06 * width
-    x0 = x1 - length
-    y0 = extent[2] + 0.045 * height
-    proj = ab.proj3031()
-    ax.plot([x0, x1], [y0, y0], color='black', lw=3, transform=proj,
-            zorder=9, solid_capstyle='butt')
-    label = f'{length/1000:g} km' if length >= 1000 else f'{length:g} m'
-    ax.text((x0 + x1) / 2, y0 + 0.02 * height, label, ha='center',
-            va='bottom', fontsize=9, color='black', transform=proj,
-            zorder=9)
-
-
-def draw_map_ends(ax, lats, lons):
-    """Red start / white end markers on the profile, black outlined."""
-    ax.scatter([lons[0], lons[-1]], [lats[0], lats[-1]], s=END_SIZE,
-               c=list(END_FACES), edgecolor='black', lw=END_EDGE,
-               transform=ccrs.PlateCarree(), zorder=10)
-
-
-def draw_ifg_ends(ax, dist):
-    """The same two markers at the interferogram's left and right edges."""
-    tr = transforms.blended_transform_factory(ax.transData, ax.transAxes)
-    ax.scatter([dist[0], dist[-1]], [1.035, 1.035], s=END_SIZE,
-               c=list(END_FACES), edgecolor='black', lw=END_EDGE,
-               transform=tr, clip_on=False, zorder=10)
-
-
-def hsv_plot_coherence(phase, coh, coherence_limits=(0.0, 1.0)):
-    """Python port of OPR display/hsv_plot_coherence.m (John Paden):
-    hue = normalized phase (-pi..pi -> 0..1), sat = 1, val = coherence
-    clipped to coherence_limits and scaled 0..1. Low-coherence pixels
-    fade to black instead of shouting random fringe colours."""
-    from matplotlib.colors import hsv_to_rgb
-    hue = phase / (2 * np.pi) + 0.5
-    val = np.clip(np.abs(coh), *coherence_limits)
-    val = (val - coherence_limits[0]) / (
-        coherence_limits[1] - coherence_limits[0])
-    val = np.nan_to_num(val, nan=0.0)
-    hsv = np.stack([np.clip(hue, 0, 1), np.ones_like(hue), val], axis=-1)
-    return hsv_to_rgb(hsv)
-
-
-def ifg_panel(ax, fig, dist, t_us, phase, coh):
-    st = max(1, phase.shape[0] // 2200)
-    sx = max(1, phase.shape[1] // 2000)
-    rgb = hsv_plot_coherence(phase[::st, ::sx], coh[::st, ::sx])
-    ax.imshow(rgb, aspect='auto', interpolation='nearest',
-              extent=[dist[0], dist[-1], t_us[-1], t_us[0]])
-    ax.set_xlabel('distance along profile (km)')
-    ax.set_ylabel('TWTT (μs)')
-    sm = plt.cm.ScalarMappable(cmap='hsv',
-                               norm=plt.Normalize(-np.pi, np.pi))
-    # Clear of the image frame: at pad=0.01 the axes spine and the
-    # colorbar edge merge into one line on a projected slide
-    cb = fig.colorbar(sm, ax=ax, pad=0.035)
-    cb.set_label('interferogram phase (rad); brightness = coherence')
-    cb.set_ticks([-np.pi, 0, np.pi])
-    cb.set_ticklabels([r'$-\pi$', '0', r'$\pi$'])
+    sty.scale_bar_br(ax, extent, ab.proj3031(), frac=frac,
+                     nice_length=ab._nice_length)
 
 
 def two_panel(map_fn, ifg_fn, out):
-    fig = plt.figure(figsize=FIGSIZE, dpi=DPI, layout='constrained')
-    gs = fig.add_gridspec(1, 2, width_ratios=[0.82, 1.18])
-    axm = fig.add_subplot(gs[0, 0], projection=ab.proj3031())
-    axi = fig.add_subplot(gs[0, 1])
+    fig, axm, axi = sty.two_panel_figure(ab.proj3031())
     map_fn(fig, axm)
     ifg_fn(fig, axi)
     fig.savefig(os.path.join(OUT, out), dpi=DPI)
@@ -188,7 +75,7 @@ def thwaites():
                 variable_names=['phase_wrapped', 'coherence', 'Time',
                                 'Latitude', 'Longitude'])
     lats, lons = d['Latitude'].ravel(), d['Longitude'].ravel()
-    dist = cumdist_km(lats, lons)
+    dist = sty.cumdist_km(lats, lons)
 
     tracks = []
     for fn in sorted(glob.glob(
@@ -258,16 +145,14 @@ def thwaites():
         axz.plot(lons, lats, '-', color=PROFILE_C, lw=PROFILE_LW,
                  transform=ccrs.PlateCarree(), zorder=8,
                  path_effects=PROFILE_FX)
-        draw_map_ends(axz, lats, lons)
-        for spine in axz.spines.values():
-            spine.set_edgecolor('white')
-            spine.set_linewidth(1.5)
-        locator_box(ax, zext, proj)
+        sty.draw_map_ends(axz, lats, lons)
+        sty.inset_frame(axz)
+        sty.locator_box(ax, zext, proj)
 
     def ifg(fig, ax):
-        ifg_panel(ax, fig, dist, d['Time'].ravel() * 1e6,
+        sty.ifg_panel(ax, fig, dist, d['Time'].ravel() * 1e6,
                   d['phase_wrapped'], np.abs(d['coherence']))
-        draw_ifg_ends(ax, dist)
+        sty.draw_ifg_ends(ax, dist)
         ax.set_title(f'eastern shear margin crossing, segment {seg}',
                      fontsize=12, pad=26)
 
@@ -283,7 +168,7 @@ def ridge_a():
                                 'interferogram_coherence', 'Time',
                                 'Latitude', 'Longitude'])
     lats, lons = d['Latitude'].ravel(), d['Longitude'].ravel()
-    dist = cumdist_km(lats, lons)
+    dist = sty.cumdist_km(lats, lons)
 
     # Tracks drawn as lines like every other site. The fabric product
     # carries only a few block centres per frame, so the legs have to be
@@ -336,11 +221,9 @@ def ridge_a():
         axz.plot(lons, lats, '-', color=PROFILE_C, lw=PROFILE_LW,
                  transform=ccrs.PlateCarree(), zorder=8,
                  path_effects=PROFILE_FX)
-        draw_map_ends(axz, lats, lons)
-        for spine in axz.spines.values():
-            spine.set_edgecolor('white')
-            spine.set_linewidth(1.5)
-        locator_box(ax, zext, proj)
+        sty.draw_map_ends(axz, lats, lons)
+        sty.inset_frame(axz)
+        sty.locator_box(ax, zext, proj)
         gl = ax.gridlines(draw_labels=True, lw=0.4, alpha=0.5,
                           color='gray', y_inline=False)
         gl.top_labels = False
@@ -353,10 +236,10 @@ def ridge_a():
         ax.set_title('Ridge A raster survey', fontsize=12)
 
     def ifg(fig, ax):
-        ifg_panel(ax, fig, dist, d['Time'].ravel() * 1e6,
+        sty.ifg_panel(ax, fig, dist, d['Time'].ravel() * 1e6,
                   np.angle(d['interferogram_mlook']),
                   np.abs(d['interferogram_coherence']))
-        draw_ifg_ends(ax, dist)
+        sty.draw_ifg_ends(ax, dist)
         ax.set_title(f'divide setting, frame {frame}', fontsize=12, pad=26)
 
     two_panel(map_panel, ifg, 'scar_ridge_a_2panel.png')

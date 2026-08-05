@@ -31,12 +31,11 @@ import matplotlib.pyplot as plt             # noqa: E402
 from matplotlib.colors import TwoSlopeNorm   # noqa: E402
 from scipy.io import loadmat                 # noqa: E402
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from scar_style import (DATA, INK, MUTED, cumdist_km,  # noqa: E402
+                        field, track_azimuth)
+
 OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
-# Inputs that are data, not code: ITS_LIVE windows streamed from S3, the
-# NEGIS track/interferogram extracts pulled off mem1. They live beside the
-# rest of the mirrored products rather than in the repo.
-DATA = os.path.expanduser(os.environ.get('SCAR_DATA', '~/data/opr/scar'))
-INK, MUTED = '#0b0b0b', '#52514e'
 GREY = np.array([0.74, 0.74, 0.74])   # what an unconstrained cell fades to
 # Node coherence spans ~0.15-0.90 at all three sites (median ~0.47), so
 # these limits put the fade across the range that actually occurs. The
@@ -54,43 +53,6 @@ SRC_LABEL = {'phase': 'SNAPHU + coregistration', 'deltak': 'delta-k'}
 # geographic directions rather than saying "cross" and "along".
 LBL = (r'$\Delta\lambda = \lambda_{\perp} - \lambda_{\parallel}$'
        '\n' r'($\perp$ = %.0f$^\circ$,  $\parallel$ = %.0f$^\circ$ E of N)')
-
-
-def field(rec, name):
-    v = rec[name]
-    while isinstance(v, np.ndarray) and v.dtype == object and v.size == 1:
-        v = v.item()
-    return np.atleast_1d(np.asarray(v, float))
-
-
-def track_azimuth(lat, lon):
-    """Principal azimuth of the track, degrees E of N, as an AXIS (0-180).
-
-    The two eigenvalues being differenced sit on the profile axis and its
-    perpendicular, so the figure has to name those directions - dlam is
-    meaningless without them. An axis, not a heading: eigenvalues are
-    invariant under a 180 deg flip, so travelling the line either way
-    gives the same pair. Fitted over the whole track rather than
-    endpoint-to-endpoint so a wandering line still reports its trend.
-    """
-    ok = np.isfinite(lat) & np.isfinite(lon)
-    la, lo = lat[ok], lon[ok]
-    y = la - la.mean()
-    x = (lo - lo.mean()) * np.cos(np.radians(la.mean()))
-    pts = np.c_[x, y]
-    pts = pts - pts.mean(0)
-    _, _, vt = np.linalg.svd(pts, full_matrices=False)
-    dx, dy = vt[0]
-    return np.degrees(np.arctan2(dx, dy)) % 180
-
-
-def cumdist_km(lat, lon):
-    R = 6371.0
-    p = np.radians(lat)
-    dl = np.radians(np.diff(lon))
-    dp = np.diff(p)
-    a = np.sin(dp / 2)**2 + np.cos(p[:-1]) * np.cos(p[1:]) * np.sin(dl / 2)**2
-    return np.concatenate([[0], np.cumsum(2 * R * np.arcsin(np.sqrt(a)))])
 
 
 def shade(values, weight, norm, cmap):
@@ -115,7 +77,12 @@ def key_axes(ax, norm, cmap, vmin, vmax):
     """Two-dimensional key: dlam across, node coherence up."""
     nx, ny = 128, 48
     xs = np.linspace(vmin, vmax, nx)
-    ys = np.linspace(0, 1, ny)
+    # Ramp the KEY through confidence() as well, not through the raw blend
+    # weight: the axis is labelled in node coherence, and the COH_GAMMA
+    # bend means a cell at coherence 0.425 is painted at weight 0.62 in the
+    # section. A linear ramp here would have a reader match that saturation
+    # to 0.50 on the key and read the coherence systematically too high.
+    ys = confidence(np.linspace(COH_LO, COH_HI, ny), None)
     img = shade(np.tile(xs, (ny, 1)), np.tile(ys[:, None], (1, nx)),
                 norm, cmap)
     ax.imshow(img, origin='lower', aspect='auto',
