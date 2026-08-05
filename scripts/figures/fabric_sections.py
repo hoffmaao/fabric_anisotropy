@@ -47,6 +47,7 @@ TITLES = {
     'ridge_a': ('Ridge A divide', '20250108_02_009', 150.0),
     'thwaites': ('Thwaites eastern shear margin', '20240108_01_001', 150.0),
     'negis': ('NEGIS onset (EGRIP)', '20240626_03_001', 200.0),
+    'egrip': ('EastGRIP borehole line', '20240619_01_001', 200.0),
 }
 SRC_LABEL = {'phase': 'SNAPHU + coregistration', 'deltak': 'delta-k'}
 # The eigenvalue pair is defined by the profile's own axes, so name the

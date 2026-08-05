@@ -29,8 +29,12 @@ season_dir = '/cresis/dataproducts/opr_data/accum/2024_Greenland_Ground2';
 gps_dir = '/cresis/dataproducts/opr_data/opr_support/gps/2024_Greenland_Ground2';
 scratch = '/kucresis/scratch/hoffmana_sta/fabric';
 season = '2024_Greenland_Ground2';
-day_seg = '20240626_03';
-frm = 1;
+% Frames to repackage and invert. The first is the along-flow line beside
+% the southeastern shear margin; the second passes within 0.13 km of the
+% EastGRIP borehole, so its fabric profile can be set against the core's
+% own measurements. The borehole's own segment 20240618_01 carries no
+% phase (incoherent decimation), so this is the nearest usable line.
+targets = { '20240626_03', 1; '20240619_01', 1 };
 
 MIN_STEP_M = 1.0;      % below this the vehicle was stopped
 CROP_PRE = 0.5e-6;     % keep this much above the surface
@@ -41,6 +45,10 @@ code = fullfile(scratch, 'code');
 addpath(code);
 addpath(fullfile(code, 'opr_fabric'));
 addpath(fullfile(code, 'opr_fabric', 'test', 'stubs'));
+
+for ti = 1:size(targets, 1)
+day_seg = targets{ti, 1};
+frm = targets{ti, 2};
 
 season_root = fullfile(scratch, season);
 in_name = 'polarimetric_negis';
@@ -186,6 +194,8 @@ param.fabric = pf;
 t1 = tic;
 ok = fabric_task(param);
 fprintf('\nfabric_task returned %d (%.1f min)\n', ok, toc(t1)/60);
+
+end   % targets
 
 function pr = H_param_records_from(fn)
 % param_records straight from the qlook product, so array.img_comb and
