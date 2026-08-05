@@ -221,7 +221,8 @@ def render(name, rec, out_dir):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    S = loadmat(os.path.join(DATA, 'fabric_sections.mat'), squeeze_me=True)['S']
+    S = loadmat(os.path.join(DATA, 'fabric_sections.mat'),
+                squeeze_me=True)['S']
     names = sys.argv[2:] or list(S.dtype.names)
     for name in names:
         if name not in S.dtype.names:

@@ -37,8 +37,8 @@ import matplotlib
 import numpy as np
 
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-from scipy.io import loadmat
+import matplotlib.pyplot as plt      # noqa: E402
+from scipy.io import loadmat         # noqa: E402
 
 OUT = sys.argv[2] if len(sys.argv) > 2 else os.path.join(
     os.path.dirname(os.path.abspath(__file__)), '..', '..', 'figs')
@@ -112,8 +112,9 @@ def main():
     step = float(np.median(np.diff(t_cell))) if t_cell.size > 2 else 100e-9
     axes_for = {k: t_full for k, _, _, _, _, _ in STAGES}
 
-    band = 20 * step  # RMS window: wide enough to be readable, narrow
-                      # enough to keep the near-surface/deep contrast
+    # RMS window: wide enough to be readable, narrow enough to keep the
+    # near-surface/deep contrast
+    band = 20 * step
 
     fig, (ax0, ax1) = plt.subplots(1, 2, figsize=(11, 8), sharey=True)
     for key, label, c, lw, ls, alpha in STAGES:

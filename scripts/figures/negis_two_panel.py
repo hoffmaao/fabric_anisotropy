@@ -220,8 +220,9 @@ def main():
     # would stack three things in one corner
     axz = ax.inset_axes([0.02, 0.66, 0.40, 0.30], projection=PROJ)
     axz.set_extent(zext, crs=PROJ)
-    speed_layer(axz, dec=14)   # sparser than the main map's density would
-                               # give at this zoom, or the arrows carpet it
+    # sparser than the main map's density would give at this zoom, or the
+    # arrows carpet it
+    speed_layer(axz, dec=14)
     for la, lo in tracks:
         axz.plot(lo, la, '-', color=TRACK_C, lw=1.4, alpha=0.9,
                  transform=ccrs.PlateCarree(), zorder=7)

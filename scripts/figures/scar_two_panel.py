@@ -151,7 +151,7 @@ def thwaites():
 
     def ifg(fig, ax):
         sty.ifg_panel(ax, fig, dist, d['Time'].ravel() * 1e6,
-                  d['phase_wrapped'], np.abs(d['coherence']))
+                      d['phase_wrapped'], np.abs(d['coherence']))
         sty.draw_ifg_ends(ax, dist)
         ax.set_title(f'eastern shear margin crossing, segment {seg}',
                      fontsize=12, pad=26)
@@ -237,8 +237,8 @@ def ridge_a():
 
     def ifg(fig, ax):
         sty.ifg_panel(ax, fig, dist, d['Time'].ravel() * 1e6,
-                  np.angle(d['interferogram_mlook']),
-                  np.abs(d['interferogram_coherence']))
+                      np.angle(d['interferogram_mlook']),
+                      np.abs(d['interferogram_coherence']))
         sty.draw_ifg_ends(ax, dist)
         ax.set_title(f'divide setting, frame {frame}', fontsize=12, pad=26)
 

@@ -72,9 +72,9 @@ import matplotlib
 import numpy as np
 
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-from scipy.fft import fft, ifft
-from scipy.ndimage import uniform_filter
+import matplotlib.pyplot as plt              # noqa: E402
+from scipy.fft import fft, ifft              # noqa: E402
+from scipy.ndimage import uniform_filter     # noqa: E402
 
 ROOT = os.path.expanduser('~/projects/fabric_anisotropy')
 FRAME = os.path.expanduser('~/data/opr/stage_frame_20250108_02_001.mat')
@@ -84,8 +84,9 @@ FC = 750e6          # run_deltak_stages.m convention
 S_SIGN = -1         # forced phase_sign (settled 3 Aug)
 N_SUB = 12
 CELL_TWTT = 100e-9
-CELL_NTR = 16       # traces per cell; the extract is trace-decimated 2x,
-                    # so this matches the production 31-trace ground span
+# traces per cell; the extract is trace-decimated 2x, so this matches the
+# production 31-trace ground span
+CELL_NTR = 16
 SMOOTH = 5          # resolver smoothing on the cell grid
 BAND_FRAC = (0.02, 0.98)
 REF_BAND = (150e-9, 600e-9)
@@ -197,7 +198,8 @@ def main():
             Sb = np.zeros((Nt, Nx), np.complex64)
             Rb[un] = R[un]
             Sb[un] = S[un]
-            Ib = ifft(Sb, axis=0, workers=8) * np.conj(ifft(Rb, axis=0, workers=8))
+            Ib = (ifft(Sb, axis=0, workers=8)
+                  * np.conj(ifft(Rb, axis=0, workers=8)))
             fcs.append(FC + np.sum(fbb[sl] * pw[sl]) / np.sum(pw[sl]))
             Mb = cellavg(Ib * np.conj(unit), tg, xg, ntc, nxc)
             if prev1 is not None:
