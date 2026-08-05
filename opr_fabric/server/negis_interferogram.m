@@ -23,12 +23,22 @@
 % boundary mixes stopped and moving traces permanently - culling after the
 % looks (as negis_two_panel.py used to be the only place to do) cannot
 % undo that. This is the same criterion run_negis_fabric.m applies on the
-% inversion path.
+% inversion path. Traces with no GPS coverage are dropped by the same
+% step, but they are a different failure and are reported separately -
+% a day whose GPS file does not cover the frame would otherwise look like
+% a traverse that never moved.
 %
-% RE-RUN REQUIRED: the pre-cull extracts already on mem1 were written
-% without it and their boundary columns are contaminated. Delete
-% stages/negis_ifg_*.mat and re-run this script before regenerating the
-% NEGIS figures.
+% The surface pick is the leading edge (first sample above 5% of the trace
+% peak), NOT the power maximum, and must stay identical to the one in
+% run_negis_fabric.m. Both run on 20240626_03_001, so if they diverge the
+% NEGIS interferogram panel and the NEGIS fabric section are shown side by
+% side on two different depth zeros, offset by the pulse rise.
+%
+% RE-RUN REQUIRED: the extracts already on mem1 predate both the
+% pre-multilook cull and the leading-edge surface pick, so their boundary
+% columns are contaminated AND their Surface_ml sits on the power maximum.
+% Delete stages/negis_ifg_*.mat and re-run this script before regenerating
+% the NEGIS figures.
 %
 % For each requested frame this writes a multilooked interferogram,
 % coherence, repositioned trajectory and a power-based surface pick,
@@ -80,28 +90,52 @@ for fi = 1:size(frames, 1)
 
   % --- cull the stops, before any looks are taken. Data, GPS_time,
   % Elevation and the repositioned coordinates go together so every axis
-  % stays aligned with the traces that survive.
+  % stays aligned with the traces that survive. A trace whose predecessor
+  % has no position has no measurable step, so it is kept rather than
+  % called stopped.
   Rearth = 6371e3;
   p = deg2rad(Latitude); dl = diff(deg2rad(Longitude)); dp = diff(p);
   a = sin(dp/2).^2 + cos(p(1:end-1)).*cos(p(2:end)).*sin(dl/2).^2;
-  step = 2*Rearth*asin(sqrt(a));
-  keep = [true, step >= MIN_STEP_M];
-  fprintf('  culling %d of %d traces where the vehicle was stopped\n', ...
-    nnz(~keep), Nx);
+  step = [Inf, 2*Rearth*asin(sqrt(a))];
+  located = isfinite(Latitude) & isfinite(Longitude);
+  stopped = located & [false, located(1:end-1)] & step < MIN_STEP_M;
+  keep = located & ~stopped;
+  fprintf('  culling %d of %d traces: %d stopped, %d with no GPS coverage\n', ...
+    nnz(~keep), Nx, nnz(stopped), nnz(~located));
+  if any(~located)
+    warning('negis_interferogram:gpsCoverage', ...
+      '%s frame %d: %d of %d traces (%.1f%%) fall outside the day GPS file', ...
+      day_seg, frm, nnz(~located), Nx, 100*nnz(~located)/Nx);
+  end
   H.Data = H.Data(:, keep); V.Data = V.Data(:, keep);
   Latitude = Latitude(keep); Longitude = Longitude(keep);
   H.GPS_time = H.GPS_time(keep); H.Elevation = H.Elevation(keep);
   Nx = nnz(keep);
 
-  % --- surface pick from HH power (Surface is NaN in these products)
+  % --- surface pick from HH power (Surface is NaN in these products):
+  % first sample above 5% of the trace peak, which tracks the leading edge
+  % rather than the (broader) power maximum. Identical to the pick in
+  % run_negis_fabric.m so the figure and the inversion share a depth zero.
   pw = abs(H.Data).^2;
-  [~, si] = max(pw, [], 1);
-  Surface = H.Time(si).';
+  thr = 0.05 * max(pw, [], 1);
+  Surface = nan(1, Nx);
+  for k = 1:Nx
+    j = find(pw(:,k) > thr(k), 1);
+    if ~isempty(j), Surface(k) = H.Time(j); end
+  end
+  clear thr;
   fprintf('  surface pick %.3f..%.3f us (median %.3f)\n', ...
-    min(Surface)*1e6, max(Surface)*1e6, median(Surface)*1e6);
+    min(Surface)*1e6, max(Surface)*1e6, median(Surface,'omitnan')*1e6);
 
   % --- multilook: coherent sum of HH*conj(VV), power sums for coherence
   ntc = floor(Nt/NR); nxc = floor(Nx/NA);
+  if ntc < 1 || nxc < 1
+    error('negis_interferogram:tooFewTraces', ...
+      ['%s frame %d: %d samples x %d traces survive the cull, too few ' ...
+       'for one %dx%d look cell. Check the day GPS file covers this ' ...
+       'frame; refusing to write an empty interferogram.'], ...
+      day_seg, frm, Nt, Nx, NR, NA);
+  end
   cut = @(A) reshape(A(1:ntc*NR, 1:nxc*NA), NR, ntc, NA, nxc);
   I = H.Data(1:ntc*NR, 1:nxc*NA) .* conj(V.Data(1:ntc*NR, 1:nxc*NA));
   interferogram_mlook = squeeze(sum(sum(cut(I), 1), 3));
@@ -125,7 +159,7 @@ for fi = 1:size(frames, 1)
   Time = mean(reshape(H.Time(1:ntc*NR), NR, ntc), 1).';
   Latitude_ml = mean(reshape(Latitude(1:nxc*NA), NA, nxc), 1);
   Longitude_ml = mean(reshape(Longitude(1:nxc*NA), NA, nxc), 1);
-  Surface_ml = mean(reshape(Surface(1:nxc*NA), NA, nxc), 1);
+  Surface_ml = mean(reshape(Surface(1:nxc*NA), NA, nxc), 1, 'omitnan');
   Elevation_ml = mean(reshape(H.Elevation(1:nxc*NA), NA, nxc), 1);
   GPS_time_ml = mean(reshape(H.GPS_time(1:nxc*NA), NA, nxc), 1);
   looks = [NR NA];
