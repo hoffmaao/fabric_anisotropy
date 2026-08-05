@@ -68,13 +68,36 @@ o0.coherence_threshold = 0.10;
 C_ICE = 1.68e8;   % for the truncation cutoffs only
 surf_med = median(map0.Surface(isfinite(map0.Surface)));
 
+R = struct('tag',{},'nint',{},'H',{},'cut',{},'zc',{},'dlam',{},'qual',{});
+
+fprintf('\n--- depth discretization ---\n');
+for nint = [15 25 40]
+  R = addcase(R, sprintf('nint%d', nint), nint, 2000, Inf, map0, dtau, ...
+    info, o0, surf_med, C_ICE);
+end
+
+fprintf('\n--- column-model bed depth ---\n');
+for H = [2000 2400 2800]
+  R = addcase(R, sprintf('H%d', H), 25, H, Inf, map0, dtau, info, o0, ...
+    surf_med, C_ICE);
+end
+
+fprintf('\n--- truncated record (the decisive test) ---\n');
+for cut = [1900 1700 1500]
+  R = addcase(R, sprintf('cut%d', cut), 25, 2000, cut, map0, dtau, info, ...
+    o0, surf_med, C_ICE);
+end
+
+save(out_fn, '-v7', 'R');
+fprintf('\nwrote %s\n', out_fn);
+
+%% ---- local helpers (MATLAB requires them after all script code) ----
 function par = mkpar(H)
   par = ptt.defaultParams();
   par.H = H; par.lam_z_sfc = 1/3; par.lam_z_bed = 1/3;
   par.zhat_bco = 1 - 60/H;
 end
 
-R = struct('tag',{},'nint',{},'H',{},'cut',{},'zc',{},'dlam',{},'qual',{});
 function R = addcase(R, tag, nint, H, cut, map, dtau, info, o0, surf_med, C_ICE)
   o = o0; o.num_intervals = nint;
   m = map;
@@ -97,24 +120,3 @@ function R = addcase(R, tag, nint, H, cut, map, dtau, info, o0, surf_med, C_ICE)
   fprintf('  %-18s nint %2d  H %4d  cut %6s  deepest %.0f m, dlam %.3f\n', ...
     tag, nint, H, num2str(cut), max(R(k).zc), R(k).dlam(end));
 end
-
-fprintf('\n--- depth discretization ---\n');
-for nint = [15 25 40]
-  R = addcase(R, sprintf('nint%d', nint), nint, 2000, Inf, map0, dtau, ...
-    info, o0, surf_med, C_ICE);
-end
-
-fprintf('\n--- column-model bed depth ---\n');
-for H = [2000 2400 2800]
-  R = addcase(R, sprintf('H%d', H), 25, H, Inf, map0, dtau, info, o0, ...
-    surf_med, C_ICE);
-end
-
-fprintf('\n--- truncated record (the decisive test) ---\n');
-for cut = [1900 1700 1500]
-  R = addcase(R, sprintf('cut%d', cut), 25, 2000, cut, map0, dtau, info, ...
-    o0, surf_med, C_ICE);
-end
-
-save(out_fn, '-v7', 'R');
-fprintf('\nwrote %s\n', out_fn);

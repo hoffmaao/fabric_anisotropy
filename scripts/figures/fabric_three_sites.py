@@ -38,9 +38,11 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt          # noqa: E402
 from scipy.io import loadmat             # noqa: E402
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from scar_style import (DATA, INK, MUTED, field,  # noqa: E402
+                        track_azimuth)
+
 OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
-DATA = os.path.expanduser(os.environ.get('SCAR_DATA', '~/data/opr/scar'))
-INK, MUTED = '#0b0b0b', '#52514e'
 
 # Validated categorical slots (dataviz reference palette, light mode):
 # adjacent-pair CVD separation dE 24.7 / 18.9, normal-vision 33.6 / 21.1.
@@ -54,24 +56,6 @@ SITES = [
 # the measured fringe rate there is ~0 (see opr_fabric/server/fringe_check.m)
 Z_MIN = 200.0
 COH_MIN = 0.45      # node coherence an interval must reach to be drawn
-
-
-def field(rec, name):
-    v = rec[name]
-    while isinstance(v, np.ndarray) and v.dtype == object and v.size == 1:
-        v = v.item()
-    return np.atleast_1d(np.asarray(v, float))
-
-
-def track_azimuth(lat, lon):
-    """Principal azimuth of the track, degrees E of N, as an axis (0-180)."""
-    ok = np.isfinite(lat) & np.isfinite(lon)
-    la, lo = lat[ok], lon[ok]
-    pts = np.c_[(lo - lo.mean()) * np.cos(np.radians(la.mean())),
-                la - la.mean()]
-    pts = pts - pts.mean(0)
-    _, _, vt = np.linalg.svd(pts, full_matrices=False)
-    return np.degrees(np.arctan2(vt[0][0], vt[0][1])) % 180
 
 
 def profile(rec):
@@ -109,6 +93,12 @@ def main():
         z, med, lo, hi = profile(rec)
         az = track_azimuth(field(rec, 'lat'), field(rec, 'lon'))
         ok = np.isfinite(med)
+        if not ok.any():
+            # A weaker frame can leave no interval clearing both Z_MIN and
+            # COH_MIN; drop that site rather than killing the whole figure
+            print('%-9s no interval clears %.0f m and node coherence %.2f; '
+                  'omitted' % (key, Z_MIN, COH_MIN))
+            continue
         ax.fill_betweenx(z[ok], lo[ok], hi[ok], color=color, alpha=0.18, lw=0)
         ax.plot(med[ok], z[ok], '-', color=color, lw=2.2,
                 label=r'%s   ($\perp$ %.0f$^\circ$, $\parallel$ %.0f$^\circ$)'

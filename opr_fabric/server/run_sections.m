@@ -8,7 +8,7 @@
 % parameters, so it would endorse an overfit.
 %
 % dtau source per site is NOT uniform, deliberately:
-%   Ridge A   joint   SNAPHU there is exactly consistent with the wrapped
+%   Ridge A   phase   SNAPHU there is exactly consistent with the wrapped
 %                     phase, and delta-k is suppressed at depth
 %   Thwaites  delta-k the joint chain does not fit its own observations
 %                     there (5.2 ns rms) - blend corruption
@@ -108,7 +108,12 @@ for si = 1:size(sites,1)
   end
   fprintf('  phase_sign %+d\n', info.phase_sign);
 
-  best = struct('adj', -Inf);
+  % Every gate is scored first and the winner picked afterwards, because
+  % the rule below is relative to the BEST agreement, not to whichever
+  % gate happened to be scored before it - comparing against a running
+  % best lets each successive gate give up another 0.05 and the losses
+  % compound into a gate that agrees far worse than the best one.
+  cand = {};
   fprintf('  %-6s %8s %9s %9s %6s\n','gate','rms_ns','adj_corr','deep_m','nblk');
   for ti = 1:numel(THR)
     o2 = o; o2.coherence_threshold = THR(ti);
@@ -133,30 +138,45 @@ for si = 1:size(sites,1)
     deep = max(iv.bot_depth(:));
     nblk = numel(blk.starts);
     fprintf('  %-6.2f %8.3f %9.2f %9.0f %6d\n', THR(ti), rms, adj, deep, nblk);
-    % Among gates that agree about as well, take the one that reaches
-    % DEEPEST. A looser gate admits weakly-constrained cells rather than
-    % dropping them, and the figure shades by node coherence, so those
-    % cells arrive visibly faded instead of silently absent - which is
-    % strictly more informative than a blank lower half. Thwaites is the
-    % case in point: gate 0.10 reaches 1977 m against 1533 m at 0.35, for
-    % an agreement difference of 0.02.
-    if isfinite(adj) && (adj > best.adj + 0.05 || ...
-        (adj > best.adj - 0.05 && deep > best.deep))
-      best = struct('adj', adj, 'gate', THR(ti), 'rms', rms, 'deep', deep, ...
-        'nblk', nblk, 'dlam', single(iv.dlam), 'top', single(iv.top_depth), ...
-        'bot', single(iv.bot_depth), 'quality', single(iv.quality), ...
-        'interpolated', single(iv.interpolated), ...
-        'clipped', single(iv.clipped), ...
-        'lat', cellfun(@(c) mean(pol.Latitude(c)), blk.cols), ...
-        'lon', cellfun(@(c) mean(pol.Longitude(c)), blk.cols), ...
-        'src', src, 'nint', NINT, 'block', BLOCK, ...
-        'phase_sign', info.phase_sign);
-    end
+    % adj is NaN when no adjacent block pair had enough jointly finite
+    % intervals to correlate (a single-block frame, or a gate that leaves
+    % the record too sparse). Such a gate cannot be scored, so it cannot
+    % be chosen.
+    if ~isfinite(adj), continue; end
+    cand{end+1} = struct('adj', adj, 'gate', THR(ti), 'rms', rms, ...
+      'deep', deep, ...
+      'nblk', nblk, 'dlam', single(iv.dlam), 'top', single(iv.top_depth), ...
+      'bot', single(iv.bot_depth), 'quality', single(iv.quality), ...
+      'interpolated', single(iv.interpolated), ...
+      'clipped', single(iv.clipped), ...
+      'lat', cellfun(@(c) mean(pol.Latitude(c)), blk.cols), ...
+      'lon', cellfun(@(c) mean(pol.Longitude(c)), blk.cols), ...
+      'src', src, 'nint', NINT, 'block', BLOCK, ...
+      'phase_sign', info.phase_sign); %#ok<SAGROW>
   end
+  if isempty(cand)
+    warning('%s: no coherence gate produced a scorable inversion; skipping', ...
+      name);
+    clear dtau pol map;
+    continue;
+  end
+
+  % Among gates that agree about as well as the BEST one does, take the
+  % one that reaches DEEPEST. A looser gate admits weakly-constrained
+  % cells rather than dropping them, and the figure shades by node
+  % coherence, so those cells arrive visibly faded instead of silently
+  % absent - which is strictly more informative than a blank lower half.
+  % Thwaites is the case in point: gate 0.10 reaches 1977 m against
+  % 1533 m at 0.35, for an agreement difference of 0.02.
+  adjs = cellfun(@(c) c.adj, cand);
+  deeps = cellfun(@(c) c.deep, cand);
+  deeps(adjs < max(adjs) - 0.05) = -Inf;
+  [~, bi] = max(deeps);
+  best = cand{bi};
   fprintf('  chosen gate %.2f: rms %.3f ns, adj %.2f, %d blocks, %.0f m\n', ...
     best.gate, best.rms, best.adj, best.nblk, best.deep);
   S.(name) = best;
-  clear dtau pol map;
+  clear cand dtau pol map;
 end
 
 save(out_fn, '-v7', 'S');

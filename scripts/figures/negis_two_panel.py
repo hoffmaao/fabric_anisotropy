@@ -2,7 +2,9 @@
 
 Same slide design as scar_two_panel.py - survey lines white, focused
 profile black, red start / white end markers on the map inset and at the
-matching edges of the interferogram, no legend, plain black scale bar.
+matching edges of the interferogram, no legend, plain black scale bar -
+and literally the same constants and helpers, out of scar_style.py. Only
+the projection differs (polar stereographic north, not EPSG:3031).
 
 The interferogram comes from negis_interferogram.m on mem1: the
 2024_Greenland_Ground2 qlook products are COMPLEX for every segment
@@ -22,16 +24,16 @@ import matplotlib
 import numpy as np
 
 matplotlib.use('Agg')
-import matplotlib.patheffects as pe        # noqa: E402
-import matplotlib.pyplot as plt            # noqa: E402
-from matplotlib import transforms          # noqa: E402
 from matplotlib.colors import LogNorm      # noqa: E402
-from matplotlib.colors import hsv_to_rgb   # noqa: E402
 from scipy.io import loadmat               # noqa: E402
 
 warnings.filterwarnings('ignore')
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cartopy.crs as ccrs                # noqa: E402
+import scar_style as sty                  # noqa: E402
+from scar_style import (DATA, DPI, PROFILE_C, PROFILE_FX,  # noqa: E402
+                        PROFILE_LW, TRACK_C)
 
 OUT = sys.argv[1]
 # 20240626_03_001: the along-flow line beside the southeastern shear
@@ -42,68 +44,9 @@ OUT = sys.argv[1]
 # blocks. It is also the longest (13.7 km), straightest (0.99) and best
 # flow-aligned (0.97) frame in the survey.
 TAG = sys.argv[2] if len(sys.argv) > 2 else '20240626_03_001'
-# Inputs that are data, not code: ITS_LIVE windows streamed from S3, the
-# NEGIS track/interferogram extracts pulled off mem1. They live beside the
-# rest of the mirrored products rather than in the repo.
-DATA = os.path.expanduser(os.environ.get('SCAR_DATA', '~/data/opr/scar'))
-
-FIGSIZE = (13.0, 5.8)
-DPI = 200
-END_FACES = ('#e8000b', '#ffffff')
-END_SIZE = 130
-END_EDGE = 1.6
-TRACK_C = 'white'
-PROFILE_C = 'black'
-PROFILE_LW = 2.8
-PROFILE_FX = [pe.withStroke(linewidth=PROFILE_LW + 1.4, foreground='white')]
 
 PROJ = ccrs.Stereographic(central_latitude=90, central_longitude=-45,
                           true_scale_latitude=70)
-
-
-def cumdist_km(lats, lons):
-    R = 6371.0
-    p = np.radians(np.asarray(lats))
-    dl = np.radians(np.diff(np.asarray(lons)))
-    dp = np.diff(p)
-    a = np.sin(dp / 2)**2 + np.cos(p[:-1]) * np.cos(p[1:]) * np.sin(dl / 2)**2
-    return np.concatenate([[0], np.cumsum(2 * R * np.arcsin(np.sqrt(a)))])
-
-
-def nice_length(target_m):
-    for L in [1e2, 2e2, 5e2, 1e3, 2e3, 5e3, 1e4, 2e4, 5e4, 1e5, 2e5]:
-        if L >= target_m:
-            return L
-    return 5e5
-
-
-def scale_bar_br(ax, extent, frac=0.25):
-    """Plain black scale bar, bottom-right; no casing, no label box."""
-    width = extent[1] - extent[0]
-    height = extent[3] - extent[2]
-    length = nice_length(frac * width)
-    x1 = extent[1] - 0.06 * width
-    x0 = x1 - length
-    y0 = extent[2] + 0.045 * height
-    ax.plot([x0, x1], [y0, y0], color='black', lw=3, transform=PROJ,
-            zorder=9, solid_capstyle='butt')
-    label = f'{length/1000:g} km' if length >= 1000 else f'{length:g} m'
-    ax.text((x0 + x1) / 2, y0 + 0.02 * height, label, ha='center',
-            va='bottom', fontsize=9, color='black', transform=PROJ,
-            zorder=9)
-
-
-def hsv_plot_coherence(phase, coh, coherence_limits=(0.0, 1.0)):
-    """Port of OPR display/hsv_plot_coherence.m: hue = phase, value =
-    coherence, so incoherent pixels fade to black rather than shouting
-    random fringe colours."""
-    hue = phase / (2 * np.pi) + 0.5
-    val = np.clip(np.abs(coh), *coherence_limits)
-    val = (val - coherence_limits[0]) / (
-        coherence_limits[1] - coherence_limits[0])
-    val = np.nan_to_num(val, nan=0.0)
-    hsv = np.stack([np.clip(hue, 0, 1), np.ones_like(hue), val], axis=-1)
-    return hsv_to_rgb(hsv)
 
 
 def block_sum(a, nr, na):
@@ -123,6 +66,11 @@ def drop_stationary(lat, lon, min_step_m=1.0):
     them. Worse, imshow spreads columns evenly over [dist[0], dist[-1]],
     so a stop that covers no ground still eats ~0.7 km of the axis. This
     is the cull Knut Christianson applies in the NEGIS reposition script.
+
+    negis_interferogram.m now applies the same criterion to the RAW traces
+    before its 4x4 multilook, which is the only place it can keep a
+    stopped stretch out of the azimuth cell that straddles its edge. This
+    stays as a no-op safeguard for extracts written before that change.
     """
     R = 6371e3
     p = np.radians(lat)
@@ -192,7 +140,7 @@ def main():
     # profile exists to show, and this frame's coherence (0.66-0.77 over
     # the top 10 us) does not need the extra looks.
     ifg, coh, t, lats, lons, surf = load_ifg(TAG, extra_looks=(2, 4))
-    dist = cumdist_km(lats, lons)
+    dist = sty.cumdist_km(lats, lons)
     tb_all = (t - np.nanmedian(surf)) * 1e6
     shallow = coh[(tb_all >= 0) & (tb_all < 15)]
     print('%s: %s ifg, %.2f km, coherence median %.3f (0-15 us below surface)'
@@ -239,10 +187,7 @@ def main():
               max(pts[:, 1].min() - pad, wy.min()),
               min(pts[:, 1].max() + pad, wy.max()))
 
-    fig = plt.figure(figsize=FIGSIZE, dpi=DPI, layout='constrained')
-    gs = fig.add_gridspec(1, 2, width_ratios=[0.82, 1.18])
-    ax = fig.add_subplot(gs[0, 0], projection=PROJ)
-    axi = fig.add_subplot(gs[0, 1])
+    fig, ax, axi = sty.two_panel_figure(PROJ)
 
     ax.set_extent(extent, crs=PROJ)
     pcm = speed_layer(ax, dec=40)
@@ -260,7 +205,7 @@ def main():
     gl.top_labels = False
     gl.right_labels = False
     gl.bottom_labels = False   # they rotate into the speed colorbar
-    scale_bar_br(ax, extent)
+    sty.scale_bar_br(ax, extent, PROJ)
     ax.set_title('NEGIS onset survey (EGRIP)', fontsize=12)
 
     # Zoom inset so the profile's two ends separate, as on the other sites
@@ -283,37 +228,19 @@ def main():
     axz.plot(lons, lats, '-', color=PROFILE_C, lw=PROFILE_LW,
              transform=ccrs.PlateCarree(), zorder=8,
              path_effects=PROFILE_FX)
-    axz.scatter([lons[0], lons[-1]], [lats[0], lats[-1]], s=END_SIZE,
-                c=list(END_FACES), edgecolor='black', lw=END_EDGE,
-                transform=ccrs.PlateCarree(), zorder=10)
-    for spine in axz.spines.values():
-        spine.set_edgecolor('white')
-        spine.set_linewidth(1.5)
+    sty.draw_map_ends(axz, lats, lons)
     # Dashed locator, solid inset frame, so the two boxes are telling apart
-    ax.plot([zext[0], zext[1], zext[1], zext[0], zext[0]],
-            [zext[2], zext[2], zext[3], zext[3], zext[2]],
-            '--', color='white', lw=1.0, dashes=(4, 2), transform=PROJ,
-            zorder=9)
+    sty.inset_frame(axz)
+    sty.locator_box(ax, zext, PROJ)
 
     # ---- interferogram
     tb = (t - np.nanmedian(surf)) * 1e6
-    st = max(1, ifg.shape[0] // 2200)
-    sx = max(1, ifg.shape[1] // 2000)
-    rgb = hsv_plot_coherence(np.angle(ifg[::st, ::sx]), coh[::st, ::sx])
-    axi.imshow(rgb, aspect='auto', interpolation='nearest',
-               extent=[dist[0], dist[-1], tb[-1], tb[0]])
+    sty.ifg_panel(
+        axi, fig, dist, tb, np.angle(ifg), coh,
+        ylabel='TWTT below surface (μs)',
+        cb_label='HH-VV interferogram phase (rad); brightness = coherence')
     axi.set_ylim(min(22.0, tb[-1]), -0.5)
-    axi.set_xlabel('distance along profile (km)')
-    axi.set_ylabel('TWTT below surface (μs)')
-    sm = plt.cm.ScalarMappable(cmap='hsv', norm=plt.Normalize(-np.pi, np.pi))
-    cb = fig.colorbar(sm, ax=axi, pad=0.035)
-    cb.set_label('HH-VV interferogram phase (rad); brightness = coherence')
-    cb.set_ticks([-np.pi, 0, np.pi])
-    cb.set_ticklabels([r'$-\pi$', '0', r'$\pi$'])
-    tr = transforms.blended_transform_factory(axi.transData, axi.transAxes)
-    axi.scatter([dist[0], dist[-1]], [1.035, 1.035], s=END_SIZE,
-                c=list(END_FACES), edgecolor='black', lw=END_EDGE,
-                transform=tr, clip_on=False, zorder=10)
+    sty.draw_ifg_ends(axi, dist)
     axi.set_title('along-flow profile, frame %s' % TAG, fontsize=12,
                   pad=26)
 

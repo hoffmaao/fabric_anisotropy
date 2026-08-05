@@ -199,10 +199,15 @@ out_dir = fullfile(scratch, 'stages');
 if ~exist(out_dir,'dir'), mkdir(out_dir); end
 out_fn = fullfile(out_dir, sprintf('deltak_stages_%s_%03d.mat', day_seg, frm));
 fprintf('\nSaving %s\n', out_fn);
+% dk_smooth travels with the extract so deltak_stages.py can draw the seam
+% band at the width ptt.imgCombSeam actually masks for delta-k, instead of
+% carrying its own copy of the resolver smoothing.
+dk_defaults = ptt.deltakDefaults(opts);
+dk_smooth = dk_defaults.smooth;
 save(out_fn, '-v7', 'Time', 'Surface', 'surf_mean', 't_cell', 'prof_A', ...
   'prof_Q', 'prof_B', 'prof_deltak', 'prof_snaphu', 'prof_coreg', ...
   'coverage', 'coh', 'df', 'margin_Q', 'margin_B', 'phase_sign_dk', ...
-  'img_comb', 'day_seg', 'frm');
+  'img_comb', 'dk_smooth', 'day_seg', 'frm');
 
 fprintf('Done.\n');
 

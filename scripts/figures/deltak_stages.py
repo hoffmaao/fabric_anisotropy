@@ -45,6 +45,10 @@ OUT = sys.argv[2] if len(sys.argv) > 2 else os.path.join(
 
 C_ICE = 1.68e8  # m/s, two-way traveltime to depth below the firn column
 
+# ptt.deltakDefaults' resolver smoothing, used only to draw the widened
+# seam band when the extract predates run_deltak_stages.m saving it.
+DK_SMOOTH_DEFAULT = 5
+
 # Drawn in this order, so the reference estimators sit under the ladder
 # stages the diagnostic is about rather than covering them.
 STAGES = [
@@ -128,13 +132,29 @@ def main():
 
     # ptt.imgCombSeam places each combine at surface + ic(1) in absolute
     # TWTT and masks [t_c - win, t_c + 2*win], so on this below-surface
-    # axis the band is [ic(1) - win, ic(1) + 2*win].
+    # axis the band is [ic(1) - win, ic(1) + 2*win]. The three delta-k
+    # rungs - the curves this figure exists to explain - get a WIDER band:
+    # imgCombSeam grows it by the analysis-cell reach so every cell whose
+    # dk.smooth window touched the seam is dropped too. Drawing only the
+    # narrow band would understate the masked region for exactly those
+    # curves, so the reach is shaded lighter around it.
+    smooth = float(np.atleast_1d(
+        np.asarray(d.get('dk_smooth', DK_SMOOTH_DEFAULT), float)).ravel()[0])
+    reach = (max(0.0, (smooth - 1) / 2) + 1) * step
     ic = np.atleast_1d(np.asarray(d.get('img_comb', []), float)).ravel()
     for b in range(ic.size // 3):
         t_after, win = ic[3 * b], ic[3 * b + 2]
         if not np.isfinite(t_after):
             continue
+        if not np.isfinite(win):
+            win = 0.0
         for ax in (ax0, ax1):
+            ax.axhspan(1e6 * (t_after - win - reach),
+                       1e6 * (t_after + 2 * win + reach),
+                       color='0.93', zorder=0,
+                       label='_' if b else
+                       'delta-k seam band (+%.0f ns cell reach)'
+                       % (1e9 * reach))
             ax.axhspan(1e6 * (t_after - win),
                        1e6 * (t_after + 2 * win),
                        color='0.85', zorder=0,

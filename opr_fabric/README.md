@@ -94,6 +94,45 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
   phase estimators, to locate where the Ridge A delta-k amplitude is
   lost; `scripts/figures/deltak_stages.py` plots the result (see both
   headers).
+- The rest of `server/` is single-purpose runners for the SCAR work. Like
+  the batches above they carry absolute mem1 paths by design and are
+  launched by hand with `matlab -batch`; each one's header states its
+  inputs, its launch line and what it concluded.
+  - `run_sections.m` - the shipped high-resolution 2D sections for all
+    three profiles (Ridge A, Thwaites, NEGIS) at the retuned settings.
+    The per-frame coherence gate is swept and chosen on ADJACENT-BLOCK
+    AGREEMENT, not misfit rms - rms is a post-regularization residual that
+    always improves with more free parameters and would endorse an
+    overfit - and among gates that agree about as well as the best one,
+    the deepest-reaching wins, because the figures shade by coherence so
+    weak cells arrive visibly faded rather than silently absent. Writes
+    the `fabric_sections.mat` both section figures read.
+  - `ridge_a_resolution.m` - the sweep of depth resolution, block size and
+    regularization that established those settings.
+  - `ridge_a_edge_test.m` - is the deep Ridge A downturn physical or a
+    domain edge? Sweeps the interval count, the column-model bed depth
+    `par.H`, and the record truncation depth (the decisive test: an edge
+    effect propagates inward, so values well above the cut must not move
+    when the cut moves).
+  - `fringe_check.m` - end-to-end validation of the chain against the raw
+    fringe density, which is proportional to dlam with no inversion
+    involved. Calibrates against `ptt.twttDifference` directly rather than
+    a hand-derived constant, on purpose: hand-deriving it drops the
+    two-way factor that lives inside `twttDifference` and produces a
+    spurious factor of 2 that looks exactly like a real bug.
+  - `negis_reposition_tracks.m` - rebuilds the 2024_Greenland_Ground2
+    trajectories from the GPS files, since the records radar-time-to-GPS
+    sync failed for every segment but 20240618_01.
+  - `negis_interferogram.m` - forms and extracts the HH x conj(VV)
+    interferograms for the candidate NEGIS frames. Culls the traces the
+    traverse stopped for BEFORE multilooking (they multilook to high
+    coherence with random range phase, so no downstream coherence test
+    catches them) and ships the un-normalised power sums so the look count
+    can be raised locally.
+  - `run_negis_fabric.m` - repackages one NEGIS qlook HH/VV pair into
+    `CSARP_polarimetric` layout and runs the ordinary `fabric_task`
+    delta-k chain over it, so the inversion is identical to the one that
+    produced the other two sites rather than a reimplementation.
 
 ## Margin display extracts
 
