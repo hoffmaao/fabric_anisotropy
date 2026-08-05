@@ -31,7 +31,19 @@ sites = { ...
   'thwaites', ['/cresis/dataproducts/opr_data/accum/2023_Antarctica_Ground/' ...
                'CSARP_polarimetric_unwrap/20240108_01/Data_20240108_01_001.mat'], 'deltak'; ...
   'negis',    [scratch '/2024_Greenland_Ground2/CSARP_polarimetric_negis/' ...
-               '20240626_03/Data_20240626_03_001.mat'], 'deltak'};
+               '20240626_03/Data_20240626_03_001.mat'], 'deltak'; ...
+  % Nearest usable line to the EastGRIP borehole, so this profile's fabric
+  % can be set against the core's own measurements. The borehole's own
+  % segment 20240618_01 carries no phase (incoherent decimation), and of
+  % the complex lines that pass close by, only this one inverts stably:
+  % 20240621_01_010 (0.13 km) and 20240626_01_001 (0.15 km) both drive
+  % 0.8-1.6% of intervals onto the eigenvalue bound at |dlam| = 2/3 with
+  % 0.54-0.74 ns misfit, while this one (0.32 km) pegs nothing and fits to
+  % 0.37 ns. All three are far noisier than the margin line - node
+  % coherence ~0.34 against 0.46 - because the traverse radiates from camp
+  % and these are its short, manoeuvring first legs.
+  'egrip',    [scratch '/2024_Greenland_Ground2/CSARP_polarimetric_negis/' ...
+               '20240619_01/Data_20240619_01_001.mat'], 'deltak'};
 
 BLOCK = 125;
 NINT = 25;

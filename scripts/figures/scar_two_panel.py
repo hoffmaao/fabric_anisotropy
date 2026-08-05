@@ -40,7 +40,7 @@ import antarctic_basemap as ab            # noqa: E402
 import cartopy.crs as ccrs                # noqa: E402
 import scar_style as sty                  # noqa: E402
 from scar_style import (DATA, DPI, PROFILE_C, PROFILE_FX,  # noqa: E402
-                        PROFILE_LW, TRACK_C)
+                        PROFILE_LW, TRACK_C, zoom_inset)
 
 OUT = sys.argv[1]
 
@@ -118,7 +118,7 @@ def thwaites():
         # the usual -0.07
         cax = ax.inset_axes([0.05, -0.15, 0.62, 0.03])
         fig.colorbar(pcm, cax=cax, orientation='horizontal',
-                     label='ITS_LIVE surface speed (m/yr, log scale)')
+                     label='surface speed (m/yr)')
         for la, lo in tracks:
             ax.plot(lo, la, '-', color=TRACK_C, lw=1.1, alpha=0.9,
                     transform=ccrs.PlateCarree(), zorder=7)
@@ -139,7 +139,7 @@ def thwaites():
                                       ccrs.PlateCarree())[:2]
         half = 9e3
         zext = (px - half, px + half, py - half, py + half)
-        axz = ax.inset_axes([0.02, 0.30, 0.55, 0.34], projection=proj)
+        axz = zoom_inset(ax, [0.02, 0.30, 0.55, 0.34], proj)
         axz.set_extent(zext, crs=proj)
         speed_layer(axz, dec=18)
         axz.plot(lons, lats, '-', color=PROFILE_C, lw=PROFILE_LW,
@@ -212,7 +212,7 @@ def ridge_a():
                                       ccrs.PlateCarree())[:2]
         half = 4e3
         zext = (px - half, px + half, py - half, py + half)
-        axz = ax.inset_axes([0.02, 0.30, 0.5, 0.32], projection=proj)
+        axz = zoom_inset(ax, [0.02, 0.30, 0.5, 0.32], proj)
         axz.set_extent(zext, crs=proj)
         axz.set_facecolor('0.28')
         for la, lo in tracks:
@@ -229,10 +229,9 @@ def ridge_a():
         gl.top_labels = False
         gl.right_labels = False
         scale_bar_br(ax, extent)
-        ax.annotate('no satellite velocity coverage south of 82.7°S\n'
-                    '(interior divide site, flow < 2 m/yr)',
-                    xy=(0.03, 0.03), xycoords='axes fraction', fontsize=7.5,
-                    color='white')
+        # No in-map caption: the absence of a speed layer and its colorbar
+        # already says there is no satellite velocity here, and on a
+        # projected slide the text competed with the survey lines.
         ax.set_title('Ridge A raster survey', fontsize=12)
 
     def ifg(fig, ax):

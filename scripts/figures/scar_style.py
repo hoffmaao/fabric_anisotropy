@@ -133,6 +133,27 @@ def inset_frame(axz, color='white', lw=1.5):
         spine.set_linewidth(lw)
 
 
+def zoom_inset(ax, rect, proj, facecolor=None):
+    """Zoom inset that composites ABOVE the parent map's own layers.
+
+    `ax.inset_axes()` gives the child the default Axes zorder of 0, while
+    the map draws its flow arrows, survey tracks, profile and scale bar at
+    explicit zorders 5-9. The parent's layers therefore paint straight over
+    the inset, and the result reads as two sets of arrows at two different
+    scales inside one box - the main map's coarse quiver and gridlines
+    crossing the inset's own fine quiver. Lifting the inset above every
+    parent layer, and making its patch opaque, leaves only the arrows that
+    belong to the zoomed region.
+    """
+    axz = ax.inset_axes(rect, projection=proj)
+    axz.set_zorder(ax.get_zorder() + 20)
+    if facecolor is not None:
+        axz.set_facecolor(facecolor)
+    axz.patch.set_alpha(1.0)
+    axz.patch.set_visible(True)
+    return axz
+
+
 def draw_map_ends(ax, lats, lons):
     """Red start / white end markers on the profile, black outlined."""
     import cartopy.crs as ccrs
