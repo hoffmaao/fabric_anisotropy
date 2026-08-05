@@ -168,17 +168,6 @@ Scripts (each validates or applies the above end to end):
   before the cross products). It runs and reports, but it does not resolve
   the suppression and its deep profile still anti-correlates with SNAPHU;
   the docstring states the numbers. Not wired into `+ptt`.
-
-### SCAR figure inputs and outputs
-
-Those figures follow this project's usual convention of keeping mirrored
-products out of git. Their INPUT data - ITS_LIVE velocity windows streamed
-from S3, the NEGIS track and interferogram extracts pulled off mem1, the
-`fabric_sections.mat` stage - is staged under `~/data/opr/scar`, override
-with the `SCAR_DATA` environment variable. Their OUTPUT goes wherever the
-`<out_dir>` argument points, which for the talk is
-`~/presentations/SCAR_figures`, outside the repo; unlike the rest of
-`scripts/figures/`, they do not write to `figs/`.
 - `scripts/figures/ghost2_swath_movie.py` is the one figure script outside
   that batch-output family: it renders a look-angle sweep movie (one
   along-track radargram per steering angle, TWTT axis, rotating beam icon)
@@ -188,6 +177,17 @@ with the `SCAR_DATA` environment variable. Their OUTPUT goes wherever the
   npz (locally), writes .mp4 when ffmpeg is available and .gif otherwise,
   and `--selftest` exercises it on a synthetic cube where the real,
   server-only data is unavailable.
+
+### SCAR figure inputs and outputs
+
+The SCAR talk figures follow this project's usual convention of keeping
+mirrored products out of git. Their INPUT data - ITS_LIVE velocity
+windows streamed from S3, the NEGIS track and interferogram extracts
+pulled off mem1, the `fabric_sections.mat` stage - is staged under
+`~/data/opr/scar`, override with the `SCAR_DATA` environment variable.
+Their OUTPUT goes wherever the `<out_dir>` argument points, which for the
+talk is `~/presentations/SCAR_figures`, outside the repo; unlike the rest
+of `scripts/figures/`, they do not write to `figs/`.
 
 ## OPR toolbox integration (`opr_fabric/`)
 
