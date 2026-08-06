@@ -30,10 +30,13 @@ gps_dir = '/cresis/dataproducts/opr_data/opr_support/gps/2024_Greenland_Ground2'
 scratch = '/kucresis/scratch/hoffmana_sta/fabric';
 season = '2024_Greenland_Ground2';
 % Frames to repackage and invert. The first is the along-flow line beside
-% the southeastern shear margin; the second passes within 0.13 km of the
-% EastGRIP borehole, so its fabric profile can be set against the core's
-% own measurements. The borehole's own segment 20240618_01 carries no
-% phase (incoherent decimation), so this is the nearest usable line.
+% the southeastern shear margin; the second stands 0.32 km off the
+% EastGRIP borehole, so its fabric can be set against the core's own
+% measurements. The borehole's own segment 20240618_01 carries no phase
+% (incoherent decimation). Two lines pass NEARER - 20240621_01_010 at
+% 0.13 km and 20240626_01_001 at 0.15 km - but both drive 0.8-1.6% of
+% intervals onto the eigenvalue bound at |dlam| = 2/3 with 0.54-0.74 ns
+% misfit, so this is the nearest line that inverts stably.
 targets = { '20240626_03', 1; '20240619_01', 1 };
 
 MIN_STEP_M = 1.0;      % below this the vehicle was stopped

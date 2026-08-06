@@ -239,7 +239,7 @@ def main():
     sty.ifg_panel(
         axi, fig, dist, tb, np.angle(ifg), coh,
         ylabel='TWTT below surface (μs)',
-        cb_label='HH-VV interferogram phase (rad); brightness = coherence')
+        cb_label='phase change (rad)')
     axi.set_ylim(min(22.0, tb[-1]), -0.5)
     sty.draw_ifg_ends(axi, dist)
     axi.set_title('along-flow profile, frame %s' % TAG, fontsize=12,

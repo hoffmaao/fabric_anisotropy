@@ -136,21 +136,24 @@ def inset_frame(axz, color='white', lw=1.5):
 def zoom_inset(ax, rect, proj, facecolor=None):
     """Zoom inset that composites ABOVE the parent map's own layers.
 
-    `ax.inset_axes()` gives the child the default Axes zorder of 0, while
-    the map draws its flow arrows, survey tracks, profile and scale bar at
-    explicit zorders 5-9. The parent's layers therefore paint straight over
-    the inset, and the result reads as two sets of arrows at two different
-    scales inside one box - the main map's coarse quiver and gridlines
-    crossing the inset's own fine quiver. Lifting the inset above every
-    parent layer, and making its patch opaque, leaves only the arrows that
-    belong to the zoomed region.
+    `ax.inset_axes()` gives the child zorder 5 (not 0) AND registers it
+    with `add_child_axes`, so it lands in `ax.child_axes` rather than
+    `fig.axes` and is drawn inside the PARENT's artist ordering. These maps
+    draw their quiver, survey tracks, profile and scale bar at explicit
+    zorders 6-9, all above 5, so the parent's layers paint straight over
+    the inset: the result reads as two sets of arrows at two different
+    scales inside one box.
+
+    Measured, rather than reasoned: in a controlled render the parent's
+    arrows inside the inset drop from 469 to 137 px with the zorder bump
+    and are unchanged without it. Making the patch opaque does NOT help
+    and is not done here - an inset axes' patch is already visible with an
+    opaque white facecolor by default, so those calls are no-ops.
     """
     axz = ax.inset_axes(rect, projection=proj)
     axz.set_zorder(ax.get_zorder() + 20)
     if facecolor is not None:
         axz.set_facecolor(facecolor)
-    axz.patch.set_alpha(1.0)
-    axz.patch.set_visible(True)
     return axz
 
 
@@ -180,7 +183,7 @@ def two_panel_figure(proj):
 
 
 def ifg_panel(ax, fig, dist, t_us, phase, coh, ylabel='TWTT (μs)',
-              cb_label='interferogram phase (rad); brightness = coherence'):
+              cb_label='phase change (rad)'):
     """Wrapped interferogram with the shared HSV mapping and colorbar."""
     st = max(1, phase.shape[0] // 2200)
     sx = max(1, phase.shape[1] // 2000)
