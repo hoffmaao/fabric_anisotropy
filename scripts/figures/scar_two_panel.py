@@ -1,10 +1,10 @@
 """Two-panel SCAR site figures: survey overview + interferogram.
 
 One PNG per site:
-  left   the ENTIRE survey in polar stereographic over log-scale ITS_LIVE
+  left   the survey in polar stereographic over log-scale ITS_LIVE
          surface speed (where covered), all survey lines in WHITE, the
-         focused profile as a BLACK line, flow arrows, and a scale bar in
-         the bottom-right corner
+         focused profile as a BLACK line, flow arrows, a continental
+         locator inset and a scale bar in the bottom-right corner
   right  the wrapped polarimetric interferogram of the focused profile
 
 Slide styling, the end markers and the shared panel geometry live in
@@ -14,9 +14,12 @@ The black profile line is drawn over a thin white casing so it stays
 legible where the speed field is dark (slow ice is exactly where these
 profiles sit); the casing reads as an outline, not as a second track.
 
-Sites rendered here: Thwaites eastern shear margin (ITS_LIVE v2.1
-window streamed from S3) and Ridge A (south of satellite velocity
-coverage; plain background, stated on the panel).
+Sites rendered here: Thwaites eastern shear margin (ITS_LIVE v2.1 window
+streamed from S3; the panel shows that WHOLE window rather than a box
+padded round the tracks, so the trunk the survey sits beside stays in
+frame) and Ridge A (south of satellite velocity coverage, hence a plain
+dark background and no speed colorbar - their absence is what says there
+is no satellite velocity here, in place of an in-map caption).
 
 Usage: python scar_two_panel.py <out_dir>
 """
@@ -40,7 +43,7 @@ import antarctic_basemap as ab            # noqa: E402
 import cartopy.crs as ccrs                # noqa: E402
 import scar_style as sty                  # noqa: E402
 from scar_style import (DATA, DPI, PROFILE_C, PROFILE_FX,  # noqa: E402
-                        PROFILE_LW, TRACK_C)
+                        PROFILE_LW, SPEED_CB_LABEL, TRACK_C, zoom_inset)
 
 OUT = sys.argv[1]
 
@@ -86,17 +89,18 @@ def thwaites():
                 (lo > -110) & (lo < -98) & (la > -78))
         if keep.any():
             tracks.append((la[keep], lo[keep]))
-    tla = np.concatenate([t[0] for t in tracks])
-    tlo = np.concatenate([t[1] for t in tracks])
 
     z = np.load(os.path.join(DATA, 'itslive_thwaites_win.npz'))
     wx, wy, v = z['x'], z['y'], z['v']
     vx, vy = z['vx'], z['vy']
 
     proj = ab.proj3031()
-    extent = ab.points_extent(np.concatenate([tla, lats]),
-                              np.concatenate([tlo, lons]),
-                              pad_frac=0.45, min_pad_m=15e3)
+    # The whole ITS_LIVE window rather than a padded box round the survey:
+    # at 41 x 113 km the tracks occupy a fraction of the 180 x 240 km
+    # window, and padding to them cropped away most of the Thwaites trunk
+    # the survey exists to sit beside. The zoom inset and the continental
+    # locator carry the other two scales.
+    extent = (wx.min(), wx.max(), wy.min(), wy.max())
 
     norm = LogNorm(vmin=5, vmax=600)
 
@@ -118,7 +122,7 @@ def thwaites():
         # the usual -0.07
         cax = ax.inset_axes([0.05, -0.15, 0.62, 0.03])
         fig.colorbar(pcm, cax=cax, orientation='horizontal',
-                     label='ITS_LIVE surface speed (m/yr, log scale)')
+                     label=SPEED_CB_LABEL)
         for la, lo in tracks:
             ax.plot(lo, la, '-', color=TRACK_C, lw=1.1, alpha=0.9,
                     transform=ccrs.PlateCarree(), zorder=7)
@@ -130,6 +134,13 @@ def thwaites():
         gl.top_labels = False
         gl.right_labels = False
         scale_bar_br(ax, extent)
+        # Hard right in the top corner: the zoom window sits high and
+        # slightly left of centre here, so at 0.665 the locator painted
+        # over the top-right corner of its dashed box. The locator keeps
+        # its square aspect and is centred in the rect, which leaves the
+        # visual margin inside the panel edge.
+        sty.continental_inset(ax, 'antarctica',
+                              (0.695, 0.775, 0.29, 0.20), extent, proj)
         ax.set_title('Thwaites Glacier survey', fontsize=12)
 
         # Zoom inset: at survey scale the 10 km profile is a blob, and
@@ -139,7 +150,7 @@ def thwaites():
                                       ccrs.PlateCarree())[:2]
         half = 9e3
         zext = (px - half, px + half, py - half, py + half)
-        axz = ax.inset_axes([0.02, 0.30, 0.55, 0.34], projection=proj)
+        axz = zoom_inset(ax, [0.02, 0.30, 0.55, 0.34], proj)
         axz.set_extent(zext, crs=proj)
         speed_layer(axz, dec=18)
         axz.plot(lons, lats, '-', color=PROFILE_C, lw=PROFILE_LW,
@@ -212,7 +223,7 @@ def ridge_a():
                                       ccrs.PlateCarree())[:2]
         half = 4e3
         zext = (px - half, px + half, py - half, py + half)
-        axz = ax.inset_axes([0.02, 0.30, 0.5, 0.32], projection=proj)
+        axz = zoom_inset(ax, [0.02, 0.30, 0.5, 0.32], proj)
         axz.set_extent(zext, crs=proj)
         axz.set_facecolor('0.28')
         for la, lo in tracks:
@@ -229,10 +240,13 @@ def ridge_a():
         gl.top_labels = False
         gl.right_labels = False
         scale_bar_br(ax, extent)
-        ax.annotate('no satellite velocity coverage south of 82.7°S\n'
-                    '(interior divide site, flow < 2 m/yr)',
-                    xy=(0.03, 0.03), xycoords='axes fraction', fontsize=7.5,
-                    color='white')
+        sty.continental_inset(ax, 'antarctica',
+                              (0.02, 0.755, 0.26, 0.225), extent, proj)
+        # No in-map caption, boxed or loose - deliberate, do not re-add. The
+        # absence of a speed layer and its colorbar already says there is no
+        # satellite velocity here, the locator inset puts the site deep in
+        # the interior, and the talk says it. On a projected slide the text
+        # competed with the survey lines, which are the panel's subject.
         ax.set_title('Ridge A raster survey', fontsize=12)
 
     def ifg(fig, ax):

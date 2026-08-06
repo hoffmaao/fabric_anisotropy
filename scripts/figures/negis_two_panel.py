@@ -33,7 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cartopy.crs as ccrs                # noqa: E402
 import scar_style as sty                  # noqa: E402
 from scar_style import (DATA, DPI, PROFILE_C, PROFILE_FX,  # noqa: E402
-                        PROFILE_LW, TRACK_C)
+                        PROFILE_LW, SPEED_CB_LABEL, TRACK_C, zoom_inset)
 
 OUT = sys.argv[1]
 # 20240626_03_001: the along-flow line beside the southeastern shear
@@ -193,7 +193,7 @@ def main():
     pcm = speed_layer(ax, dec=40)
     cax = ax.inset_axes([0.05, -0.12, 0.62, 0.03])
     fig.colorbar(pcm, cax=cax, orientation='horizontal',
-                 label='ITS_LIVE surface speed (m/yr, log scale)')
+                 label=SPEED_CB_LABEL)
     for la, lo in tracks:
         ax.plot(lo, la, '-', color=TRACK_C, lw=1.1, alpha=0.9,
                 transform=ccrs.PlateCarree(), zorder=7)
@@ -206,6 +206,8 @@ def main():
     gl.right_labels = False
     gl.bottom_labels = False   # they rotate into the speed colorbar
     sty.scale_bar_br(ax, extent, PROJ)
+    sty.continental_inset(ax, 'greenland',
+                          (0.02, 0.035, 0.24, 0.235), extent, PROJ)
     ax.set_title('NEGIS onset survey (EGRIP)', fontsize=12)
 
     # Zoom inset so the profile's two ends separate, as on the other sites
@@ -218,7 +220,7 @@ def main():
     # Top-left: the profile sits in the southeast, so the locator box lands
     # bottom-right where the scale bar is - putting the inset there too
     # would stack three things in one corner
-    axz = ax.inset_axes([0.02, 0.66, 0.40, 0.30], projection=PROJ)
+    axz = zoom_inset(ax, [0.02, 0.66, 0.40, 0.30], PROJ)
     axz.set_extent(zext, crs=PROJ)
     # sparser than the main map's density would give at this zoom, or the
     # arrows carpet it
@@ -238,8 +240,7 @@ def main():
     tb = (t - np.nanmedian(surf)) * 1e6
     sty.ifg_panel(
         axi, fig, dist, tb, np.angle(ifg), coh,
-        ylabel='TWTT below surface (μs)',
-        cb_label='HH-VV interferogram phase (rad); brightness = coherence')
+        ylabel='TWTT below surface (μs)')
     axi.set_ylim(min(22.0, tb[-1]), -0.5)
     sty.draw_ifg_ends(axi, dist)
     axi.set_title('along-flow profile, frame %s' % TAG, fontsize=12,

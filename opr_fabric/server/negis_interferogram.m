@@ -12,10 +12,11 @@
 % CSARP_layer would be the other source, but it exists for 20240618_01
 % only - the one segment that is already georeferenced AND was written
 % with incoherent decimation, so it has no phase to interferogram. On
-% that segment the two sources agree to ~1 m (median 1.1 m north,
-% 1.1 m east; see negis_layer_check.m), so interpolating the GPS file
-% onto GPS_time is the layer positions by another route, and it is the
-% only route that covers the complex segments.
+% that segment the two sources agree to ~1 m (median 1.1 m north, 1.1 m
+% east, measured once by hand off the CSARP_layer records; no check
+% script is kept in the repo), so interpolating the GPS file onto
+% GPS_time is the layer positions by another route, and it is the only
+% route that covers the complex segments.
 %
 % Traces the traverse stopped for are culled BEFORE the multilook. They
 % multilook to HIGH coherence with random range phase, so no coherence
@@ -34,11 +35,13 @@
 % NEGIS interferogram panel and the NEGIS fabric section are shown side by
 % side on two different depth zeros, offset by the pulse rise.
 %
-% RE-RUN REQUIRED: the extracts already on mem1 predate both the
-% pre-multilook cull and the leading-edge surface pick, so their boundary
-% columns are contaminated AND their Surface_ml sits on the power maximum.
-% Delete stages/negis_ifg_*.mat and re-run this script before regenerating
-% the NEGIS figures.
+% EXTRACTS ARE VERSIONED BY THIS SCRIPT: any stages/negis_ifg_*.mat
+% predating the pre-multilook cull and the leading-edge surface pick has
+% contaminated boundary columns AND a Surface_ml sitting on the power
+% maximum. The staged set was regenerated after those fixes; delete it and
+% re-run this script again if either changes, and re-run for any frame
+% added to `frames` below, since the figures only report 'missing extract'
+% for a frame that was never extracted.
 %
 % For each requested frame this writes a multilooked interferogram,
 % coherence, repositioned trajectory and a power-based surface pick,
@@ -47,135 +50,195 @@ season = '/cresis/dataproducts/opr_data/accum/2024_Greenland_Ground2';
 gps_dir = '/cresis/dataproducts/opr_data/opr_support/gps/2024_Greenland_Ground2';
 out_dir = '/kucresis/scratch/hoffmana_sta/fabric/stages';
 
-% seg / frame candidates, ranked by along-track speed contrast over
-% ITS_LIVE with straightness >= 0.93
+% seg / frame candidates. The first group is ranked by along-track speed
+% contrast over ITS_LIVE with straightness >= 0.93; the second group are
+% the frames that pass within 2 km of the EastGRIP borehole (75.6294 N,
+% 35.9672 W), for comparison against the core's own fabric measurements.
+% The borehole's own segment, 20240618_01, cannot be used - it is the one
+% segment written with incoherent decimation, so it carries no phase - and
+% these are the nearest complex alternatives, standing off 0.13-0.32 km.
+%
+% The second group must stay in step with FRAMES in
+% scripts/figures/egrip_azimuthal.py: the azimuthal solve fits a
+% two-parameter cos2a/sin2a model over exactly these lines, and eight of
+% the nine sit between 128 and 145 deg, so the single line near 33 deg
+% carries all of the orthogonal leverage. Dropping any of them here makes
+% that fit degenerate, and the figure only prints 'missing extract'.
 frames = { '20240620_01', 3; '20240619_01', 4; '20240620_02', 2; ...
-           '20240621_01', 4; '20240626_03', 1 };
+           '20240621_01', 4; '20240626_03', 1; ...
+           '20240628_01', 1; '20240626_03', 5; '20240626_01', 1; ...
+           '20240619_01', 1; '20240621_01', 1; '20240620_01', 1; ...
+           '20240621_01', 10; '20240619_01', 5; '20240620_02', 3 };
 
 NR = 4;    % range looks
 NA = 4;    % azimuth looks
 MIN_STEP_M = 1.0;   % below this along-track step the vehicle was stopped
 
+% Frames that produced no extract, reported together at the end. Under
+% -batch an uncaught throw ends the script, so a frame whose product is
+% real-valued, whose HH/VV axes disagree or whose day GPS file will not
+% load would leave every LATER frame unextracted - and the figures only
+% print 'missing extract', which reads the same as a frame that was never
+% requested. Each frame is therefore skipped on its own, like the targets
+% in run_negis_fabric.m, and the run says which ones went missing.
+skipped = {};
+
 for fi = 1:size(frames, 1)
   day_seg = frames{fi, 1};
   frm = frames{fi, 2};
+  tag = sprintf('%s frame %d', day_seg, frm);
   name = sprintf('Data_%s_%03d.mat', day_seg, frm);
   hh_fn = fullfile(season, 'CSARP_qlook_HH', day_seg, name);
   vv_fn = fullfile(season, 'CSARP_qlook_VV', day_seg, name);
   fprintf('\n=== %s frame %d ===\n', day_seg, frm);
   if exist(hh_fn,'file') ~= 2 || exist(vv_fn,'file') ~= 2
-    warning('missing HH or VV for %s', name); continue;
-  end
-
-  H = load(hh_fn, 'Data', 'Time', 'GPS_time', 'Elevation');
-  V = load(vv_fn, 'Data', 'Time', 'GPS_time');
-  assert(isequal(H.Time, V.Time), 'HH/VV range axes differ');
-  assert(isequal(H.GPS_time, V.GPS_time), 'HH/VV GPS times differ');
-  assert(~isreal(H.Data) && ~isreal(V.Data), ...
-    'Data is real - this frame was written with incoherent decimation');
-
-  [Nt, Nx] = size(H.Data);
-  fprintf('  %d samples x %d traces, Time %.2f..%.2f us\n', Nt, Nx, ...
-    H.Time(1)*1e6, H.Time(end)*1e6);
-
-  % --- reposition from GPS
-  g = load(fullfile(gps_dir, sprintf('gps_%s.mat', day_seg(1:8))), ...
-    'sync_gps_time', 'sync_lat', 'sync_lon', 'sync_elev');
-  [tu, iu] = unique(g.sync_gps_time(:));
-  gt = H.GPS_time(:);
-  Latitude = interp1(tu, g.sync_lat(iu), gt, 'linear', NaN).';
-  Longitude = interp1(tu, g.sync_lon(iu), gt, 'linear', NaN).';
-  fprintf('  repositioned: lat %.4f..%.4f lon %.4f..%.4f\n', ...
-    min(Latitude), max(Latitude), min(Longitude), max(Longitude));
-
-  % --- cull the stops, before any looks are taken. Data, GPS_time,
-  % Elevation and the repositioned coordinates go together so every axis
-  % stays aligned with the traces that survive. A trace whose predecessor
-  % has no position has no measurable step, so it is kept rather than
-  % called stopped.
-  Rearth = 6371e3;
-  p = deg2rad(Latitude); dl = diff(deg2rad(Longitude)); dp = diff(p);
-  a = sin(dp/2).^2 + cos(p(1:end-1)).*cos(p(2:end)).*sin(dl/2).^2;
-  step = [Inf, 2*Rearth*asin(sqrt(a))];
-  located = isfinite(Latitude) & isfinite(Longitude);
-  stopped = located & [false, located(1:end-1)] & step < MIN_STEP_M;
-  keep = located & ~stopped;
-  fprintf('  culling %d of %d traces: %d stopped, %d with no GPS coverage\n', ...
-    nnz(~keep), Nx, nnz(stopped), nnz(~located));
-  if any(~located)
-    warning('negis_interferogram:gpsCoverage', ...
-      '%s frame %d: %d of %d traces (%.1f%%) fall outside the day GPS file', ...
-      day_seg, frm, nnz(~located), Nx, 100*nnz(~located)/Nx);
-  end
-  H.Data = H.Data(:, keep); V.Data = V.Data(:, keep);
-  Latitude = Latitude(keep); Longitude = Longitude(keep);
-  H.GPS_time = H.GPS_time(keep); H.Elevation = H.Elevation(keep);
-  Nx = nnz(keep);
-
-  % --- surface pick from HH power (Surface is NaN in these products):
-  % first sample above 5% of the trace peak, which tracks the leading edge
-  % rather than the (broader) power maximum. Identical to the pick in
-  % run_negis_fabric.m so the figure and the inversion share a depth zero.
-  pw = abs(H.Data).^2;
-  thr = 0.05 * max(pw, [], 1);
-  Surface = nan(1, Nx);
-  for k = 1:Nx
-    j = find(pw(:,k) > thr(k), 1);
-    if ~isempty(j), Surface(k) = H.Time(j); end
-  end
-  clear thr;
-  fprintf('  surface pick %.3f..%.3f us (median %.3f)\n', ...
-    min(Surface)*1e6, max(Surface)*1e6, median(Surface,'omitnan')*1e6);
-
-  % --- multilook: coherent sum of HH*conj(VV), power sums for coherence
-  ntc = floor(Nt/NR); nxc = floor(Nx/NA);
-  if ntc < 1 || nxc < 1
-    warning('negis_interferogram:tooFewTraces', ...
-      ['%s frame %d: %d samples x %d traces survive the cull, too few ' ...
-       'for one %dx%d look cell. Check the day GPS file covers this ' ...
-       'frame; skipping it rather than writing an empty interferogram.'], ...
-      day_seg, frm, Nt, Nx, NR, NA);
-    clear H V;
+    warning('negis_interferogram:missingProduct', ...
+      'missing HH or VV for %s', name);
+    skipped{end+1} = sprintf('%s (no HH/VV qlook product)', tag); %#ok<SAGROW>
     continue;
   end
-  cut = @(A) reshape(A(1:ntc*NR, 1:nxc*NA), NR, ntc, NA, nxc);
-  I = H.Data(1:ntc*NR, 1:nxc*NA) .* conj(V.Data(1:ntc*NR, 1:nxc*NA));
-  interferogram_mlook = squeeze(sum(sum(cut(I), 1), 3));
-  power_hh = squeeze(sum(sum(cut(abs(H.Data).^2), 1), 3));
-  power_vv = squeeze(sum(sum(cut(abs(V.Data).^2), 1), 3));
-  interferogram_coherence = abs(interferogram_mlook) ...
-    ./ sqrt(power_hh .* power_vv);
-  % The power sums travel with the interferogram so the look count can be
-  % raised later without coming back to the server: coherence at any
-  % coarser cell is |sum I| / sqrt(sum|HH|^2 * sum|VV|^2) over the same
-  % cell, which needs the un-normalised sums, not this ratio.
-  interferogram_mlook = single(interferogram_mlook);
-  interferogram_coherence = single(interferogram_coherence);
-  power_hh = single(power_hh);
-  power_vv = single(power_vv);
-  clear I pw;
 
-  % Label each cell with its CENTRE: interferogram_mlook is the sum over
-  % the whole cell, so taking the first sample/trace would put both axes
-  % half a cell shallower/earlier than the data they annotate.
-  Time = mean(reshape(H.Time(1:ntc*NR), NR, ntc), 1).';
-  Latitude_ml = mean(reshape(Latitude(1:nxc*NA), NA, nxc), 1);
-  Longitude_ml = mean(reshape(Longitude(1:nxc*NA), NA, nxc), 1);
-  Surface_ml = mean(reshape(Surface(1:nxc*NA), NA, nxc), 1, 'omitnan');
-  Elevation_ml = mean(reshape(H.Elevation(1:nxc*NA), NA, nxc), 1);
-  GPS_time_ml = mean(reshape(H.GPS_time(1:nxc*NA), NA, nxc), 1);
-  looks = [NR NA];
+  try
+    H = load(hh_fn, 'Data', 'Time', 'GPS_time', 'Elevation');
+    V = load(vv_fn, 'Data', 'Time', 'GPS_time');
+    assert(isequal(H.Time, V.Time), 'HH/VV range axes differ');
+    assert(isequal(H.GPS_time, V.GPS_time), 'HH/VV GPS times differ');
+    assert(~isreal(H.Data) && ~isreal(V.Data), ...
+      'Data is real - this frame was written with incoherent decimation');
 
-  fprintf('  multilooked to %d x %d, median coherence %.3f\n', ...
-    size(interferogram_mlook,1), size(interferogram_mlook,2), ...
-    median(interferogram_coherence(isfinite(interferogram_coherence))));
+    [Nt, Nx] = size(H.Data);
+    fprintf('  %d samples x %d traces, Time %.2f..%.2f us\n', Nt, Nx, ...
+      H.Time(1)*1e6, H.Time(end)*1e6);
 
-  out_fn = fullfile(out_dir, sprintf('negis_ifg_%s_%03d.mat', day_seg, frm));
-  save(out_fn, '-v7.3', 'interferogram_mlook', 'interferogram_coherence', ...
-    'power_hh', 'power_vv', 'Time', 'Latitude_ml', 'Longitude_ml', ...
-    'Surface_ml', 'Elevation_ml', 'GPS_time_ml', 'looks', 'day_seg', 'frm');
-  d = dir(out_fn);
-  fprintf('  wrote %s (%.0f MB)\n', out_fn, d.bytes/1e6);
-  clear H V interferogram_mlook interferogram_coherence;
+    % --- reposition from GPS
+    g = load(fullfile(gps_dir, sprintf('gps_%s.mat', day_seg(1:8))), ...
+      'sync_gps_time', 'sync_lat', 'sync_lon', 'sync_elev');
+    [tu, iu] = unique(g.sync_gps_time(:));
+    gt = H.GPS_time(:);
+    Latitude = interp1(tu, g.sync_lat(iu), gt, 'linear', NaN).';
+    Longitude = interp1(tu, g.sync_lon(iu), gt, 'linear', NaN).';
+    fprintf('  repositioned: lat %.4f..%.4f lon %.4f..%.4f\n', ...
+      min(Latitude), max(Latitude), min(Longitude), max(Longitude));
+
+    % --- cull the stops, before any looks are taken. Data, GPS_time,
+    % Elevation and the repositioned coordinates go together so every axis
+    % stays aligned with the traces that survive. A trace whose predecessor
+    % has no position has no measurable step, so it is kept rather than
+    % called stopped.
+    Rearth = 6371e3;
+    p = deg2rad(Latitude); dl = diff(deg2rad(Longitude)); dp = diff(p);
+    a = sin(dp/2).^2 + cos(p(1:end-1)).*cos(p(2:end)).*sin(dl/2).^2;
+    step = [Inf, 2*Rearth*asin(sqrt(a))];
+    located = isfinite(Latitude) & isfinite(Longitude);
+    stopped = located & [false, located(1:end-1)] & step < MIN_STEP_M;
+    keep = located & ~stopped;
+    fprintf('  culling %d of %d traces: %d stopped, %d with no GPS coverage\n', ...
+      nnz(~keep), Nx, nnz(stopped), nnz(~located));
+    if any(~located)
+      warning('negis_interferogram:gpsCoverage', ...
+        '%s: %d of %d traces (%.1f%%) fall outside the day GPS file', ...
+        tag, nnz(~located), Nx, 100*nnz(~located)/Nx);
+    end
+    H.Data = H.Data(:, keep); V.Data = V.Data(:, keep);
+    Latitude = Latitude(keep); Longitude = Longitude(keep);
+    H.GPS_time = H.GPS_time(keep); H.Elevation = H.Elevation(keep);
+    Nx = nnz(keep);
+
+    % --- surface pick from HH power (Surface is NaN in these products):
+    % first sample above 5% of the trace peak, which tracks the leading edge
+    % rather than the (broader) power maximum. Identical to the pick in
+    % run_negis_fabric.m so the figure and the inversion share a depth zero.
+    pw = abs(H.Data).^2;
+    thr = 0.05 * max(pw, [], 1);
+    Surface = nan(1, Nx);
+    for k = 1:Nx
+      j = find(pw(:,k) > thr(k), 1);
+      if ~isempty(j), Surface(k) = H.Time(j); end
+    end
+    clear thr;
+    fprintf('  surface pick %.3f..%.3f us (median %.3f)\n', ...
+      min(Surface)*1e6, max(Surface)*1e6, median(Surface,'omitnan')*1e6);
+
+    % --- multilook: coherent sum of HH*conj(VV), power sums for coherence
+    ntc = floor(Nt/NR); nxc = floor(Nx/NA);
+    if ntc < 1 || nxc < 1
+      warning('negis_interferogram:tooFewTraces', ...
+        ['%s: %d samples x %d traces survive the cull, too few ' ...
+         'for one %dx%d look cell. Check the day GPS file covers this ' ...
+         'frame; skipping it rather than writing an empty interferogram.'], ...
+        tag, Nt, Nx, NR, NA);
+      skipped{end+1} = sprintf(['%s (%d x %d traces after the cull, ' ...
+        'under one look cell)'], tag, Nt, Nx); %#ok<SAGROW>
+      clear H V;
+      continue;
+    end
+    cut = @(A) reshape(A(1:ntc*NR, 1:nxc*NA), NR, ntc, NA, nxc);
+    I = H.Data(1:ntc*NR, 1:nxc*NA) .* conj(V.Data(1:ntc*NR, 1:nxc*NA));
+    interferogram_mlook = squeeze(sum(sum(cut(I), 1), 3));
+    power_hh = squeeze(sum(sum(cut(abs(H.Data).^2), 1), 3));
+    power_vv = squeeze(sum(sum(cut(abs(V.Data).^2), 1), 3));
+    interferogram_coherence = abs(interferogram_mlook) ...
+      ./ sqrt(power_hh .* power_vv);
+    % The power sums travel with the interferogram so the look count can be
+    % raised later without coming back to the server: coherence at any
+    % coarser cell is |sum I| / sqrt(sum|HH|^2 * sum|VV|^2) over the same
+    % cell, which needs the un-normalised sums, not this ratio.
+    interferogram_mlook = single(interferogram_mlook);
+    interferogram_coherence = single(interferogram_coherence);
+    power_hh = single(power_hh);
+    power_vv = single(power_vv);
+    clear I pw;
+
+    % Label each cell with its CENTRE: interferogram_mlook is the sum over
+    % the whole cell, so taking the first sample/trace would put both axes
+    % half a cell shallower/earlier than the data they annotate.
+    Time = mean(reshape(H.Time(1:ntc*NR), NR, ntc), 1).';
+    Latitude_ml = mean(reshape(Latitude(1:nxc*NA), NA, nxc), 1);
+    Longitude_ml = mean(reshape(Longitude(1:nxc*NA), NA, nxc), 1);
+    Surface_ml = mean(reshape(Surface(1:nxc*NA), NA, nxc), 1, 'omitnan');
+    Elevation_ml = mean(reshape(H.Elevation(1:nxc*NA), NA, nxc), 1);
+    GPS_time_ml = mean(reshape(H.GPS_time(1:nxc*NA), NA, nxc), 1);
+    looks = [NR NA];
+
+    fprintf('  multilooked to %d x %d, median coherence %.3f\n', ...
+      size(interferogram_mlook,1), size(interferogram_mlook,2), ...
+      median(interferogram_coherence(isfinite(interferogram_coherence))));
+
+    out_fn = fullfile(out_dir, sprintf('negis_ifg_%s_%03d.mat', day_seg, frm));
+    try
+      save(out_fn, '-v7.3', 'interferogram_mlook', 'interferogram_coherence', ...
+        'power_hh', 'power_vv', 'Time', 'Latitude_ml', 'Longitude_ml', ...
+        'Surface_ml', 'Elevation_ml', 'GPS_time_ml', 'looks', 'day_seg', 'frm');
+    catch err
+      % A save that died part way leaves a file the figures would open as a
+      % finished extract, so it does not outlive the frame that failed to
+      % write it. Only a failed save removes an extract: an earlier failure
+      % leaves whatever a previous run wrote, which is stale at worst.
+      if exist(out_fn, 'file'), delete(out_fn); end
+      rethrow(err);
+    end
+    d = dir(out_fn);
+    fprintf('  wrote %s (%.0f MB)\n', out_fn, d.bytes/1e6);
+    clear H V interferogram_mlook interferogram_coherence;
+  catch err
+    warning('negis_interferogram:frameFailed', ...
+      '%s: extraction failed (%s: %s); skipping this frame', ...
+      tag, err.identifier, err.message);
+    skipped{end+1} = sprintf('%s (%s)', tag, err.message); %#ok<SAGROW>
+    clear H V interferogram_mlook interferogram_coherence;
+    continue;
+  end
 end
-fprintf('\nDone.\n');
+
+if isempty(skipped)
+  fprintf('\nDone: %d of %d frames extracted.\n', size(frames,1), ...
+    size(frames,1));
+else
+  fprintf('\nDone: %d of %d frames extracted, %d skipped:\n', ...
+    size(frames,1) - numel(skipped), size(frames,1), numel(skipped));
+  for si = 1:numel(skipped)
+    fprintf('  %s\n', skipped{si});
+  end
+  fprintf(['Re-run this script after fixing them: the figures report a ' ...
+    'frame with no extract only as ''missing extract''.\n']);
+end
