@@ -38,10 +38,9 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt          # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from egrip_azimuthal import (BANDS, FRAMES, P_BOUND,  # noqa: E402
-                             RADIUS_KM, band_estimates, band_rates,
-                             core_table, load_line, near_mask, solve_band,
-                             track_azimuth)
+from egrip_azimuthal import (BANDS, P_BOUND, RADIUS_KM,  # noqa: E402
+                             band_estimates, core_table, solve_band,
+                             stage_lines)
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
 INK, MUTED = '#0b0b0b', '#52514e'
@@ -84,17 +83,7 @@ def main():
     Z, E = core_table()
     print('core: %d sections, %.0f-%.0f m' % (len(Z), Z.min(), Z.max()))
 
-    lines = []
-    for tag in FRAMES:
-        d = load_line(tag)
-        if d is None:
-            continue
-        nm = near_mask(d)
-        if nm.sum() < 8:
-            continue
-        d['az'] = track_azimuth(d['lat'][nm], d['lon'][nm])
-        d['rows'] = band_rates(d, nm)
-        lines.append(d)
+    lines = stage_lines()
     P_lag, TH_lag = solve(lines, 0)
     P_uw, TH_uw = solve(lines, 1)
     zc = np.array([0.5 * (a + b) for a, b in BANDS])
