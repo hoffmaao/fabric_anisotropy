@@ -18,10 +18,28 @@
 %      and ptt.surfaceReference needs it to place the reference band and
 %      the waveform-combine seam.
 %
-% delta-k is the only dtau source available here: there is no SNAPHU
-% unwrapping and no coregistration for this season. With no row_offset the
-% orientation regression cannot run, so phase_sign is forced to -1, the
-% matched-filter convention settled by the Ridge A cell regression.
+% dtau comes from the SNAPHU-unwrapped phase, after Goldstein-Werner
+% filtering of the complex interferogram. Both steps happen HERE, in the
+% repackaging, because this season never went through polarimetric.m,
+% which is where the Antarctic products get theirs.
+%
+% It used to run on delta-k, on the grounds that nothing else was
+% available. That was wrong twice over: SNAPHU only needed running, and
+% delta-k was actively costing accuracy. The EastGRIP comparison against
+% Zeising et al. (2023) measured it - the joint inversion fed by delta-k
+% scored RMS 0.411 against the core, WORSE than the bare fringe rate
+% (0.280) and worse than the reference method (0.356), returning about a
+% third of the fringe rate's amplitude above 650 m and flipping sign
+% below. That is the stage-A suppression already diagnosed on Ridge A,
+% where 15 MHz sub-bands are SNR-starved at depth and smoothing
+% noise-dominated phasors biases the recovered angle toward zero,
+% arriving at the inversion through dtau.
+%
+% There is still no coregistration for this season, so with unwrapped
+% phase the per-block fringe constant is left to ptt.blockAverage and the
+% level is set by the surface reference alone. phase_sign is forced to -1,
+% the matched-filter convention settled by the Ridge A cell regression,
+% because the sign regression needs row_offset to run.
 %
 % Launch on mem1 with:
 %   /opt/sw/matlab/2024b/bin/matlab -batch "run('/kucresis/scratch/hoffmana_sta/fabric/run_negis_fabric.m')"
@@ -53,6 +71,15 @@ CROP_PRE = 0.5e-6;     % keep this much above the surface
 CROP_POST = 22e-6;     % ...and this much below it
 COH_WIN = [9 9];       % boxcar for the full-grid coherence
 
+% Goldstein filtering + SNAPHU unwrapping, so the inversion can run off
+% dtau_source = 'phase'. The binary is the one run_polarimetric.m uses for
+% the Antarctic seasons, so this season is unwrapped by the same SNAPHU
+% and the same call as the products it is compared against.
+snaphu_en = true;
+SNAPHU_BIN = '/kucresis/scratch/software/snaphu/bin/snaphu';
+GOLD_ALPHA = 0.8;      % ptt.goldsteinFilter default; see branch_cuts.py
+kmb = ones(COH_WIN, 'single') / prod(COH_WIN);   % shared multilook boxcar
+
 code = fullfile(scratch, 'code');
 addpath(code);
 addpath(fullfile(code, 'opr_fabric'));
@@ -69,9 +96,31 @@ if ~exist(in_dir, 'dir'), mkdir(in_dir); end
 in_fn = fullfile(in_dir, sprintf('Data_%s_%03d.mat', day_seg, frm));
 
 %% ---- repackage ---------------------------------------------------------
-if exist(in_fn, 'file')
-  fprintf('Reusing existing repackaged product %s\n', in_fn);
-else
+% Reuse only a product that already carries what this run needs. Products
+% written before the SNAPHU step have no snaphu_out_phase, and a bare
+% exist() test would reuse one, let fabric_task fall back to the wrapped
+% phase, and report a 'phase' run that never saw an unwrapped phase - the
+% expensive failure being that it looks like a successful comparison.
+reuse = exist(in_fn, 'file') == 2;
+if reuse && snaphu_en
+  % An existing product only counts if it carries a NON-EMPTY unwrapped
+  % phase: H_snaphu's failure path stores [], and that must re-run rather
+  % than be reused forever.
+  reuse = false;
+  if ismember('snaphu_out_phase', who('-file', in_fn))
+    q = load(in_fn, 'snaphu_out_phase');
+    reuse = ~isempty(q.snaphu_out_phase);
+  end
+end
+if exist(in_fn, 'file') == 2
+  if reuse
+    fprintf('Reusing existing repackaged product %s\n', in_fn);
+  else
+    fprintf('Rebuilding %s (no unwrapped phase in the existing product)\n', ...
+      in_fn);
+  end
+end
+if ~reuse
 try
   name = sprintf('Data_%s_%03d.mat', day_seg, frm);
   hh_fn = fullfile(season_dir, 'CSARP_qlook_HH', day_seg, name);
@@ -158,14 +207,55 @@ try
   % full-grid coherence, boxcar over range and azimuth. Formed the same way
   % polarimetric.m does: multilook the cross product and both powers, then
   % divide - never smooth a per-pixel coherence.
-  k = ones(COH_WIN, 'single') / prod(COH_WIN);
-  num = conv2(real(sec .* conj(ref)), k, 'same') ...
-    + 1i*conv2(imag(sec .* conj(ref)), k, 'same');
-  den = sqrt(conv2(abs(ref).^2, k, 'same') .* conv2(abs(sec).^2, k, 'same'));
+  num = conv2(real(sec .* conj(ref)), kmb, 'same') ...
+    + 1i*conv2(imag(sec .* conj(ref)), kmb, 'same');
+  den = sqrt(conv2(abs(ref).^2, kmb, 'same') ...
+    .* conv2(abs(sec).^2, kmb, 'same'));
   interferogram_coherence = single(abs(num) ./ den);
-  clear num den k;
+  clear num den;
   fprintf('  coherence median %.3f\n', ...
     median(interferogram_coherence(isfinite(interferogram_coherence))));
+
+  % Goldstein-filtered, SNAPHU-unwrapped phase. This is what lets the
+  % inversion run off dtau_source = 'phase' instead of delta-k: the
+  % EastGRIP method comparison showed delta-k's stage-A suppression
+  % reaching the joint inversion through dtau and costing it a third of
+  % the fringe-rate amplitude above 650 m, with a sign flip below.
+  %
+  % Filter BEFORE unwrapping, and filter the complex interferogram rather
+  % than the phase. SNAPHU's cost is driven by residues, which are made by
+  % noise-driven excursions between adjacent pixels; the Goldstein
+  % reweighting removes most of them (measured on the Thwaites margin
+  % frame in scripts/prototypes/branch_cuts.py) so the solution is not
+  % dominated by branch cuts. The coherence handed to SNAPHU stays the
+  % UNFILTERED one - it is the weight telling SNAPHU where to trust the
+  % phase, and recomputing it from the filtered interferogram would report
+  % the filter's own smoothing as data quality.
+  interferogram_mlook = single(conv2(real(sec .* conj(ref)), kmb, 'same') ...
+    + 1i*conv2(imag(sec .* conj(ref)), kmb, 'same'));
+  snaphu_out_phase = [];
+  if snaphu_en
+    t2 = tic;
+    ifg_filt = ptt.goldsteinFilter(interferogram_mlook, GOLD_ALPHA);
+    fprintf('  Goldstein filter (alpha %.2f) %.1f min\n', GOLD_ALPHA, ...
+      toc(t2)/60);
+    try
+      snaphu_out_phase = H_snaphu(ifg_filt, interferogram_coherence, ...
+        SNAPHU_BIN, COH_WIN);
+      fprintf('  snaphu unwrapped: %.1f..%.1f rad (%.1f fringes)\n', ...
+        min(snaphu_out_phase(:)), max(snaphu_out_phase(:)), ...
+        range(snaphu_out_phase(:))/(2*pi));
+    catch snerr
+      % A missing binary or a SNAPHU that will not converge must not cost
+      % the repackaging - the product is still usable via delta-k, and the
+      % inversion warns for itself when snaphu_out_phase is absent.
+      warning('run_negis_fabric:snaphuFailed', ...
+        '%s frame %d: SNAPHU failed (%s: %s); saving without unwrapped phase', ...
+        day_seg, frm, snerr.identifier, snerr.message);
+      snaphu_out_phase = [];
+    end
+    clear ifg_filt;
+  end
 
   % param_records carries array.img_comb through to ptt.imgCombSeam, so the
   % 8 us waveform-combine boundary is masked exactly as on the other sites
@@ -177,8 +267,9 @@ try
   fprintf('Saving %s\n', in_fn);
   save(in_fn, '-v7.3', 'ref', 'sec', 'interferogram_coherence', 'Time', ...
     'Surface', 'Latitude', 'Longitude', 'Elevation', 'GPS_time', ...
+    'interferogram_mlook', 'snaphu_out_phase', ...
     'param_records', 'param_polarimetric', 'file_type', 'file_version');
-  clear ref sec interferogram_coherence;
+  clear ref sec interferogram_coherence interferogram_mlook snaphu_out_phase;
 catch err
   % Everything the repackaging can throw - a qlook product that is absent
   % or real-valued, mismatched HH/VV axes, a day GPS file that will not
@@ -206,8 +297,9 @@ param.stub_out_root = season_root;
 
 pf = [];
 pf.in_path = in_name;
-pf.out_path = 'fabric_deltak_negis';
-pf.dtau_source = 'deltak';
+pf.out_path = 'fabric_snaphu_negis';
+pf.dtau_source = 'phase';
+pf.use_snaphu_phase = true;
 pf.inversion = 'joint';
 pf.reg = 0.05;
 pf.img = 0;
@@ -236,6 +328,75 @@ catch err
 end
 
 end   % targets
+
+function ph = H_snaphu(ifg, coh, bin, mlook_window)
+% Unwrap a complex interferogram with SNAPHU, returning phase on the SAME
+% grid. Byte layouts and the command line are taken from
+% polarimetric_task.m verbatim, so the Antarctic products and this season
+% are unwrapped by identical means: COMPLEX_DATA in (interleaved
+% real/imag), FLOAT_DATA correlation, ALT_LINE_DATA out (magnitude and
+% phase on alternating range lines).
+if exist(bin, 'file') ~= 2
+  error('run_negis_fabric:snaphuMissing', ...
+    'SNAPHU binary not found at %s', bin);
+end
+fn = tempname();
+fn_out = [fn '.out'];
+fn_corr = [fn '.corr'];
+c = onCleanup(@() H_rm({fn, fn_out, fn_corr}));
+
+% SNAPHU wants a bounded interferogram; normalising by the global maximum
+% is what polarimetric_task.m does and keeps the correlation file the only
+% statement about quality.
+x = double(ifg);
+x(~isfinite(x)) = 0;
+mx = max(abs(x(:)));
+if mx <= 0
+  error('run_negis_fabric:snaphuEmpty', 'interferogram is all zero');
+end
+x = x / mx;
+fid = fopen(fn, 'wb');
+if fid < 0, error('run_negis_fabric:snaphuIO', 'cannot write %s', fn); end
+fwrite(fid, reshape([real(x(:)) imag(x(:))].', ...
+  [size(x,1)*2 size(x,2)]), 'float32');
+fclose(fid);
+
+cc = double(abs(coh));
+cc(cc > 1) = 1;
+cc(cc < 0 | ~isfinite(cc)) = 0;
+fid = fopen(fn_corr, 'wb');
+if fid < 0, error('run_negis_fabric:snaphuIO', 'cannot write %s', fn_corr); end
+fwrite(fid, cc, 'float32');
+fclose(fid);
+
+cmd = sprintf(['%s %s %d -c %s -s -C "NLOOKSRANGE %d" -C "NLOOKSAZ %d" ' ...
+  '-C "CORRFILEFORMAT FLOAT_DATA" -v -o %s'], bin, fn, size(x,1), ...
+  fn_corr, mlook_window(1), mlook_window(2), fn_out);
+fprintf('  running: %s\n', cmd);
+[st, out] = system(cmd);
+if st ~= 0
+  error('run_negis_fabric:snaphuExit', ...
+    'SNAPHU exited %d: %s', st, strtrim(out(max(1,end-400):end)));
+end
+if exist(fn_out, 'file') ~= 2
+  error('run_negis_fabric:snaphuNoOutput', ...
+    'SNAPHU wrote no output file');
+end
+fid = fopen(fn_out, 'rb');
+raw = fread(fid, [size(x,1) 2*size(x,2)], 'float32');
+fclose(fid);
+if size(raw,2) < 2*size(x,2)
+  error('run_negis_fabric:snaphuShort', ...
+    'SNAPHU output has %d columns, expected %d', size(raw,2), 2*size(x,2));
+end
+ph = single(raw(:, 2:2:end));
+end
+
+function H_rm(files)
+for k = 1:numel(files)
+  if exist(files{k}, 'file') == 2, delete(files{k}); end
+end
+end
 
 function pr = H_param_records_from(fn)
 % param_records straight from the qlook product, so array.img_comb and
