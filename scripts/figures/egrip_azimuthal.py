@@ -230,13 +230,32 @@ def core_table():
     Appending the depth first would leave Z one entry longer than E on any
     row with a blank eigenvalue field, and every caller builds its mask on
     Z and applies it to E, so the two must not desynchronise.
+
+    The table is third-party data staged rather than committed, so absent
+    is the expected first-run state and has to say so - the same loud exit
+    the staged radar extracts get - instead of a bare FileNotFoundError.
+    A table that is present but not the PANGAEA layout exits the same way:
+    it fails on the header search or a column lookup, several frames from
+    anything that names the file.
     """
+    if not os.path.exists(CORE):
+        raise SystemExit(
+            'missing the EastGRIP core fabric table %s; download it from '
+            'PANGAEA.949248 (Weikusat et al. 2022, CC-BY-4.0) and stage it '
+            'there' % CORE)
     with open(CORE) as f:
         rows = f.read().split('\n')
-    h = next(i for i, r in enumerate(rows) if r.startswith('Bag\t'))
-    cols = rows[h].split('\t')
-    iz = cols.index('Depth ice/snow [m]')
-    ie = [cols.index('EVA%d (Weighted (statistic))' % k) for k in (1, 2, 3)]
+    try:
+        h = next(i for i, r in enumerate(rows) if r.startswith('Bag\t'))
+        cols = rows[h].split('\t')
+        iz = cols.index('Depth ice/snow [m]')
+        ie = [cols.index('EVA%d (Weighted (statistic))' % k)
+              for k in (1, 2, 3)]
+    except (StopIteration, ValueError):
+        raise SystemExit(
+            '%s is not the PANGAEA.949248 table: no tab-separated header '
+            'row carrying "Depth ice/snow [m]" and the three "EVA<k> '
+            '(Weighted (statistic))" columns' % CORE)
     Z, E = [], []
     for row in rows[h + 1:]:
         p = row.split('\t')
