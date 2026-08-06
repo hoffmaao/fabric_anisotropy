@@ -18,8 +18,8 @@ Sites rendered here: Thwaites eastern shear margin (ITS_LIVE v2.1 window
 streamed from S3; the panel shows that WHOLE window rather than a box
 padded round the tracks, so the trunk the survey sits beside stays in
 frame) and Ridge A (south of satellite velocity coverage, hence a plain
-dark background, no speed colorbar, and a boxed caption saying so - the
-missing layer alone reads as an omitted one on a slide shown by itself).
+dark background and no speed colorbar - their absence is what says there
+is no satellite velocity here, in place of an in-map caption).
 
 Usage: python scar_two_panel.py <out_dir>
 """
@@ -242,17 +242,11 @@ def ridge_a():
         scale_bar_br(ax, extent)
         sty.continental_inset(ax, 'antarctica',
                               (0.02, 0.755, 0.26, 0.225), extent, proj)
-        # A missing speed layer only reads as "no coverage" to someone who
-        # has already seen the other three sites, and this slide gets shown
-        # on its own; without the caption the panel does not distinguish
-        # absent data from an omitted layer. Boxed, which is what the loose
-        # two-line caption lacked when it competed with the survey lines.
-        ax.annotate('no satellite velocity coverage south of 82.7°S\n'
-                    '(interior divide site, flow < 2 m/yr)',
-                    xy=(0.025, 0.025), xycoords='axes fraction', fontsize=7.5,
-                    color='white', va='bottom', zorder=10,
-                    bbox=dict(boxstyle='round,pad=0.3', fc='0.12', ec='none',
-                              alpha=0.5))
+        # No in-map caption, boxed or loose - deliberate, do not re-add. The
+        # absence of a speed layer and its colorbar already says there is no
+        # satellite velocity here, the locator inset puts the site deep in
+        # the interior, and the talk says it. On a projected slide the text
+        # competed with the survey lines, which are the panel's subject.
         ax.set_title('Ridge A raster survey', fontsize=12)
 
     def ifg(fig, ax):
