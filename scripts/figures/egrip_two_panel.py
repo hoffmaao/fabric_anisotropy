@@ -154,7 +154,7 @@ def main():
     gl.bottom_labels = False
     sty.scale_bar_br(axm, extent, PROJ, nice_length=sty.nice_length_up)
     sty.continental_inset(axm, 'greenland',
-                              (0.02, 0.755, 0.24, 0.235), extent, PROJ)
+                          (0.02, 0.755, 0.24, 0.235), extent, PROJ)
     axm.set_title('EastGRIP drill site', fontsize=12)
 
     sty.ifg_panel(axi, fig, dist, depth, np.angle(d['ifg']), d['coh'],

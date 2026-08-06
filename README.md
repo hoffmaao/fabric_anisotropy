@@ -181,9 +181,15 @@ Scripts (each validates or applies the above end to end):
     so the site slides cannot drift apart. Every two-panel figure draws
     that locator - Antarctica for Thwaites and Ridge A, Greenland for
     NEGIS and EastGRIP - from cached Natural Earth land, so it needs no
-    network; only its corner is chosen per figure, by whatever free space
-    that panel has. Also used by the EastGRIP solve above and the two
-    section figures below.
+    network; the study area is the map panel's OWN extent drawn on the
+    continent as a black box, rather than a symbol placed near it, and
+    only the locator's corner is chosen per figure, by whatever free
+    space that panel has. A survey is a small enough fraction of its ice
+    sheet to vanish when drawn true to scale, so that box carries a
+    legibility floor, and every one of these four sites hits it: read
+    the square as "here", not as a scale bar. The `continental_inset`
+    docstring gives the numbers. Also used by the EastGRIP solve above
+    and the two section figures below.
   - `fabric_sections.py` - per-site 2D dlam sections from
     `opr_fabric/server/run_sections.m`, each cell blended toward grey by
     its node coherence (a diverging ramp cannot reuse the interferogram's

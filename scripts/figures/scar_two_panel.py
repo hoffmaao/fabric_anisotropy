@@ -140,7 +140,7 @@ def thwaites():
         # its square aspect and is centred in the rect, which leaves the
         # visual margin inside the panel edge.
         sty.continental_inset(ax, 'antarctica',
-                                      (0.695, 0.775, 0.29, 0.20), extent, proj)
+                              (0.695, 0.775, 0.29, 0.20), extent, proj)
         ax.set_title('Thwaites Glacier survey', fontsize=12)
 
         # Zoom inset: at survey scale the 10 km profile is a blob, and
@@ -241,7 +241,7 @@ def ridge_a():
         gl.right_labels = False
         scale_bar_br(ax, extent)
         sty.continental_inset(ax, 'antarctica',
-                                      (0.02, 0.755, 0.26, 0.225), extent, proj)
+                              (0.02, 0.755, 0.26, 0.225), extent, proj)
         # A missing speed layer only reads as "no coverage" to someone who
         # has already seen the other three sites, and this slide gets shown
         # on its own; without the caption the panel does not distinguish
