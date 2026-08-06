@@ -38,7 +38,15 @@ season = '2024_Greenland_Ground2';
 % 0.13 km and 20240626_01_001 at 0.15 km - but both drive 0.8-1.6% of
 % intervals onto the eigenvalue bound at |dlam| = 2/3 with 0.54-0.74 ns
 % misfit, so this is the nearest line that inverts stably.
-targets = { '20240626_03', 1; '20240619_01', 1 };
+% Overridable so a caller can drive a different set through the SAME
+% inversion without forking this script - egrip_zeising.m's nine
+% borehole-proximal lines are run this way for the method comparison, and
+% a forked copy would be free to drift in the repackaging, the cull or the
+% surface pick, which is exactly what the comparison must hold fixed:
+%   matlab -batch "targets = {'20240628_01',1; ...}; run_negis_fabric"
+if ~exist('targets', 'var') || isempty(targets)
+  targets = { '20240626_03', 1; '20240619_01', 1 };
+end
 
 MIN_STEP_M = 1.0;      % below this the vehicle was stopped
 CROP_PRE = 0.5e-6;     % keep this much above the surface
