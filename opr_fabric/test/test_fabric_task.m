@@ -53,6 +53,26 @@ coh_prof = 0.9 ./ (1 + exp((depth_map - 300)/25));
 coh_prof(t_rel < 0) = 0.05;   % no coherence above the surface
 coherence = max(0.01, repmat(coh_prof, 1, Nx) + 0.03*randn(Nt, Nx));
 
+% Waveform image-combination seam: OPR blends two waveform images forward
+% from the boundary it computes as max(min(max(0,Surface)*img_comb_mult,
+% Surface + img_comb(1)), img_comb(2)), where the trace is a mix of a
+% short and a long pulse rather than an ice property. Declare it the way a
+% real product does (param.array.img_comb = [t_after t_min guard], with
+% t_after the combine time AFTER the surface return, t_min = -Inf, and no
+% img_comb_mult so it defaults to Inf) and contaminate the blend at
+% Surface + t_after to match: a bogus group delay and a coherence step
+% that still clears the coherence threshold, so only ptt.imgCombSeam can
+% remove it. The nonzero Surface makes the surface-relative reading
+% distinguishable from an absolute-traveltime one: misreading t_after as
+% absolute would put the band 0.3 us (three guard widths) too shallow.
+seam_t_after = 1.2e-6;            % [s] combine time after the surface return
+seam_t_comb = surf_twtt + seam_t_after;  % absolute boundary OPR computes
+seam_win = 0.1e-6;                % [s] image-1 guard time (band scale)
+seam_bias = 3e-9;                 % [s] spurious delay across the blend
+in_seam = Time >= seam_t_comb & Time <= seam_t_comb + seam_win;
+dtau_map(in_seam,:) = dtau_map(in_seam,:) + seam_bias;
+coherence(in_seam,:) = 0.6;
+
 % Interferogram phase: matched-filter convention phi = -2*pi*fc*dtau, plus
 % a channel timing bias (removed by surface referencing), phase noise where
 % coherence is low, and an arbitrary unwrapping constant in snaphu output
@@ -72,7 +92,8 @@ Longitude = 123 + (0:Nx-1)*1e-5;
 Elevation = 3000*ones(1,Nx);
 Bottom = nan(1,Nx);
 param_records = struct('note','synthetic');
-param_polarimetric = struct('note','synthetic');
+param_polarimetric = struct('note','synthetic', ...
+  'array', struct('img_comb', [seam_t_after -Inf seam_win]));
 file_type = 'polarimetric';
 file_version = '1';
 
@@ -121,12 +142,23 @@ assert(success, 'fabric_task did not succeed');
 out = load(fullfile(outRoot, 'CSARP_fabric', day_seg, ...
   sprintf('Data_%s_009.mat', day_seg)));
 
+% Intervals bounded by a node whose dtau was interpolated across the seam
+% gap are fabricated, not measured (that is what dlam_interpolated marks),
+% and layer stripping carries the fabricated increment into the interval
+% below it as well; both are excluded from the accuracy check.
+seam_gap = @(f,k) f(k,1) == 1 || (k > 1 && f(k-1,1) == 1);
+
 fprintf('\nBlock 1: interval (depth m)   true dlam   inferred\n');
 max_err = 0;
 for k = 1:size(out.dlam,1)
   dmid = (out.dlam_top_depth(k,1) + out.dlam_bot_depth(k,1))/2;
   lam_mid = ptt.columnProfiles(parT, 1 - dmid/parT.H);
   dlam_true_k = lam_mid.lam(1) - lam_mid.lam(2);
+  if seam_gap(out.dlam_interpolated, k)
+    fprintf('  %5.0f - %5.0f          %8.3f  %8.3f  (seam gap)\n', ...
+      out.dlam_top_depth(k,1), out.dlam_bot_depth(k,1), dlam_true_k, out.dlam(k,1));
+    continue;
+  end
   err = abs(out.dlam(k,1) - dlam_true_k);
   max_err = max(max_err, err);
   fprintf('  %5.0f - %5.0f          %8.3f  %8.3f\n', ...
@@ -142,6 +174,31 @@ nblk_ok = sum(all(isfinite(out.dlam),1));
 fprintf('Blocks fully inverted: %d of %d\n', nblk_ok, size(out.dlam,2));
 assert(nblk_ok == size(out.dlam,2), 'not all blocks inverted');
 
+%% Seam mask (ptt.imgCombSeam), driven by the product's own img_comb
+% The band is asymmetric - the crossfade runs forward from the boundary -
+% so with seam_mask_win = 1 it is [t_comb - win, t_comb + 2*win]. Coverage
+% is the per-bin coherent fraction after masking, so it is exactly zero
+% across the band and untouched on either side of it.
+seam_lo = seam_t_comb - seam_win;
+seam_hi = seam_t_comb + 2*seam_win;
+band_in = @(lo,hi) Time > lo + dt/2 & Time < hi - dt/2;
+band_out = @(lo,hi) (Time > lo - 6*dt & Time < lo - dt/2) | ...
+  (Time > hi + dt/2 & Time < hi + 6*dt);
+assert(all(all(out.coverage_blk(band_in(seam_lo,seam_hi),:) == 0)), ...
+  'seam mask did not clear the crossfade band');
+assert(all(all(out.coverage_blk(band_out(seam_lo,seam_hi),:) > 0.5)), ...
+  'seam mask removed bins outside the declared band');
+
+% The gap is bridged by interpolation so the inversion keeps a continuous
+% chain, but the nodes that came from it must say so
+assert(all(ismember(out.dlam_interpolated(:), [0;1])), ...
+  'dlam_interpolated must be 0/1 for inverted blocks');
+n_interp = sum(out.dlam_interpolated(:) == 1);
+fprintf('Seam mask: %d bins cleared, %d of %d nodes interpolated across the gap\n', ...
+  nnz(band_in(seam_lo,seam_hi)), n_interp, numel(out.dlam_interpolated));
+assert(n_interp > 0, ...
+  'no node was flagged as interpolated across the seam gap');
+
 %% Regularized joint inversion (default for noisy field data)
 param.fabric.inversion = 'joint';
 param.fabric.out_path = 'fabric_joint';
@@ -152,6 +209,7 @@ outj = load(fullfile(outRoot, 'CSARP_fabric_joint', day_seg, ...
   sprintf('Data_%s_009.mat', day_seg)));
 max_err_j = 0;
 for k = 1:size(outj.dlam,1)
+  if seam_gap(outj.dlam_interpolated, k), continue; end
   dmid = (outj.dlam_top_depth(k,1) + outj.dlam_bot_depth(k,1))/2;
   lam_mid = ptt.columnProfiles(parT, 1 - dmid/parT.H);
   max_err_j = max(max_err_j, abs(outj.dlam(k,1) - (lam_mid.lam(1) - lam_mid.lam(2))));
@@ -196,6 +254,7 @@ outc = load(fullfile(outRoot, 'CSARP_fabric_coreg', day_seg, ...
   sprintf('Data_%s_009.mat', day_seg)));
 max_err_c = 0;
 for k = 1:size(outc.dlam,1)
+  if seam_gap(outc.dlam_interpolated, k), continue; end
   dmid = (outc.dlam_top_depth(k,1) + outc.dlam_bot_depth(k,1))/2;
   lam_mid = ptt.columnProfiles(parT, 1 - dmid/parT.H);
   max_err_c = max(max_err_c, abs(outc.dlam(k,1) - (lam_mid.lam(1) - lam_mid.lam(2))));
@@ -216,7 +275,9 @@ Cspec = single(complex(randn(Nt,Nx), randn(Nt,Nx))/sqrt(2)) .* Wf;
 C0 = ifft(Cspec, [], 1);
 
 tau_col = dtau_map(:,1) + timing_bias;
-L = 24;
+% Enough levels that the seam step widening the delay range does not
+% coarsen the piecewise-constant quantization of the true profile
+L = 32;
 tau_edges = linspace(min(tau_col), max(tau_col)+eps, L+1);
 sec_common = complex(zeros(Nt, Nx, 'single'));
 for l = 1:L
@@ -269,6 +330,11 @@ for k = 1:size(outd.dlam,1)
   dmid = (outd.dlam_top_depth(k,1) + outd.dlam_bot_depth(k,1))/2;
   lam_mid = ptt.columnProfiles(parT, 1 - dmid/parT.H);
   dlam_true_k = lam_mid.lam(1) - lam_mid.lam(2);
+  if seam_gap(outd.dlam_interpolated, k)
+    fprintf('  %5.0f - %5.0f          %8.3f  %8.3f  (seam gap)\n', ...
+      outd.dlam_top_depth(k,1), outd.dlam_bot_depth(k,1), dlam_true_k, outd.dlam(k,1));
+    continue;
+  end
   max_err_d = max(max_err_d, abs(outd.dlam(k,1) - dlam_true_k));
   fprintf('  %5.0f - %5.0f          %8.3f  %8.3f\n', ...
     outd.dlam_top_depth(k,1), outd.dlam_bot_depth(k,1), dlam_true_k, outd.dlam(k,1));
@@ -277,5 +343,20 @@ fprintf('Delta-k mode: max |error| block 1: %.3f\n', max_err_d);
 assert(max_err_d < 0.06, 'delta-k dlam deviates from truth by %.3f', max_err_d);
 assert(all(outd.blend_fringes == 0), ...
   'delta-k mode must not apply fringe blending');
+
+% Delta-k resolves its ladder integers from a tau_A smoothed over the
+% analysis cells and interpolated back to the full grid, so the seam band
+% is widened by that reach - ((smooth-1)/2 + 1) cells, 300 ns at the
+% defaults - and only for this estimator (see ptt.imgCombSeam).
+dk_reach = ((5-1)/2 + 1)*100e-9;
+assert(all(all(outd.coverage_blk(band_in(seam_lo-dk_reach, seam_hi+dk_reach),:) == 0)), ...
+  'delta-k seam mask was not widened by the analysis-cell reach');
+assert(all(all(outd.coverage_blk(band_out(seam_lo-dk_reach, seam_hi+dk_reach),:) > 0.5)), ...
+  'delta-k seam mask was widened beyond the analysis-cell reach');
+assert(sum(outd.dlam_interpolated(:) == 1) > 0, ...
+  'no node was flagged as interpolated across the widened delta-k seam gap');
+fprintf('Delta-k seam mask: %d bins cleared (%d in phase mode), %d nodes interpolated\n', ...
+  nnz(band_in(seam_lo-dk_reach, seam_hi+dk_reach)), ...
+  nnz(band_in(seam_lo,seam_hi)), sum(outd.dlam_interpolated(:) == 1));
 
 fprintf('\nPASS (%.1f s)\n', toc(t0));

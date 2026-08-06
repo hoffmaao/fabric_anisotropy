@@ -8,6 +8,12 @@ Ground) is where the chains are expected to DISAGREE: the production
 blend corrections moved dtau away from both SNAPHU and delta-k, and the
 auto-detected phase sign there was flipped.
 
+Only intervals genuinely measured in both chains are compared: pegged
+intervals (|dlam| at the 2/3 layer-stripping bound) are dropped, and so
+is any interval a dlam_interpolated node contaminates in EITHER chain
+(fabric_qc.interpolated_intervals; the chains' flags legitimately differ
+because the delta-k seam band is wider, so they are OR-ed per interval).
+
 Outputs (figs/): deltak_vs_joint_ridge_a.png plus printed stats for
 both seasons.
 
@@ -23,6 +29,9 @@ import numpy as np
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy.io import loadmat
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fabric_qc import interpolated_intervals
 
 BATCH = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser(
     '~/data/opr/fabric_batch')
@@ -51,7 +60,7 @@ def load_pairs(spec):
     dk_fns = {frame_key(f): f for f in glob.glob(spec['deltak'])}
     jt_fns = {frame_key(f): f for f in glob.glob(spec['joint'])}
     keys = sorted(set(dk_fns) & set(jt_fns))
-    dk, jt, depth = [], [], []
+    dk, jt, depth, filled = [], [], [], []
     rms_dk, rms_jt = [], []
     for k in keys:
         a = loadmat(dk_fns[k], squeeze_me=True)
@@ -62,12 +71,21 @@ def load_pairs(spec):
         jt.append(np.asarray(b['dlam'], float).ravel())
         depth.append(0.5 * (np.asarray(a['dlam_top_depth'], float) +
                             np.asarray(a['dlam_bot_depth'], float)).ravel())
+        # An interval only counts if it was measured in BOTH chains: OR
+        # each chain's fabricated-interval mask (None on outputs written
+        # before dlam_interpolated existed, meaning nothing to drop).
+        bad = np.zeros(dk[-1].size, bool)
+        for itp in (interpolated_intervals(a), interpolated_intervals(b)):
+            if itp is not None:
+                bad |= itp.ravel()
+        filled.append(bad)
         rms_dk.append(np.atleast_1d(a['dtau_rms']).astype(float))
         rms_jt.append(np.atleast_1d(b['dtau_rms']).astype(float))
     dk = np.concatenate(dk) if dk else np.array([])
     jt = np.concatenate(jt) if jt else np.array([])
     depth = np.concatenate(depth) if depth else np.array([])
-    ok = (np.isfinite(dk) & np.isfinite(jt) &
+    filled = np.concatenate(filled) if filled else np.array([], bool)
+    ok = (np.isfinite(dk) & np.isfinite(jt) & ~filled &
           (np.abs(dk) < 0.98 * BOUND) & (np.abs(jt) < 0.98 * BOUND))
     return {'keys': keys, 'dk': dk[ok], 'jt': jt[ok], 'depth': depth[ok],
             'n_all': dk.size,
@@ -82,7 +100,7 @@ def stats(tag, p):
     diff = p['dk'] - p['jt']
     r = np.corrcoef(p['dk'], p['jt'])[0, 1]
     sgn = np.mean(np.sign(p['dk']) == np.sign(p['jt']))
-    print('%s: %d frames, %d/%d unpegged paired intervals' %
+    print('%s: %d frames, %d/%d clean paired intervals' %
           (tag, len(p['keys']), p['dk'].size, p['n_all']))
     print('  corr %.3f | median|diff| %.4f | bias %+.4f | sign agree %.0f%%'
           % (r, np.median(np.abs(diff)), np.mean(diff), 100 * sgn))
@@ -96,7 +114,7 @@ th = load_pairs(THWAITES)
 stats('Thwaites', th)
 
 if ra['dk'].size == 0:
-    sys.exit('Ridge A: no unpegged paired intervals under %s; '
+    sys.exit('Ridge A: no clean paired intervals under %s; '
              'nothing to plot' % BATCH)
 
 fig, axes = plt.subplots(1, 2, figsize=(11, 5))
@@ -124,7 +142,7 @@ ax.set_title('median |diff| = %.4f, bias = %+.4f'
 ax.grid(alpha=0.25, lw=0.5)
 
 fig.suptitle('Delta-k vs joint inversion, Ridge A grid '
-             '(%d frames, unpegged intervals)' % len(ra['keys']),
+             '(%d frames, clean intervals)' % len(ra['keys']),
              fontsize=12)
 fig.tight_layout()
 os.makedirs(OUT, exist_ok=True)
