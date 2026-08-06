@@ -133,7 +133,11 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     traverse stopped for BEFORE multilooking (they multilook to high
     coherence with random range phase, so no downstream coherence test
     catches them) and ships the un-normalised power sums so the look count
-    can be raised locally.
+    can be raised locally. Like `run_negis_fabric.m` below, a frame that
+    fails extraction warns and is skipped rather than ending the run, and
+    the tail of the log names every frame that went missing - the figures
+    say only 'missing extract', which cannot tell a failed frame from one
+    that was never requested.
   - `run_negis_fabric.m` - repackages each NEGIS qlook HH/VV pair in its
     `targets` list (the shear-margin line and the EastGRIP borehole line)
     into `CSARP_polarimetric` layout and runs the ordinary `fabric_task`
