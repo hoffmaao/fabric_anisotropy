@@ -48,17 +48,16 @@ END_FACES = ('#e8000b', '#ffffff')
 END_SIZE = 130
 END_EDGE = 1.6
 
-# The speed layer is drawn under a LogNorm on every site, so the bar says
-# so: a decade-spaced bar read as if it were linear misplaces every value
-# between its ticks. One constant, because three panels draw it.
-SPEED_CB_LABEL = 'ITS_LIVE surface speed (m/yr, log scale)'
-
-# What the interferogram panel actually shows: the HH-VV phase difference,
-# with coherence on the HSV value channel. Both halves have to be named -
-# these slides carry no legend, so nothing else explains why parts of the
-# panel are dark, and "phase change" is a different quantity from the
-# polarimetric phase difference plotted.
-IFG_CB_LABEL = 'HH-VV phase (rad); brightness = coherence'
+# Both colorbar captions are deliberately terse, and are NOT to be
+# re-expanded with the provenance and scaling they omit. These are
+# conference-talk slides, narrated live: the speed layer's source
+# (ITS_LIVE v2.1) and its log scaling, and the coherence on the HSV value
+# channel, are all said out loud and written in the abstract, so on the
+# slide they are words the audience reads instead of looking at the
+# figure. One constant each, because three panels draw the speed bar and
+# four draw the interferogram bar.
+SPEED_CB_LABEL = 'surface speed (m/yr)'
+IFG_CB_LABEL = 'phase change (rad)'
 
 TRACK_C = 'white'       # every survey line
 PROFILE_C = 'black'     # the focused profile
