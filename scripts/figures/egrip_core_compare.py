@@ -118,7 +118,8 @@ def main():
     fig, (axe, axd) = plt.subplots(1, 2, figsize=(11.6, 6.4), sharey=True,
                                    layout='constrained')
 
-    for k, lbl in enumerate([r'$e_1$ (smallest)', r'$e_2$', r'$e_3$ (largest)']):
+    for k, lbl in enumerate([r'$e_1$ (smallest)', r'$e_2$',
+                             r'$e_3$ (largest)']):
         axe.plot(E[:, k], Z, '.', color=C_E[k], ms=2.0, alpha=0.22)
         axe.plot(runmed(Z, E[:, k]), Z, '-', color=C_E[k], lw=2.0, label=lbl)
     axe.axvline(1 / 3, color=MUTED, lw=0.8, ls=':')

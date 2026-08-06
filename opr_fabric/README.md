@@ -99,7 +99,8 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
   launched by hand with `matlab -batch`; each one's header states its
   inputs, its launch line and what it concluded.
   - `run_sections.m` - the shipped high-resolution 2D sections for all
-    three profiles (Ridge A, Thwaites, NEGIS) at the retuned settings.
+    four profiles (Ridge A, Thwaites, NEGIS, and the EastGRIP borehole
+    line) at the retuned settings.
     The per-frame coherence gate is swept and chosen on ADJACENT-BLOCK
     AGREEMENT, not misfit rms - rms is a post-regularization residual that
     always improves with more free parameters and would endorse an
@@ -124,15 +125,22 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     trajectories from the GPS files, since the records radar-time-to-GPS
     sync failed for every segment but 20240618_01.
   - `negis_interferogram.m` - forms and extracts the HH x conj(VV)
-    interferograms for the candidate NEGIS frames. Culls the traces the
+    interferograms for the candidate NEGIS frames, plus the lines that
+    pass within 2 km of the EastGRIP borehole, which
+    `scripts/figures/egrip_azimuthal.py` fits together for the horizontal
+    fabric ellipse; its header states why that second group must stay in
+    step with the figure's frame list. Culls the traces the
     traverse stopped for BEFORE multilooking (they multilook to high
     coherence with random range phase, so no downstream coherence test
     catches them) and ships the un-normalised power sums so the look count
     can be raised locally.
-  - `run_negis_fabric.m` - repackages one NEGIS qlook HH/VV pair into
-    `CSARP_polarimetric` layout and runs the ordinary `fabric_task`
+  - `run_negis_fabric.m` - repackages each NEGIS qlook HH/VV pair in its
+    `targets` list (the shear-margin line and the EastGRIP borehole line)
+    into `CSARP_polarimetric` layout and runs the ordinary `fabric_task`
     delta-k chain over it, so the inversion is identical to the one that
-    produced the other two sites rather than a reimplementation.
+    produced the other sites rather than a reimplementation. A target that
+    loses too many traces to the cull, or whose inversion throws, warns
+    and is skipped so the rest of the batch still runs.
 
 ## Margin display extracts
 

@@ -37,7 +37,8 @@ from scar_style import (DATA, INK, MUTED, cumdist_km,  # noqa: E402
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
 GREY = np.array([0.74, 0.74, 0.74])   # what an unconstrained cell fades to
-# Node coherence spans ~0.15-0.90 at all three sites (median ~0.47), so
+# Node coherence spans ~0.15-0.90 (median ~0.47 at Ridge A, Thwaites and
+# NEGIS, ~0.34 on the noisier EastGRIP borehole line), so
 # these limits put the fade across the range that actually occurs. The
 # gamma keeps mid-coherence cells legible instead of washing out the
 # middle of every column; only genuinely poor nodes go fully grey.

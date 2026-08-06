@@ -1,7 +1,7 @@
 """EastGRIP: interferogram plus fabric strength and orientation from azimuth.
 
-The traverse radiates from EastGRIP camp, so several phase-preserving
-lines pass within a kilometre of the borehole at different headings. A
+The traverse radiates from EastGRIP camp, so nine phase-preserving lines
+pass within RADIUS_KM (2 km) of the borehole at different headings. A
 single line only measures the horizontal fabric contrast projected onto
 its own axes; the set measures the whole horizontal ellipse.
 
@@ -200,13 +200,13 @@ def core_table():
     """
     with open(CORE) as f:
         rows = f.read().split('\n')
-    h = next(i for i, l in enumerate(rows) if l.startswith('Bag\t'))
+    h = next(i for i, r in enumerate(rows) if r.startswith('Bag\t'))
     cols = rows[h].split('\t')
     iz = cols.index('Depth ice/snow [m]')
     ie = [cols.index('EVA%d (Weighted (statistic))' % k) for k in (1, 2, 3)]
     Z, E = [], []
-    for l in rows[h + 1:]:
-        p = l.split('\t')
+    for row in rows[h + 1:]:
+        p = row.split('\t')
         if len(p) <= max(ie + [iz]):
             continue
         try:
@@ -227,7 +227,10 @@ def core_bracket():
     for z0, z1 in BANDS:
         m = (Z >= z0) & (Z < z1)
         if m.sum() < 3:
-            zc.append(np.nan); lo.append(np.nan); hi.append(np.nan); continue
+            zc.append(np.nan)
+            lo.append(np.nan)
+            hi.append(np.nan)
+            continue
         zc.append(0.5 * (z0 + z1))
         lo.append(np.median(E[m, 1] - E[m, 0]))   # e2-e1, largest vertical
         hi.append(np.median(E[m, 2] - E[m, 0]))   # e3-e1, largest horizontal
@@ -277,7 +280,8 @@ def main():
         P[bi], TH[bi], RES[bi], NL[bi] = Pb, th, res, ok.sum()
 
     zc = np.array([0.5 * (a + b) for a, b in BANDS])
-    print('\n%9s %5s %8s %9s %9s' % ('depth_m', 'n', 'P', 'theta_deg', 'resid'))
+    print('\n%9s %5s %8s %9s %9s'
+          % ('depth_m', 'n', 'P', 'theta_deg', 'resid'))
     for bi in range(len(BANDS)):
         print('%9s %5d %8.3f %9.1f %9.3f'
               % ('%d-%d' % BANDS[bi], NL[bi], P[bi], TH[bi], RES[bi]))
@@ -343,7 +347,8 @@ def main():
                      color=col, va='center', annotation_clip=False)
         axa.axhline(off, color='0.85', lw=0.6, zorder=0)
     axa.axvline(FLOW_AZ, color=MUTED, lw=1.0, ls=':')
-    axa.annotate('flow %.0f$^\\circ$' % FLOW_AZ, xy=(FLOW_AZ + 2, axa.get_ylim()[1]),
+    axa.annotate('flow %.0f$^\\circ$' % FLOW_AZ,
+                 xy=(FLOW_AZ + 2, axa.get_ylim()[1]),
                  fontsize=7.5, color=MUTED, va='top')
     axa.set_xlim(0, 180)
     axa.set_xticks([0, 45, 90, 135, 180])

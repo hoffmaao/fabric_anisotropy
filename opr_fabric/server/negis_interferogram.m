@@ -34,11 +34,13 @@
 % NEGIS interferogram panel and the NEGIS fabric section are shown side by
 % side on two different depth zeros, offset by the pulse rise.
 %
-% RE-RUN REQUIRED: the extracts already on mem1 predate both the
-% pre-multilook cull and the leading-edge surface pick, so their boundary
-% columns are contaminated AND their Surface_ml sits on the power maximum.
-% Delete stages/negis_ifg_*.mat and re-run this script before regenerating
-% the NEGIS figures.
+% EXTRACTS ARE VERSIONED BY THIS SCRIPT: any stages/negis_ifg_*.mat
+% predating the pre-multilook cull and the leading-edge surface pick has
+% contaminated boundary columns AND a Surface_ml sitting on the power
+% maximum. The staged set was regenerated after those fixes; delete it and
+% re-run this script again if either changes, and re-run for any frame
+% added to `frames` below, since the figures only report 'missing extract'
+% for a frame that was never extracted.
 %
 % For each requested frame this writes a multilooked interferogram,
 % coherence, repositioned trajectory and a power-based surface pick,
