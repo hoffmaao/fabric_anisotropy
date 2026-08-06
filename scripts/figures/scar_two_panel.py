@@ -1,10 +1,10 @@
 """Two-panel SCAR site figures: survey overview + interferogram.
 
 One PNG per site:
-  left   the ENTIRE survey in polar stereographic over log-scale ITS_LIVE
+  left   the survey in polar stereographic over log-scale ITS_LIVE
          surface speed (where covered), all survey lines in WHITE, the
-         focused profile as a BLACK line, flow arrows, and a scale bar in
-         the bottom-right corner
+         focused profile as a BLACK line, flow arrows, a continental
+         locator inset and a scale bar in the bottom-right corner
   right  the wrapped polarimetric interferogram of the focused profile
 
 Slide styling, the end markers and the shared panel geometry live in
@@ -14,9 +14,12 @@ The black profile line is drawn over a thin white casing so it stays
 legible where the speed field is dark (slow ice is exactly where these
 profiles sit); the casing reads as an outline, not as a second track.
 
-Sites rendered here: Thwaites eastern shear margin (ITS_LIVE v2.1
-window streamed from S3) and Ridge A (south of satellite velocity
-coverage; plain background, stated on the panel).
+Sites rendered here: Thwaites eastern shear margin (ITS_LIVE v2.1 window
+streamed from S3; the panel shows that WHOLE window rather than a box
+padded round the tracks, so the trunk the survey sits beside stays in
+frame) and Ridge A (south of satellite velocity coverage, hence a plain
+dark background and no speed colorbar - their absence is what says there
+is no satellite velocity here, in place of an in-map caption).
 
 Usage: python scar_two_panel.py <out_dir>
 """
@@ -86,8 +89,6 @@ def thwaites():
                 (lo > -110) & (lo < -98) & (la > -78))
         if keep.any():
             tracks.append((la[keep], lo[keep]))
-    tla = np.concatenate([t[0] for t in tracks])
-    tlo = np.concatenate([t[1] for t in tracks])
 
     z = np.load(os.path.join(DATA, 'itslive_thwaites_win.npz'))
     wx, wy, v = z['x'], z['y'], z['v']
@@ -133,8 +134,8 @@ def thwaites():
         gl.top_labels = False
         gl.right_labels = False
         scale_bar_br(ax, extent)
-        sty.continental_inset(ax, float(np.mean(lats)),
-                              float(np.mean(lons)), 'antarctica',
+        sty.continental_inset(ax, float(np.nanmean(lats)),
+                              float(np.nanmean(lons)), 'antarctica',
                               (0.665, 0.775, 0.30, 0.20))
         ax.set_title('Thwaites Glacier survey', fontsize=12)
 
@@ -235,8 +236,8 @@ def ridge_a():
         gl.top_labels = False
         gl.right_labels = False
         scale_bar_br(ax, extent)
-        sty.continental_inset(ax, float(np.mean(lats)),
-                              float(np.mean(lons)), 'antarctica',
+        sty.continental_inset(ax, float(np.nanmean(lats)),
+                              float(np.nanmean(lons)), 'antarctica',
                               (0.02, 0.755, 0.26, 0.225))
         # No in-map caption: the absence of a speed layer and its colorbar
         # already says there is no satellite velocity here, and on a

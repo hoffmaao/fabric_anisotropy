@@ -64,6 +64,7 @@ in_fn = fullfile(in_dir, sprintf('Data_%s_%03d.mat', day_seg, frm));
 if exist(in_fn, 'file')
   fprintf('Reusing existing repackaged product %s\n', in_fn);
 else
+try
   name = sprintf('Data_%s_%03d.mat', day_seg, frm);
   hh_fn = fullfile(season_dir, 'CSARP_qlook_HH', day_seg, name);
   vv_fn = fullfile(season_dir, 'CSARP_qlook_VV', day_seg, name);
@@ -170,6 +171,20 @@ else
     'Surface', 'Latitude', 'Longitude', 'Elevation', 'GPS_time', ...
     'param_records', 'param_polarimetric', 'file_type', 'file_version');
   clear ref sec interferogram_coherence;
+catch err
+  % Everything the repackaging can throw - a qlook product that is absent
+  % or real-valued, mismatched HH/VV axes, a day GPS file that will not
+  % load - is a property of THIS target, so it is warned about and skipped
+  % like the cull guard above and the inversion guard below. A save that
+  % died part way leaves a file the `exist` test would happily reuse next
+  % run, so it is removed.
+  warning('run_negis_fabric:repackageFailed', ...
+    '%s frame %d: repackaging failed (%s: %s); skipping this target', ...
+    day_seg, frm, err.identifier, err.message);
+  clear H V ref sec interferogram_coherence;
+  if exist(in_fn, 'file'), delete(in_fn); end
+  continue;
+end
 end
 
 %% ---- invert ------------------------------------------------------------

@@ -157,6 +157,13 @@ def continental_inset(ax, lat, lon, region, rect):
     ax.inset_axes() registers the child inside the PARENT's artist
     ordering at zorder 5, below the map's own quiver, tracks and profile.
     """
+    # The marker is the only thing this inset exists to show, and a NaN
+    # position draws nothing at all - a locator with a blank continent
+    # reads as a rendering choice rather than as missing data. Callers
+    # average a profile's positions, and NaN positions are ordinary here.
+    if not (np.isfinite(lat) and np.isfinite(lon)):
+        raise ValueError('continental_inset needs a finite position, got '
+                         'lat=%r lon=%r' % (lat, lon))
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
     name, kw, extent = CONTINENT[region]

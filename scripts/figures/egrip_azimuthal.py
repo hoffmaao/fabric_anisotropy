@@ -237,8 +237,16 @@ def core_bracket():
     return np.array(zc), np.array(lo), np.array(hi)
 
 
-def main():
-    os.makedirs(OUT, exist_ok=True)
+def stage_lines(need=3):
+    """Every FRAMES line that survives staging, or a loud exit.
+
+    Shared with egrip_core_compare.py so the two EastGRIP figures cannot
+    disagree about which lines entered a solve, and - the reason it is a
+    function rather than a copied loop - so neither can publish radar
+    points that came from nothing: the per-band fit has two free
+    parameters, so below `need` azimuths it is undetermined, every band
+    returns None and the panel renders empty rather than failing.
+    """
     lines = []
     for tag in FRAMES:
         d = load_line(tag)
@@ -256,8 +264,16 @@ def main():
         lines.append(d)
         print('%-18s azimuth %6.1f deg, %4d near columns' % (tag, d['az'],
                                                              d['nnear']))
-    if len(lines) < 3:
-        raise SystemExit('need at least 3 lines for an azimuthal solve')
+    if len(lines) < need:
+        raise SystemExit(
+            'need at least %d lines for an azimuthal solve; staged %d of '
+            '%d frames from %s' % (need, len(lines), len(FRAMES), DATA))
+    return lines
+
+
+def main():
+    os.makedirs(OUT, exist_ok=True)
+    lines = stage_lines()
 
     az = np.array([d['az'] for d in lines])
     print('\nazimuth coverage: %s' % np.array2string(np.sort(az), precision=1))
