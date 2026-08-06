@@ -1,37 +1,85 @@
-%RUN_RIDGE_A_SURVEY Fabric inversion over every frame of the Ridge A raster.
+%RUN_SURVEY_FABRIC Fabric inversion over every frame of one survey.
 %
-% run_sections.m inverts ONE Ridge A leg (20250108_02_009) at high vertical
-% resolution to draw a section. This runs the same chain over all 36 frames
-% of the raster survey so the result can be MAPPED rather than sectioned -
-% depth-averaged horizontal asymmetry along every track, plus, where legs
-% cross, the fabric orientation.
+% run_sections.m inverts ONE leg per site at high vertical resolution to
+% draw a section. This runs the same chain over every frame of a survey so
+% the result can be MAPPED rather than sectioned - depth-averaged
+% horizontal asymmetry along every track, plus, where legs cross, the
+% fabric orientation.
+%
+% Pick the survey with `site`, default ridge_a:
+%   matlab -batch "site='taylor_dome'; run_survey_fabric"
+%
+% AZIMUTH DIVERSITY IS A PROPERTY OF THE SURVEY, NOT OF THE METHOD. The
+% orientation solve needs two legs at least ~20 deg apart over the same
+% ground. Measured over each product set:
+%   ridge_a      raster, both azimuth families        orientation solvable
+%   taylor_dome  raster, 60-80 and 120-140 deg        orientation solvable
+%   negis        radiating traverse, 33 and 128-145   orientation solvable
+%   thwaites     single W-E transect, ALL 66 frames
+%                between 60 and 100 deg               ribbons ONLY
+% Thwaites is listed so it can be inverted and mapped as ribbons, not
+% because a two-azimuth solve will produce anything there; the figure
+% drops the strength panel for it rather than showing an empty one.
 %
 % Settings are run_sections.m's verbatim (BLOCK/NINT/REG/THR and the
 % adjacent-block gate rule), because the map and the section have to be the
 % same measurement: a map drawn at different blocks or a different gate
 % would disagree with the published section along the very leg they share.
 %
-% dtau comes from the SNAPHU phase. Ridge A is the site where SNAPHU is
-% exactly consistent with the wrapped phase, and where delta-k is known to
-% be suppressed at depth (the stage-A diagnosis), so 'phase' is not a
-% preference here - delta-k would flatten the very depth range the map
-% averages over.
+% dtau comes from the SNAPHU phase at every site, and that is not a
+% preference. delta-k is suppressed at depth (the stage-A diagnosis on
+% Ridge A), which flattens the very depth range the map averages over; the
+% EastGRIP core comparison then measured the cost, delta-k scoring RMS
+% 0.411 against SNAPHU's 0.282 through the same inversion.
 %
-% WHY ORIENTATION NEEDS THE RASTER. One line measures only the projection
-% of the horizontal ellipse onto its own axes, dlam_obs = -P cos 2(alpha -
-% theta). Two lines crossing at different azimuths determine both P and
-% theta. The Ridge A survey is a raster with near-orthogonal legs, so the
-% crossings are where orientation is recoverable; along a single leg only
-% the projection is. That distinction is carried into the figure - ribbons
-% are per-leg projections, orientation crosses are drawn only at crossings.
+% WHY ORIENTATION NEEDS CROSSING LEGS. One line measures only the
+% projection of the horizontal ellipse onto its own axes, dlam_obs =
+% -P cos 2(alpha - theta). Two lines at different azimuths over the same
+% ground determine both P and theta; along a single leg only the projection
+% is recoverable. That distinction is carried into the figure - ribbons are
+% per-leg projections, orientation crosses are drawn only where two
+% azimuths meet - which is why the table above matters before running a
+% site rather than after.
 %
 % Saves per-frame dlam(interval, block) with block positions, so the depth
 % average and the crossing search both happen downstream and can be retuned
 % without another server pass.
 scratch = '/kucresis/scratch/hoffmana_sta/fabric';
-season_root = '/cresis/nvme/opr_data/accum/2024_Antarctica_Ground2';
-pol_dir = fullfile(season_root, 'CSARP_polarimetric');
-out_fn = fullfile(scratch, 'stages', 'ridge_a_survey.mat');
+if ~exist('site', 'var') || isempty(site)
+  site = 'ridge_a';
+end
+% dir / frame-glob per survey. The glob matters for Thwaites, whose season
+% also holds two unrelated sites (a -79.2 deg pair and a Ross Island group
+% at 167-168 deg E) that would otherwise be inverted and mapped as if they
+% were part of the transect.
+switch site
+  case 'ridge_a'
+    pol_dir = '/cresis/nvme/opr_data/accum/2024_Antarctica_Ground2/CSARP_polarimetric';
+    glob = 'Data_*.mat';
+  case 'taylor_dome'
+    pol_dir = '/cresis/dataproducts/opr_data/accum/2025_Antarctica_Ground2/CSARP_polarimetric';
+    glob = 'Data_*.mat';
+  case 'thwaites'
+    pol_dir = '/cresis/dataproducts/opr_data/accum/2023_Antarctica_Ground/CSARP_polarimetric_unwrap';
+    glob = 'Data_2024010*.mat';
+  case 'eastwind'
+    % 17 frames, all carrying snaphu_out_phase, over a ~1 km footprint at
+    % 77.67 S 168.14 E with azimuths spread 20-140 deg. The tight footprint
+    % and wide azimuth spread is the best geometry of any site here - it is
+    % close to a rotation about one point, which is what a quad-pol ApRES
+    % does mechanically.
+    pol_dir = '/cresis/dataproducts/opr_data/accum/2022_Antarctica_Ground/CSARP_polarimetric_unwrap';
+    glob = 'Data_*.mat';
+  case 'negis'
+    % Written by run_negis_fabric.m, which repackages qlook HH/VV and adds
+    % the Goldstein-filtered SNAPHU phase this season has no product for.
+    pol_dir = fullfile(scratch, '2024_Greenland_Ground2', ...
+      'CSARP_polarimetric_negis');
+    glob = 'Data_*.mat';
+  otherwise
+    error('run_survey_fabric:site', 'unknown site %s', site);
+end
+out_fn = fullfile(scratch, 'stages', sprintf('%s_survey.mat', site));
 
 code = fullfile(scratch, 'code');
 addpath(code); addpath(fullfile(code,'opr_fabric'));
@@ -50,11 +98,12 @@ par = ptt.defaultParams();
 par.H = 2000; par.lam_z_sfc = 1/3; par.lam_z_bed = 1/3;
 par.zhat_bco = 1 - 60/par.H;
 
-d = dir(fullfile(pol_dir, '*', 'Data_*.mat'));
+d = dir(fullfile(pol_dir, '*', glob));
 if isempty(d)
-  error('run_ridge_a_survey:noFrames', 'no frames under %s', pol_dir);
+  error('run_survey_fabric:noFrames', 'no frames matching %s under %s', ...
+    glob, pol_dir);
 end
-fprintf('found %d frames under %s\n', numel(d), pol_dir);
+fprintf('site %s: found %d frames under %s\n', site, numel(d), pol_dir);
 
 F = struct([]);
 n = 0;
@@ -70,7 +119,7 @@ for fi = 1:numel(d)
     sel = intersect(want, {have.name});
     pol = load(in_fn, sel{:});
     if ~isfield(pol, 'snaphu_out_phase') || isempty(pol.snaphu_out_phase)
-      error('run_ridge_a_survey:noSnaphu', ...
+      error('run_survey_fabric:noSnaphu', ...
         'no snaphu_out_phase in this product');
     end
 
@@ -149,7 +198,7 @@ for fi = 1:numel(d)
       end
     end
     if isempty(best)
-      error('run_ridge_a_survey:noGate', ...
+      error('run_survey_fabric:noGate', ...
         'no coherence gate produced a scorable block set');
     end
     fprintf('  chose gate %.2f (adj %.2f, rms %.3f ns, %d blocks)\n', ...
@@ -167,7 +216,7 @@ for fi = 1:numel(d)
   catch ME
     % Warn and continue: 36 frames is a batch, and one product missing its
     % unwrapped phase must not cost the other 35.
-    warning('run_ridge_a_survey:frameFailed', '%s failed (%s): %s', ...
+    warning('run_survey_fabric:frameFailed', '%s failed (%s): %s', ...
       tag, ME.identifier, ME.message);
     clear pol map dtau info;
     continue;
@@ -175,7 +224,7 @@ for fi = 1:numel(d)
 end
 
 if n < 2
-  error('run_ridge_a_survey:tooFew', ...
+  error('run_survey_fabric:tooFew', ...
     'only %d of %d frames inverted', n, numel(d));
 end
 save(out_fn, '-v7.3', 'F');

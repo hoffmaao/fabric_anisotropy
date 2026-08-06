@@ -1,4 +1,4 @@
-"""Ridge A: depth-averaged horizontal fabric and its orientation, in map view.
+"""Depth-averaged horizontal fabric and its orientation, in map view.
 
 Modelled on Nymand et al. (2025), "Double Reflections in Polarized Radar
 Data Reveal Ice Fabric in the North East Greenland Ice Stream", GRL 52,
@@ -14,8 +14,8 @@ own axes,
     dlam_obs(alpha) = -P cos 2(alpha - theta),
 
 so a leg alone cannot separate a weak fabric aligned with it from a strong
-fabric at 45 degrees to it. Two legs at different azimuths determine both.
-Ridge A is a raster survey, so this figure keeps the distinction explicit:
+fabric at 45 degrees to it. Two legs at different azimuths determine both,
+so the figure keeps the distinction explicit at every site:
 
   ribbons   the per-leg PROJECTION, which is what that leg measured
   crosses   P and theta, solved only in grid cells that hold at least two
@@ -33,7 +33,21 @@ where a flow direction is neither available nor meaningful, so orientation
 is reported as an absolute azimuth (degrees east of north) over a plain
 background.
 
-Usage: python ridge_a_fabric_map.py <out_dir>
+WHICH SITES CAN SHOW ORIENTATION. Measured over each product set:
+
+  ridge_a      raster, two azimuth families          strength + crosses
+  taylor_dome  raster, 60-80 and 120-140 deg         strength + crosses
+  negis        radiating traverse, 33 and 128-145    strength + crosses
+  eastwind     17 lines over ~1 km, 20-140 deg       strength + crosses
+  thwaites     single W-E transect, all 66 frames
+               between 60 and 100 deg                RIBBONS ONLY
+
+Thwaites gets one panel, not two. Its legs never differ by the ~20 deg the
+two-parameter fit needs, so a strength panel there would be empty - and an
+empty panel invites the reader to conclude the fabric is weak rather than
+that the survey cannot see it.
+
+Usage: python fabric_map.py <out_dir> [site ...]
 """
 import os
 import sys
@@ -53,7 +67,18 @@ import scar_style as sty                  # noqa: E402
 from scar_style import DATA, INK, MUTED   # noqa: E402
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
-FN = os.path.join(DATA, 'ridge_a_survey.mat')
+
+# name -> (title, staged survey file). The file is what
+# opr_fabric/server/run_survey_fabric.m writes for that site.
+SITES = {
+    'ridge_a': ('Ridge A divide', 'ridge_a_survey.mat'),
+    'taylor_dome': ('Taylor Dome', 'taylor_dome_survey.mat'),
+    'negis': ('NEGIS onset (EastGRIP)', 'negis_survey.mat'),
+    'thwaites': ('Thwaites eastern shear margin', 'thwaites_survey.mat'),
+    'eastwind': ('Eastwind', 'eastwind_survey.mat'),
+}
+# Sites whose legs never differ by AZ_MIN_SEP; ribbons only, no solve.
+NO_ORIENTATION = {'thwaites'}
 
 # Depth window the ribbons average over. Below the firn (the shallowest
 # interval sits inside the surface reference band and measures ~0 fringes
@@ -71,18 +96,26 @@ CELL_KM = 5.0           # grid cell for the two-azimuth orientation solve
 AZ_MIN_SEP = 20.0       # degrees; below this two legs do not constrain theta
 MIN_PER_AZ = 2          # blocks a leg must contribute to a cell
 P_BOUND = 2.0 / 3       # |lam_max - lam_min| cannot exceed 1 - lam_z
+# Frames whose inversion cannot fit its OWN dtau are dropped rather than
+# drawn. Ridge A and Taylor Dome sit at a median 0.045 and 0.063 ns and
+# never exceed 0.45; Thwaites has a median of 0.209 ns but a tail reaching
+# 8.4 ns on the margin frames, and those few frames otherwise set the
+# colour range for the whole map - +-0.39 against +-0.08 at Ridge A - so
+# the sites would be drawn on scales that are not comparable and the
+# well-fitted majority would wash out to nothing.
+RMS_MAX_NS = 1.0
 
 RIBBON_LW = 5.0
 CROSS_KM = 1.9          # half-length of the longer principal-axis arrow
 
 
-def load_survey():
-    if not os.path.exists(FN):
+def load_survey(fn):
+    if not os.path.exists(fn):
         raise SystemExit(
-            'missing %s; run opr_fabric/server/run_ridge_a_survey.m on the '
-            'server and mirror the result there' % FN)
+            'missing %s; run opr_fabric/server/run_survey_fabric.m for this '
+            'site on the server and mirror the result there' % fn)
     out = []
-    with h5py.File(FN) as f:
+    with h5py.File(fn) as f:
         g = f['F']
         for i in range(g['tag'].shape[0]):
             def a(name):
@@ -184,7 +217,12 @@ def cells(lines, proj):
         fit = solve_cell(A[m], V[m], W[m])
         if fit is None:
             continue
-        out.append(((key[0] + 0.5) * s, (key[1] + 0.5) * s,
+        # Anchor on the CENTROID of the blocks that solved, not the cell
+        # centre. Where a survey only clips the corner of a cell - which is
+        # most of them on a track-following survey - the cell centre can be
+        # kilometres off the nearest track, and a cross floating in empty
+        # space reads as a measurement of ground that was never sounded.
+        out.append((float(X[m].mean()), float(Y[m].mean()),
                     fit[0], fit[1], int(m.sum())))
     return out
 
@@ -231,15 +269,32 @@ def draw_cross(ax, x, y, P, th, proj, scale, pmax):
     del tr
 
 
-def main():
-    os.makedirs(OUT, exist_ok=True)
-    lines = load_survey()
-    print('loaded %d frames, %d blocks'
-          % (len(lines), sum(d['lat'].size for d in lines)))
+def render(site):
+    title, fname = SITES[site]
+    lines = load_survey(os.path.join(DATA, fname))
+    n_all = len(lines)
+    drop = [d for d in lines if not (d['rms'] <= RMS_MAX_NS)]
+    lines = [d for d in lines if d['rms'] <= RMS_MAX_NS]
+    if not lines:
+        print('%s: every frame exceeds the %.1f ns misfit gate; skipped'
+              % (site, RMS_MAX_NS))
+        return
+    if drop:
+        print('%s: dropped %d of %d frames over %.1f ns misfit (%s)'
+              % (site, len(drop), n_all, RMS_MAX_NS,
+                 ', '.join('%s %.1f' % (d['tag'], d['rms']) for d in drop)))
+    print('\n=== %s: %d frames, %d blocks'
+          % (site, len(lines), sum(d['lat'].size for d in lines)))
 
-    proj = ccrs.SouthPolarStereo()
-    cl = cells(lines, proj)
-    print('%d grid cells (%.0f km) resolved orientation' % (len(cl), CELL_KM))
+    # NEGIS is the one northern-hemisphere site here, so its tracks would
+    # transform to nonsense under a south polar projection.
+    proj = (ccrs.NorthPolarStereo(central_longitude=-45) if site == 'negis'
+            else ccrs.SouthPolarStereo())
+    two = site not in NO_ORIENTATION
+    cl = cells(lines, proj) if two else []
+    if two:
+        print('%d grid cells (%.0f km) resolved orientation'
+              % (len(cl), CELL_KM))
 
     allv = np.concatenate([depth_average(d)[0] for d in lines])
     allv = allv[np.isfinite(allv)]
@@ -256,96 +311,96 @@ def main():
     extent = (xy[:, 0].min() - pad, xy[:, 0].max() + pad,
               xy[:, 1].min() - pad, xy[:, 1].max() + pad)
 
-    fig = plt.figure(figsize=(15.0, 6.6), layout='constrained')
-    gs = fig.add_gridspec(1, 3, width_ratios=[1.35, 1.0, 1.0])
+    # Two panels of equal width where orientation is solvable, one where it
+    # is not. The figure is sized from the survey's own aspect: cartopy
+    # holds the map aspect fixed, so a default landscape canvas around a
+    # 112 x 10 km transect (Thwaites, which polar stereographic rotates to
+    # near-vertical) leaves a sliver of data in a field of grey.
+    # Drive the layout from a FIXED map height and let width follow the
+    # aspect, rather than the reverse. Sizing from a fixed width instead
+    # made Thwaites 15 in tall, because cartopy holds the map aspect and
+    # that survey is 112 x 10 km rotated to near-vertical by the
+    # projection. The width floor keeps the title and colourbar legible on
+    # the narrowest site.
+    asp = (extent[3] - extent[2]) / max(extent[1] - extent[0], 1.0)
+    map_h = 6.0
+    pw = float(np.clip(map_h / max(asp, 1e-3), 2.9, 6.6))
+    fig = plt.figure(figsize=((2 if two else 1) * pw + 0.6, map_h + 1.5),
+                     layout='constrained')
+    gs = fig.add_gridspec(1, 2 if two else 1)
     axm = fig.add_subplot(gs[0, 0], projection=proj)
-    axp = fig.add_subplot(gs[0, 1], projection=proj)
-    axt = fig.add_subplot(gs[0, 2], projection=proj)
+    axp = fig.add_subplot(gs[0, 1], projection=proj) if two else None
 
-    for ax in (axm, axp, axt):
+    for ax in filter(None, (axm, axp)):
         ax.set_extent(extent, crs=proj)
         ax.set_facecolor('#f2f1ef')
         gl = ax.gridlines(draw_labels=False, lw=0.5, color='0.85')
         gl.top_labels = gl.right_labels = False
 
-    # (a) ribbons + orientation crosses
+    # (a) ribbons + orientation crosses. No angle labels: the crosses carry
+    # the orientation, and the numbers only repeated it while colliding
+    # with neighbouring arms.
     ribbons(axm, lines, norm, cmap)
     scale = CROSS_KM * 1e3
     pmax = max([c[2] for c in cl]) if cl else 1.0
     for x, y, P, th, n in cl:
         draw_cross(axm, x, y, P, th, proj, scale, pmax)
-    # A few angle labels, as Nymand et al. annotate theirs. Not all of them:
-    # at this cell size the crosses are ~5 km apart and a label on every one
-    # would collide with its neighbours' arms.
-    for x, y, P, th, n in cl[::3]:
-        axm.annotate('%.0f$^\\circ$' % th, xy=(x, y),
-                     # Offset in POINTS, a display unit. `scale` is in
-                     # metres; passing it here pushed the label ~1200 pt
-                     # away and collapsed constrained_layout to zero.
-                     xytext=(0, 13), textcoords='offset points',
-                     xycoords=proj._as_mpl_transform(axm), fontsize=7,
-                     color='#111111', ha='center', va='bottom', zorder=10,
-                     bbox=dict(boxstyle='round,pad=0.14', fc='white',
-                               ec='none', alpha=0.72))
     sty.scale_bar_br(axm, extent, proj)
-    axm.set_title('Ridge A: depth-averaged $\\Delta\\lambda$ (%.0f-%.0f m)\n'
-                  'with horizontal principal axes where two azimuths cross'
-                  % Z_AVG, fontsize=10.5, color=INK)
-    cax = axm.inset_axes([0.06, -0.09, 0.55, 0.028])
-    fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cax,
-                 orientation='horizontal',
-                 label=r'$\Delta\lambda$ projected on each leg')
+    sub = ('with horizontal principal axes where two azimuths cross' if two
+           else 'single-azimuth transect: orientation not recoverable')
+    axm.set_title('%s: depth-averaged $\\Delta\\lambda$ (%.0f-%.0f m)\n%s'
+                  % (title, Z_AVG[0], Z_AVG[1], sub),
+                  fontsize=10.5, color=INK)
+    cax = axm.inset_axes([0.05, -0.075, 0.90, 0.026])
+    cb = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cax,
+                      orientation='horizontal',
+                      label=r'$\Delta\lambda$ projected on each leg')
+    # Three explicit ticks. Matplotlib's default spacing collided on the
+    # narrow single-panel layout, printing "-0.250.00 0.25" as one run.
+    cb.set_ticks([-lim, 0, lim])
+    cb.set_ticklabels(['%.2f' % -lim, '0', '%.2f' % lim])
 
     # (b) solved strength
-    pv = np.array([c[2] for c in cl]) if cl else np.array([])
-    if pv.size:
-        sc = axp.scatter([c[0] for c in cl], [c[1] for c in cl], c=pv,
-                         s=110, cmap='viridis', vmin=0,
-                         vmax=float(np.nanpercentile(pv, 95)),
-                         edgecolor='black', lw=0.6, transform=proj, zorder=7)
-        cax2 = axp.inset_axes([0.06, -0.09, 0.55, 0.028])
-        fig.colorbar(sc, cax=cax2, orientation='horizontal',
-                     label=r'$P=\lambda_{max}-\lambda_{min}$')
-    ribbons(axp, lines, norm, cmap, lw=1.6, zorder=4)
-    axp.set_title('fabric strength, two-azimuth solve', fontsize=10.5,
-                  color=INK)
-
-    # (c) solved orientation. Cyclic colormap: theta is an AXIS, not a
-    # direction, so 179 deg and 1 deg are neighbours and a linear ramp
-    # would draw them as opposite extremes.
-    tv = np.array([c[3] for c in cl]) if cl else np.array([])
-    if tv.size:
-        # Drawn as oriented ticks, not dots. theta is an angle, and this
-        # survey's values sit inside a ~30 deg spread, so on any cyclic
-        # ramp they resolve to nearly one colour - the reader would be
-        # asked to distinguish orientations by a hue difference smaller
-        # than the colourbar can show. The tick states the angle directly
-        # and the colour only reinforces it.
-        tk = CROSS_KM * 1e3 * 1.05
-        r = np.radians(tv)
-        xs = np.array([c[0] for c in cl])
-        ys = np.array([c[1] for c in cl])
-        segs = [[(x - np.sin(a) * tk, y - np.cos(a) * tk),
-                 (x + np.sin(a) * tk, y + np.cos(a) * tk)]
-                for x, y, a in zip(xs, ys, r)]
-        cm2 = plt.get_cmap('twilight')
-        lc2 = LineCollection(segs, transform=proj, linewidths=3.4,
-                             colors=cm2(tv / 180.0), capstyle='round',
+    if two:
+        pv = np.array([c[2] for c in cl]) if cl else np.array([])
+        if pv.size:
+            sc = axp.scatter([c[0] for c in cl], [c[1] for c in cl], c=pv,
+                             s=110, cmap='viridis', vmin=0,
+                             vmax=float(np.nanpercentile(pv, 95)),
+                             edgecolor='black', lw=0.6, transform=proj,
                              zorder=7)
-        axt.add_collection(lc2)
-        sc2 = plt.cm.ScalarMappable(
-            norm=matplotlib.colors.Normalize(0, 180), cmap=cm2)
-        cax3 = axt.inset_axes([0.06, -0.09, 0.55, 0.028])
-        cb = fig.colorbar(sc2, cax=cax3, orientation='horizontal',
-                          label=r'$\theta$ of $\lambda_{max}$ (deg E of N)')
-        cb.set_ticks([0, 45, 90, 135, 180])
-    ribbons(axt, lines, norm, cmap, lw=1.6, zorder=4)
-    axt.set_title('fabric orientation, two-azimuth solve', fontsize=10.5,
-                  color=INK)
+            cax2 = axp.inset_axes([0.05, -0.075, 0.90, 0.026])
+            fig.colorbar(sc, cax=cax2, orientation='horizontal',
+                         label=r'$P=\lambda_{max}-\lambda_{min}$')
+        # Same ribbon weight as (a). The ribbons are the same measurement in
+        # both panels, so drawing them thinner here would read as a
+        # different, lesser quantity rather than the same one behind other
+        # symbols.
+        ribbons(axp, lines, norm, cmap, zorder=4)
+        axp.set_title('fabric strength, two-azimuth solve', fontsize=10.5,
+                      color=INK)
 
-    out = os.path.join(OUT, 'scar_ridge_a_fabric_map.png')
+    out = os.path.join(OUT, 'scar_%s_fabric_map.png' % site)
     fig.savefig(out, dpi=200, bbox_inches='tight', facecolor='white')
+    plt.close(fig)
     print('wrote', out)
+
+
+def main():
+    os.makedirs(OUT, exist_ok=True)
+    want = sys.argv[2:] or list(SITES)
+    bad = [s for s in want if s not in SITES]
+    if bad:
+        raise SystemExit('unknown site(s): %s; known: %s'
+                         % (', '.join(bad), ', '.join(SITES)))
+    for site in want:
+        # A site whose survey has not been run yet is skipped rather than
+        # fatal, so rendering the finished ones does not wait on the batch
+        # still in flight.
+        if not os.path.exists(os.path.join(DATA, SITES[site][1])):
+            print('no survey staged for %s; skipped' % site)
+            continue
+        render(site)
 
 
 if __name__ == '__main__':
