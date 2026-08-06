@@ -158,6 +158,11 @@ for fi = 1:numel(d)
     n = n + 1;
     best.tag = tag;
     F = H_append(F, best, n);
+    % Save after EVERY frame, not once at the end. At ~3 min a frame this
+    % is a two-hour batch, and losing all of it to a kill, a full disk or a
+    % single bad product late in the list is a worse outcome than the
+    % second it costs to rewrite a file this small.
+    save(out_fn, '-v7.3', 'F');
     clear pol map dtau info;
   catch ME
     % Warn and continue: 36 frames is a batch, and one product missing its

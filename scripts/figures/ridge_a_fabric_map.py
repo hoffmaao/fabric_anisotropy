@@ -62,13 +62,18 @@ FN = os.path.join(DATA, 'ridge_a_survey.mat')
 # there falls to 0.39 and 0.09.
 Z_AVG = (200.0, 1300.0)
 Q_MIN = 0.30            # node coherence below which an interval is dropped
-CELL_KM = 3.0           # grid cell for the two-azimuth orientation solve
+# Cell size trades sample count against legibility. At 3 km the survey
+# yields ~26 cells on a ~30 km map, so the crosses sit ~3 km apart and have
+# to be drawn smaller than they are readable. 5 km gives fewer, bigger
+# crosses - closer to the dozen labelled points Nymand et al. draw - and
+# each still holds both azimuths.
+CELL_KM = 5.0           # grid cell for the two-azimuth orientation solve
 AZ_MIN_SEP = 20.0       # degrees; below this two legs do not constrain theta
 MIN_PER_AZ = 2          # blocks a leg must contribute to a cell
 P_BOUND = 2.0 / 3       # |lam_max - lam_min| cannot exceed 1 - lam_z
 
 RIBBON_LW = 5.0
-CROSS_KM = 1.15         # half-length of the longer principal-axis arrow
+CROSS_KM = 1.9          # half-length of the longer principal-axis arrow
 
 
 def load_survey():
@@ -201,7 +206,7 @@ def ribbons(ax, lines, norm, cmap, lw=RIBBON_LW, zorder=6):
     return np.array(cols)
 
 
-def draw_cross(ax, x, y, P, th, proj, scale):
+def draw_cross(ax, x, y, P, th, proj, scale, pmax):
     """The two horizontal principal axes as a cross of double-headed arrows.
 
     Long dark arrow = azimuth of the LARGER horizontal eigenvalue; short
@@ -209,16 +214,21 @@ def draw_cross(ax, x, y, P, th, proj, scale):
     long axis only, so a near-isotropic cell reads as two arms of similar
     length rather than as a strong fabric pointing nowhere.
     """
-    L = scale * (0.35 + 0.65 * min(P / P_BOUND, 1.0))
-    for ang, col, lw, frac in ((th, '#1a1a1a', 2.2, 1.0),
-                               (th + 90, '#8a8a8a', 1.5, 0.55)):
+    # P spans only ~0-0.11 here, so scaling length by P/P_BOUND would make
+    # every cross the same stub. Normalise to the observed spread instead,
+    # keeping a floor so a weak cell still shows its axis.
+    L = scale * (0.45 + 0.55 * min(P / max(pmax, 1e-6), 1.0))
+    tr = proj._as_mpl_transform(ax)
+    for ang, col, lw, frac in ((th + 90, '#f0f0f0', 4.2, 0.60),
+                               (th, '#f0f0f0', 5.4, 1.0),
+                               (th + 90, '#8a8a8a', 1.6, 0.60),
+                               (th, '#111111', 2.6, 1.0)):
         r = np.radians(ang)
         dx, dy = np.sin(r) * L * frac, np.cos(r) * L * frac
-        ax.annotate('', xy=(x + dx, y + dy), xytext=(x - dx, y - dy),
-                    xycoords=proj._as_mpl_transform(ax),
-                    textcoords=proj._as_mpl_transform(ax),
-                    arrowprops=dict(arrowstyle='<->', color=col, lw=lw,
-                                    shrinkA=0, shrinkB=0), zorder=9)
+        ax.plot([x - dx, x + dx], [y - dy, y + dy], '-', color=col, lw=lw,
+                solid_capstyle='round', transform=proj,
+                zorder=8 if col == '#f0f0f0' else 9)
+    del tr
 
 
 def main():
@@ -261,9 +271,23 @@ def main():
     # (a) ribbons + orientation crosses
     ribbons(axm, lines, norm, cmap)
     scale = CROSS_KM * 1e3
+    pmax = max([c[2] for c in cl]) if cl else 1.0
     for x, y, P, th, n in cl:
-        draw_cross(axm, x, y, P, th, proj, scale)
-    sty.scale_bar_br(axm, extent)
+        draw_cross(axm, x, y, P, th, proj, scale, pmax)
+    # A few angle labels, as Nymand et al. annotate theirs. Not all of them:
+    # at this cell size the crosses are ~5 km apart and a label on every one
+    # would collide with its neighbours' arms.
+    for x, y, P, th, n in cl[::3]:
+        axm.annotate('%.0f$^\\circ$' % th, xy=(x, y),
+                     # Offset in POINTS, a display unit. `scale` is in
+                     # metres; passing it here pushed the label ~1200 pt
+                     # away and collapsed constrained_layout to zero.
+                     xytext=(0, 13), textcoords='offset points',
+                     xycoords=proj._as_mpl_transform(axm), fontsize=7,
+                     color='#111111', ha='center', va='bottom', zorder=10,
+                     bbox=dict(boxstyle='round,pad=0.14', fc='white',
+                               ec='none', alpha=0.72))
+    sty.scale_bar_br(axm, extent, proj)
     axm.set_title('Ridge A: depth-averaged $\\Delta\\lambda$ (%.0f-%.0f m)\n'
                   'with horizontal principal axes where two azimuths cross'
                   % Z_AVG, fontsize=10.5, color=INK)
@@ -291,9 +315,26 @@ def main():
     # would draw them as opposite extremes.
     tv = np.array([c[3] for c in cl]) if cl else np.array([])
     if tv.size:
-        sc2 = axt.scatter([c[0] for c in cl], [c[1] for c in cl], c=tv,
-                          s=110, cmap='twilight', vmin=0, vmax=180,
-                          edgecolor='black', lw=0.6, transform=proj, zorder=7)
+        # Drawn as oriented ticks, not dots. theta is an angle, and this
+        # survey's values sit inside a ~30 deg spread, so on any cyclic
+        # ramp they resolve to nearly one colour - the reader would be
+        # asked to distinguish orientations by a hue difference smaller
+        # than the colourbar can show. The tick states the angle directly
+        # and the colour only reinforces it.
+        tk = CROSS_KM * 1e3 * 1.05
+        r = np.radians(tv)
+        xs = np.array([c[0] for c in cl])
+        ys = np.array([c[1] for c in cl])
+        segs = [[(x - np.sin(a) * tk, y - np.cos(a) * tk),
+                 (x + np.sin(a) * tk, y + np.cos(a) * tk)]
+                for x, y, a in zip(xs, ys, r)]
+        cm2 = plt.get_cmap('twilight')
+        lc2 = LineCollection(segs, transform=proj, linewidths=3.4,
+                             colors=cm2(tv / 180.0), capstyle='round',
+                             zorder=7)
+        axt.add_collection(lc2)
+        sc2 = plt.cm.ScalarMappable(
+            norm=matplotlib.colors.Normalize(0, 180), cmap=cm2)
         cax3 = axt.inset_axes([0.06, -0.09, 0.55, 0.028])
         cb = fig.colorbar(sc2, cax=cax3, orientation='horizontal',
                           label=r'$\theta$ of $\lambda_{max}$ (deg E of N)')

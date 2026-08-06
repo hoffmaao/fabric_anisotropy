@@ -15,8 +15,21 @@
 % the frame list in egrip_zeising.m.
 scratch = '/kucresis/scratch/hoffmana_sta/fabric';
 season = '2024_Greenland_Ground2';
-in_root = fullfile(scratch, season, 'CSARP_fabric_deltak_negis');
-out_fn = fullfile(scratch, 'stages', 'egrip_inversion.mat');
+% Which inversion output to gather, and where to put it. Overridable so the
+% delta-k and SNAPHU runs can both be collected without editing the file -
+% the EastGRIP comparison needs them side by side, and a collector that
+% could only see one of them would make the switch unmeasurable:
+%   matlab -batch "in_name='CSARP_fabric_deltak_negis'; \
+%                  out_name='egrip_inversion_deltak.mat'; \
+%                  egrip_collect_inversion"
+if ~exist('in_name', 'var') || isempty(in_name)
+  in_name = 'CSARP_fabric_snaphu_negis';
+end
+if ~exist('out_name', 'var') || isempty(out_name)
+  out_name = 'egrip_inversion.mat';
+end
+in_root = fullfile(scratch, season, in_name);
+out_fn = fullfile(scratch, 'stages', out_name);
 
 frames = { '20240628_01', 1; '20240626_03', 5; '20240626_01', 1; ...
            '20240619_01', 1; '20240621_01', 1; '20240620_01', 1; ...
