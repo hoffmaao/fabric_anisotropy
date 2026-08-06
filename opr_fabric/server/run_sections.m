@@ -1,4 +1,4 @@
-%RUN_SECTIONS High-resolution 2D fabric sections for all three SCAR profiles.
+%RUN_SECTIONS High-resolution 2D fabric sections for all four SCAR profiles.
 %
 % Re-runs each profile at the settings the Ridge A sweep established
 % (ridge_a_section.m): small along-track blocks, more depth intervals, and
@@ -13,6 +13,7 @@
 %   Thwaites  delta-k the joint chain does not fit its own observations
 %                     there (5.2 ns rms) - blend corruption
 %   NEGIS     delta-k the only option; no SNAPHU, no coregistration
+%   EastGRIP  delta-k same season as NEGIS, so the same single option
 %
 % Saves dlam, the node coherence (dlam_quality) used for shading, the
 % interpolated-node flag, and block positions for each site.

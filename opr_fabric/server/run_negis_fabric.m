@@ -1,11 +1,12 @@
-%RUN_NEGIS_FABRIC Rathmann eigenvalue inversion for the NEGIS profile.
+%RUN_NEGIS_FABRIC Rathmann eigenvalue inversion for the NEGIS profiles.
 %
-% The NEGIS data are not in CSARP_polarimetric form, so this first
-% repackages one qlook HH/VV pair into that layout and then runs the
-% ordinary fabric_task delta-k chain on it. Repackaging rather than
-% reimplementing keeps the inversion identical to the one that produced
-% the Thwaites and Ridge A results - the only thing that differs between
-% the three profiles is where dtau came from.
+% The NEGIS data are not in CSARP_polarimetric form, so for each frame in
+% `targets` this first repackages its qlook HH/VV pair into that layout
+% and then runs the ordinary fabric_task delta-k chain on it. Repackaging
+% rather than reimplementing keeps the inversion identical to the one that
+% produced the Thwaites and Ridge A results - the only thing that differs
+% between the profiles is where dtau came from. A target that fails is
+% warned about and skipped, so one bad frame does not cost the batch.
 %
 % Three season-specific repairs happen here and nowhere else:
 %   1. Latitude/Longitude are rebuilt from the GPS file (the records time

@@ -1,7 +1,8 @@
 """Shared slide styling and geometry for the SCAR site figures.
 
 scar_two_panel.py (Thwaites, Ridge A), negis_two_panel.py (NEGIS),
-fabric_sections.py and fabric_three_sites.py are one deck. The three site
+egrip_two_panel.py (the EastGRIP borehole), fabric_sections.py and
+fabric_three_sites.py are one deck. The site
 slides only read as a set while their end markers, track colours, profile
 weight, scale bars and panel proportions stay identical, so those
 constants and the helpers that draw them live here rather than being

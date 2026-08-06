@@ -77,7 +77,8 @@ def survey_tracks():
         if ok.sum() > 2:
             tr.append((la[ok], lo[ok]))
         if str(r['seg']) == CAMP_SEG:
-            cla.extend(la[ok]); clo.extend(lo[ok])
+            cla.extend(la[ok])
+            clo.extend(lo[ok])
     if cla:
         off = float(haversine_km(float(np.mean(cla)), float(np.mean(clo)),
                                  EG_LAT, EG_LON))

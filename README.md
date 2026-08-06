@@ -150,10 +150,29 @@ Scripts (each validates or applies the above end to end):
     on a Greenland polar stereographic projection, from the
     `negis_interferogram.m` extract; it can raise the look count locally
     because that extract ships the un-normalised power sums.
+  - `egrip_two_panel.py` - the same slide for the EastGRIP borehole,
+    windowed on the drill site rather than on the survey (so it needs no
+    zoom inset) and with the interferogram plotted against DEPTH, so the
+    panel can be set directly beside core measurements. Its docstring says
+    why the line drawn is the third-nearest one.
+  - `egrip_azimuthal.py` - the horizontal fabric ellipse at EastGRIP from
+    the nine phase-preserving lines that pass within 2 km of the borehole
+    at different headings (`negis_interferogram.m` extracts them). Fits
+    dlam = -P cos 2(alpha - theta) per depth band, so orientation as well
+    as strength is recovered without the core's missing azimuth. Works
+    from the FRINGE RATE rather than the layer stripping, and accepts a
+    band only where its two independent rate estimators agree - they fail
+    in opposite directions, which is what limits the solve to above 650 m.
+  - `egrip_core_compare.py` - that radar solve against the EastGRIP core's
+    own eigenvalues with depth. The core gives magnitudes but no
+    eigenvectors, so all three candidate horizontal differences are drawn;
+    the acceptance rule and the fit are imported from `egrip_azimuthal.py`
+    rather than restated.
   - `scar_style.py` - the one definition of the styling constants,
-    end markers, scale bar, panel geometry and track-azimuth/geometry
-    helpers those figures share, so the three site slides cannot drift
-    apart. Also used by the two section figures below.
+    end markers, scale bar, panel and zoom-inset geometry and the
+    track-azimuth/geometry helpers those figures share, so the site slides
+    cannot drift apart. Also used by the EastGRIP solve above and the two
+    section figures below.
   - `fabric_sections.py` - per-site 2D dlam sections from
     `opr_fabric/server/run_sections.m`, each cell blended toward grey by
     its node coherence (a diverging ramp cannot reuse the interferogram's
@@ -185,6 +204,10 @@ mirrored products out of git. Their INPUT data - ITS_LIVE velocity
 windows streamed from S3, the NEGIS track and interferogram extracts
 pulled off mem1, the `fabric_sections.mat` stage - is staged under
 `~/data/opr/scar`, override with the `SCAR_DATA` environment variable.
+The EastGRIP figures additionally read `egrip_fabric_949248.tab`, the
+core's own fabric eigenvalues (Weikusat et al. 2022, PANGAEA.949248,
+CC-BY-4.0); it is third-party data, so it is staged there like the rest
+rather than committed.
 Their OUTPUT goes wherever the `<out_dir>` argument points, which for the
 talk is `~/presentations/SCAR_figures`, outside the repo; unlike the rest
 of `scripts/figures/`, they do not write to `figs/`.
