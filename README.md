@@ -102,8 +102,8 @@ Scripts (each validates or applies the above end to end):
   quantized because it only ever becomes movie frames, plus the
   look-angle energy reductions that are used quantitatively, kept at
   full precision. Look angles are written in degrees under `theta_deg`.
-- `scripts/figures/` - Python (matplotlib + scipy; cartopy required only
-  by the regional maps) figure scripts that reproduce the analysis figures
+- `scripts/figures/` - Python (matplotlib + scipy; cartopy required by
+  the map figures) figure scripts that reproduce the analysis figures
   from the `opr_fabric/server/run_fabric_scratch.m` and
   `run_deltak_scratch.m` batch outputs mirrored locally:
   season transects, per-season depth profiles, the 2024-25
@@ -142,10 +142,12 @@ Scripts (each validates or applies the above end to end):
 - The SCAR talk figures are a subset of `scripts/figures/` with their own
   conventions (see "SCAR figure inputs and outputs" below):
   - `scar_two_panel.py` - survey overview + wrapped interferogram for
-    Thwaites and Ridge A: the whole survey over log-scale ITS_LIVE speed
-    with all lines white and the focused profile black, red start / white
-    end markers repeated on the map inset and at the interferogram's left
-    and right edges, no legends, plain black scale bars.
+    Thwaites and Ridge A: the survey over log-scale ITS_LIVE speed with
+    all lines white and the focused profile black, red start / white end
+    markers repeated on the map inset and at the interferogram's left and
+    right edges, no legends, plain black scale bars. Thwaites is framed on
+    the WHOLE staged ITS_LIVE window rather than on a box padded round its
+    tracks, so the glacier trunk the survey sits beside stays in frame.
   - `negis_two_panel.py` - the same slide for the NEGIS onset at EGRIP,
     on a Greenland polar stereographic projection, from the
     `negis_interferogram.m` extract; it can raise the look count locally
@@ -166,12 +168,17 @@ Scripts (each validates or applies the above end to end):
   - `egrip_core_compare.py` - that radar solve against the EastGRIP core's
     own eigenvalues with depth. The core gives magnitudes but no
     eigenvectors, so all three candidate horizontal differences are drawn;
-    the acceptance rule and the fit are imported from `egrip_azimuthal.py`
-    rather than restated.
+    the line staging, the acceptance rule and the fit are imported from
+    `egrip_azimuthal.py` rather than restated, so the two EastGRIP figures
+    cannot disagree about which lines entered a solve.
   - `scar_style.py` - the one definition of the styling constants,
-    end markers, scale bar, panel and zoom-inset geometry and the
-    track-azimuth/geometry helpers those figures share, so the site slides
-    cannot drift apart. Also used by the EastGRIP solve above and the two
+    end markers, scale bar, panel, zoom-inset and continental-locator
+    geometry and the track-azimuth/geometry helpers those figures share,
+    so the site slides cannot drift apart. Every two-panel figure draws
+    that locator - Antarctica for Thwaites and Ridge A, Greenland for
+    NEGIS and EastGRIP - from cached Natural Earth land, so it needs no
+    network; only its corner is chosen per figure, by whatever free space
+    that panel has. Also used by the EastGRIP solve above and the two
     section figures below.
   - `fabric_sections.py` - per-site 2D dlam sections from
     `opr_fabric/server/run_sections.m`, each cell blended toward grey by
