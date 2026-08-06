@@ -49,15 +49,23 @@ out_dir = '/kucresis/scratch/hoffmana_sta/fabric/stages';
 
 % seg / frame candidates. The first group is ranked by along-track speed
 % contrast over ITS_LIVE with straightness >= 0.93; the second group are
-% the frames that pass closest to the EastGRIP borehole (75.6294 N,
+% the frames that pass within 2 km of the EastGRIP borehole (75.6294 N,
 % 35.9672 W), for comparison against the core's own fabric measurements.
 % The borehole's own segment, 20240618_01, cannot be used - it is the one
 % segment written with incoherent decimation, so it carries no phase - and
 % these are the nearest complex alternatives, standing off 0.13-0.32 km.
+%
+% The second group must stay in step with FRAMES in
+% scripts/figures/egrip_azimuthal.py: the azimuthal solve fits a
+% two-parameter cos2a/sin2a model over exactly these lines, and eight of
+% the nine sit between 128 and 145 deg, so the single line near 33 deg
+% carries all of the orthogonal leverage. Dropping any of them here makes
+% that fit degenerate, and the figure only prints 'missing extract'.
 frames = { '20240620_01', 3; '20240619_01', 4; '20240620_02', 2; ...
            '20240621_01', 4; '20240626_03', 1; ...
-           '20240626_03', 5; ...
-           '20240619_01', 1; '20240626_01', 1; '20240621_01', 10 };
+           '20240628_01', 1; '20240626_03', 5; '20240626_01', 1; ...
+           '20240619_01', 1; '20240621_01', 1; '20240620_01', 1; ...
+           '20240621_01', 10; '20240619_01', 5; '20240620_02', 3 };
 
 NR = 4;    % range looks
 NA = 4;    % azimuth looks
