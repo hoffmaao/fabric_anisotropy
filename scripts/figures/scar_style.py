@@ -143,38 +143,53 @@ CONTINENT = {
 }
 LOCATOR_LAND = '0.86'
 LOCATOR_EDGE = '0.45'
+# Floor on the drawn AOI box, as a fraction of the locator's width.
+# True footprints here are 0.7-4% of the ice sheet, sub-pixel at
+# three of the four sites.
+AOI_MIN_FRAC = 0.055
 
 
-def continental_inset(ax, lat, lon, region, rect):
-    """Small locator putting the survey on its ice sheet.
+def continental_inset(ax, region, rect, extent, proj):
+    """Small locator putting the study area on its ice sheet.
 
     These slides get shown to people who do not know where Ridge A or the
     EastGRIP borehole are, and the survey-scale panel cannot tell them: at
-    that zoom every site is an anonymous patch of white. One marker on the
+    that zoom every site is an anonymous patch of white. One box on the
     continent fixes it.
+
+    The area of interest is drawn as a black square from the map panel's
+    own `extent`, so it is the study area rather than a symbol placed near
+    it. It is FLOORED at AOI_MIN_FRAC of the locator's width, because the
+    true footprint is 0.7-4% of the ice sheet across these four sites and
+    would be one pixel or less at three of them - a box that cannot be
+    seen locates nothing. Read the square as "here", not as a scale bar.
 
     Lifted above the parent's layers for the same reason as zoom_inset -
     ax.inset_axes() registers the child inside the PARENT's artist
     ordering at zorder 5, below the map's own quiver, tracks and profile.
     """
-    # The marker is the only thing this inset exists to show, and a NaN
-    # position draws nothing at all - a locator with a blank continent
-    # reads as a rendering choice rather than as missing data. Callers
-    # average a profile's positions, and NaN positions are ordinary here.
-    if not (np.isfinite(lat) and np.isfinite(lon)):
-        raise ValueError('continental_inset needs a finite position, got '
-                         'lat=%r lon=%r' % (lat, lon))
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
-    name, kw, extent = CONTINENT[region]
-    axc = ax.inset_axes(rect, projection=getattr(ccrs, name)(**kw))
+    from matplotlib.patches import Rectangle
+    name, kw, cext = CONTINENT[region]
+    iproj = getattr(ccrs, name)(**kw)
+    axc = ax.inset_axes(rect, projection=iproj)
     axc.set_zorder(ax.get_zorder() + 21)
-    axc.set_extent(extent, crs=ccrs.PlateCarree())
+    axc.set_extent(cext, crs=ccrs.PlateCarree())
     axc.add_feature(cfeature.LAND.with_scale('50m'), facecolor=LOCATOR_LAND,
                     edgecolor=LOCATOR_EDGE, lw=0.4)
     axc.set_facecolor('white')
-    axc.scatter([lon], [lat], s=52, c=END_FACES[0], edgecolor='black',
-                lw=0.9, transform=ccrs.PlateCarree(), zorder=6)
+
+    x0, x1, y0, y1 = extent
+    lon, lat = ccrs.PlateCarree().transform_point(
+        (x0 + x1) / 2, (y0 + y1) / 2, proj)[:2]
+    ix, iy = iproj.transform_point(lon, lat, ccrs.PlateCarree())[:2]
+    cx0, cx1 = axc.get_xlim()
+    half = max(abs(x1 - x0) / 2, abs(y1 - y0) / 2,
+               AOI_MIN_FRAC * abs(cx1 - cx0) / 2)
+    axc.add_patch(Rectangle((ix - half, iy - half), 2 * half, 2 * half,
+                            transform=iproj, facecolor='none',
+                            edgecolor='black', lw=1.5, zorder=6))
     for sp in axc.spines.values():
         sp.set_edgecolor('0.25')
         sp.set_linewidth(0.9)

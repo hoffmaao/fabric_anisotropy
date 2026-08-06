@@ -139,9 +139,8 @@ def thwaites():
         # over the top-right corner of its dashed box. The locator keeps
         # its square aspect and is centred in the rect, which leaves the
         # visual margin inside the panel edge.
-        sty.continental_inset(ax, float(np.nanmean(lats)),
-                              float(np.nanmean(lons)), 'antarctica',
-                              (0.695, 0.775, 0.29, 0.20))
+        sty.continental_inset(ax, 'antarctica',
+                                      (0.695, 0.775, 0.29, 0.20), extent, proj)
         ax.set_title('Thwaites Glacier survey', fontsize=12)
 
         # Zoom inset: at survey scale the 10 km profile is a blob, and
@@ -241,9 +240,8 @@ def ridge_a():
         gl.top_labels = False
         gl.right_labels = False
         scale_bar_br(ax, extent)
-        sty.continental_inset(ax, float(np.nanmean(lats)),
-                              float(np.nanmean(lons)), 'antarctica',
-                              (0.02, 0.755, 0.26, 0.225))
+        sty.continental_inset(ax, 'antarctica',
+                                      (0.02, 0.755, 0.26, 0.225), extent, proj)
         # No in-map caption: the absence of a speed layer and its colorbar
         # already says there is no satellite velocity here, and on a
         # projected slide the text competed with the survey lines.
