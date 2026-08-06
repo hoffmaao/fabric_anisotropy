@@ -133,7 +133,7 @@ def inset_frame(axz, color='white', lw=1.5):
         spine.set_linewidth(lw)
 
 
-def zoom_inset(ax, rect, proj, facecolor=None):
+def zoom_inset(ax, rect, proj):
     """Zoom inset that composites ABOVE the parent map's own layers.
 
     `ax.inset_axes()` gives the child zorder 5 (not 0) AND registers it
@@ -152,8 +152,6 @@ def zoom_inset(ax, rect, proj, facecolor=None):
     """
     axz = ax.inset_axes(rect, projection=proj)
     axz.set_zorder(ax.get_zorder() + 20)
-    if facecolor is not None:
-        axz.set_facecolor(facecolor)
     return axz
 
 

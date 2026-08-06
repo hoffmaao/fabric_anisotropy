@@ -21,8 +21,8 @@ differences are drawn:
             almost no c-axes near vertical)
 
 The radar points are P = lam_max - lam_min from the azimuthal solve over
-nine lines within 2 km of the borehole (egrip_azimuthal.py), which needs
-no core reorientation. Vertical bars are the depth band; horizontal bars
+the lines within RADIUS_KM of the borehole (egrip_azimuthal.py), which
+needs no core reorientation. Vertical bars are the depth band; horizontal bars
 are the spread between the two independent fringe-rate estimators, which
 fail in opposite directions and so bracket the answer.
 
@@ -35,41 +35,19 @@ import matplotlib
 import numpy as np
 
 matplotlib.use('Agg')
-import h5py                              # noqa: E402
 import matplotlib.pyplot as plt          # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from egrip_azimuthal import (BANDS, C_ICE, EG_LAT, EG_LON,  # noqa: E402
-                             FRAMES, K_CONV, LAG, AGREE_TOL, P_BOUND,
-                             DATA, FLOW_AZ, CORE, haversine_km,
-                             load_line, near_mask, track_azimuth)
+from egrip_azimuthal import (BANDS, FRAMES, P_BOUND,  # noqa: E402
+                             RADIUS_KM, band_estimates, band_rates,
+                             core_table, load_line, near_mask, solve_band,
+                             track_azimuth)
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
 INK, MUTED = '#0b0b0b', '#52514e'
 # validated categorical slots 1-3 (dataviz reference palette, light mode)
 C_E = ['#2a78d6', '#eb6834', '#1baf7a']
 C_RAD = '#4a3aa7'
-
-
-def core_table():
-    with open(CORE) as f:
-        lines = f.read().split('\n')
-    h = next(i for i, l in enumerate(lines) if l.startswith('Bag\t'))
-    cols = lines[h].split('\t')
-    iz = cols.index('Depth ice/snow [m]')
-    ie = [cols.index('EVA%d (Weighted (statistic))' % k) for k in (1, 2, 3)]
-    Z, E = [], []
-    for l in lines[h + 1:]:
-        p = l.split('\t')
-        if len(p) <= max(ie):
-            continue
-        try:
-            Z.append(float(p[iz]))
-            E.append([float(p[i]) for i in ie])
-        except ValueError:
-            pass
-    o = np.argsort(Z)
-    return np.array(Z)[o], np.array(E)[o]
 
 
 def runmed(z, v, win=40.0):
@@ -82,53 +60,22 @@ def runmed(z, v, win=40.0):
     return out
 
 
-def band_rates_both(d, near):
-    """(lag, unwrap) dlam and coherence per band - as in egrip_azimuthal."""
-    dt = float(np.median(np.diff(d['t'])))
-    tb = (d['t'] - np.nanmedian(d['surf'])) * 1e6
-    w = np.nan_to_num(d['coh'][:, near])
-    uw = np.unwrap(np.angle(np.nansum(d['ifg'][:, near] * w, axis=1)))
-    X = d['ifg'][LAG:, near] * np.conj(d['ifg'][:-LAG, near])
-    out = []
-    for z0, z1 in BANDS:
-        t0, t1 = 2 * z0 / C_ICE * 1e6, 2 * z1 / C_ICE * 1e6
-        m = (tb >= t0) & (tb < t1)
-        ml = (tb[:-LAG] >= t0) & (tb[:-LAG] < t1)
-        if m.sum() < 8 or ml.sum() < 5:
-            out.append((np.nan, np.nan, np.nan))
-            continue
-        r_uw = np.polyfit(tb[m], uw[m], 1)[0] / (2 * np.pi)
-        r_lag = np.angle(np.nansum(X[ml, :])) / (2 * np.pi * LAG * dt) * 1e-6
-        out.append((r_lag / K_CONV, r_uw / K_CONV,
-                    float(np.nanmedian(d['coh'][m][:, near]))))
-    return np.array(out)
-
-
 def solve(lines, col):
-    """P and theta per band using one estimator column (0 lag, 1 unwrap)."""
+    """P and theta per band using one estimator column (0 lag, 1 unwrap).
+
+    The acceptance rule and the fit itself are egrip_azimuthal's, so the
+    two bracketing solves here cannot drift from the headline solve; only
+    which estimator is fitted differs.
+    """
     az = np.array([d['az'] for d in lines])
     P = np.full(len(BANDS), np.nan)
     TH = np.full(len(BANDS), np.nan)
     for bi in range(len(BANDS)):
-        y = np.array([d['rows'][bi, col] for d in lines])
-        y2 = np.array([d['rows'][bi, 1 - col] for d in lines])
-        w = np.array([d['rows'][bi, 2] for d in lines])
-        den = np.maximum(np.abs(y), np.abs(y2))
-        with np.errstate(invalid='ignore', divide='ignore'):
-            agree = np.abs(y - y2) / np.where(den > 0, den, np.nan)
-        ok = (np.isfinite(y) & np.isfinite(w) & (w > 0.35)
-              & np.isfinite(agree) & (agree < AGREE_TOL))
-        if ok.sum() < 3:
+        y, w, ok = band_estimates(lines, bi, col=col)
+        fit = solve_band(az, y, w, ok)
+        if fit is None or fit[0] > P_BOUND:
             continue
-        a = np.radians(az[ok])
-        A = np.c_[-np.cos(2 * a), -np.sin(2 * a)]
-        W = np.sqrt(w[ok])[:, None]
-        sol, *_ = np.linalg.lstsq(A * W, y[ok] * W[:, 0], rcond=None)
-        Pb = np.hypot(*sol)
-        if Pb > P_BOUND:
-            continue
-        P[bi] = Pb
-        TH[bi] = np.degrees(0.5 * np.arctan2(sol[1], sol[0])) % 180
+        P[bi], TH[bi] = fit[0], fit[1]
     return P, TH
 
 
@@ -146,7 +93,7 @@ def main():
         if nm.sum() < 8:
             continue
         d['az'] = track_azimuth(d['lat'][nm], d['lon'][nm])
-        d['rows'] = band_rates_both(d, nm)
+        d['rows'] = band_rates(d, nm)
         lines.append(d)
     P_lag, TH_lag = solve(lines, 0)
     P_uw, TH_uw = solve(lines, 1)
@@ -199,7 +146,8 @@ def main():
                  yerr=[zc[ok] - np.array([b[0] for b in BANDS])[ok],
                        np.array([b[1] for b in BANDS])[ok] - zc[ok]],
                  fmt='o', color=C_RAD, ms=7, lw=1.6, capsize=3, zorder=6,
-                 label='radar, azimuthal solve\n(9 lines within 2 km)')
+                 label='radar, azimuthal solve\n(%d lines within %.1f km)'
+                       % (len(lines), RADIUS_KM))
     axd.set_xlabel('horizontal eigenvalue difference', color=INK)
     axd.set_title('what the radar is sensitive to', fontsize=11, color=INK)
     axd.set_xlim(0, 0.72)

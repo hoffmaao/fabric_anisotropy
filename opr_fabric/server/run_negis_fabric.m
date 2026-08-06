@@ -106,10 +106,15 @@ else
       day_seg, frm, nnz(~located), Nx, 100*nnz(~located)/Nx);
   end
   if nnz(keep) < COH_WIN(2)
-    error('run_negis_fabric:tooFewTraces', ...
+    % Warn and move on rather than abort: `targets` is a batch, and under
+    % matlab -batch a bad day GPS file on the first target would otherwise
+    % cost every later target too.
+    warning('run_negis_fabric:tooFewTraces', ...
       ['%s frame %d: only %d traces survive the cull, fewer than the ' ...
        '%d-trace coherence boxcar. Check the day GPS file covers this ' ...
-       'frame.'], day_seg, frm, nnz(keep), COH_WIN(2));
+       'frame; skipping this target.'], day_seg, frm, nnz(keep), COH_WIN(2));
+    clear H V;
+    continue;
   end
   H.Data = H.Data(:, keep); V.Data = V.Data(:, keep);
   Latitude = Latitude(keep); Longitude = Longitude(keep);
@@ -195,8 +200,16 @@ pf.ptt = struct('H', 2000, 'bco_depth', 60, 'lam_z_sfc', 1/3, 'lam_z_bed', 1/3);
 param.fabric = pf;
 
 t1 = tic;
-ok = fabric_task(param);
-fprintf('\nfabric_task returned %d (%.1f min)\n', ok, toc(t1)/60);
+try
+  ok = fabric_task(param);
+  fprintf('\nfabric_task returned %d (%.1f min)\n', ok, toc(t1)/60);
+catch err
+  % Same reasoning as the cull guard above: one target that cannot invert
+  % must not take the rest of the batch down with it.
+  warning('run_negis_fabric:inversionFailed', ...
+    '%s frame %d: fabric_task failed after %.1f min (%s: %s); continuing', ...
+    day_seg, frm, toc(t1)/60, err.identifier, err.message);
+end
 
 end   % targets
 

@@ -40,10 +40,13 @@ import numpy as np
 matplotlib.use('Agg')
 import h5py                              # noqa: E402
 import matplotlib.pyplot as plt          # noqa: E402
-from scipy.io import loadmat             # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from scar_style import DATA, hsv_plot_coherence      # noqa: E402
+import scar_style as sty                 # noqa: E402
+# track_azimuth is re-exported deliberately: the sibling EastGRIP scripts
+# import it from here alongside FRAMES/BANDS, and they must use the same
+# NaN-guarded axis fit the rest of the deck does.
+from scar_style import DATA, cumdist_km, track_azimuth   # noqa: E402,F401
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
 # The EastGRIP core table is data, not code: Weikusat et al. (2022),
@@ -66,6 +69,7 @@ BANDS = [(200, 350), (350, 500), (500, 650), (650, 800), (800, 950),
          (950, 1100), (1100, 1250)]
 
 AGREE_TOL = 0.35     # fractional agreement the two rate estimators must reach
+COH_MIN = 0.35       # band coherence below which a line does not enter the fit
 P_BOUND = 2.0 / 3    # |lam_max - lam_min| cannot exceed 1 - lam_z
 
 INK, MUTED = '#0b0b0b', '#52514e'
@@ -100,16 +104,6 @@ def load_line(tag):
 
 def near_mask(d):
     return haversine_km(d['lat'], d['lon'], EG_LAT, EG_LON) <= RADIUS_KM
-
-
-def track_azimuth(lat, lon):
-    """Principal axis of the track, deg E of N, over 0-180."""
-    y = lat - lat.mean()
-    x = (lon - lon.mean()) * np.cos(np.radians(lat.mean()))
-    pts = np.c_[x, y]
-    pts = pts - pts.mean(0)
-    _, _, vt = np.linalg.svd(pts, full_matrices=False)
-    return np.degrees(np.arctan2(vt[0][0], vt[0][1])) % 180
 
 
 def band_rates(d, near):
@@ -152,25 +146,83 @@ def band_rates(d, near):
     return np.array(out)
 
 
-def core_bracket():
-    """Weighted eigenvalues from the EGRIP core, as a horizontal bracket."""
+def band_estimates(lines, bi, col=None):
+    """Per-line value, weight and acceptance mask for one depth band.
+
+    The acceptance rule lives here and nowhere else, because it is applied
+    in three places - the solve, the scatter drawn over the fitted curve,
+    and the two bracketing solves in egrip_core_compare.py - and a copy
+    that drifts would draw points the fit never saw.
+
+    A line is accepted only where the band coherence clears COH_MIN AND
+    the two independent rate estimators agree to AGREE_TOL. `col` picks
+    which estimator is fitted: None averages them (the headline solve),
+    0 the lag form, 1 the unwrapped slope.
+    """
+    est = np.array([[d['rows'][bi, 0] for d in lines],
+                    [d['rows'][bi, 1] for d in lines]])
+    w = np.array([d['rows'][bi, 2] for d in lines])
+    denom = np.maximum(np.abs(est[0]), np.abs(est[1]))
+    with np.errstate(invalid='ignore', divide='ignore'):
+        agree = np.abs(est[0] - est[1]) / np.where(denom > 0, denom, np.nan)
+    y = est.mean(0) if col is None else est[col]
+    ok = (np.isfinite(y) & np.isfinite(w) & (w > COH_MIN)
+          & np.isfinite(agree) & (agree < AGREE_TOL))
+    return y, w, ok
+
+
+def solve_band(az, y, w, ok):
+    """Weighted fit of dlam = -P cos 2(alpha - theta) over the accepted lines.
+
+    Returns (P, theta_deg, rms residual), or None if fewer than three
+    lines survive - two free parameters need three points to be more than
+    an interpolation. The P_BOUND test is left to the caller so it can
+    report the rejected value.
+    """
+    if ok.sum() < 3:
+        return None
+    a = np.radians(az[ok])
+    A = np.c_[-np.cos(2 * a), -np.sin(2 * a)]
+    W = np.sqrt(w[ok])[:, None]
+    sol, *_ = np.linalg.lstsq(A * W, y[ok] * W[:, 0], rcond=None)
+    return (float(np.hypot(*sol)),
+            float(np.degrees(0.5 * np.arctan2(sol[1], sol[0])) % 180),
+            float(np.sqrt(np.mean((A @ sol - y[ok])**2))))
+
+
+def core_table():
+    """Depth and the three weighted eigenvalues from the EGRIP core table.
+
+    A row contributes only if the depth AND all three eigenvalues parse.
+    Appending the depth first would leave Z one entry longer than E on any
+    row with a blank eigenvalue field, and every caller builds its mask on
+    Z and applies it to E, so the two must not desynchronise.
+    """
     with open(CORE) as f:
-        lines = f.read().split('\n')
-    h = next(i for i, l in enumerate(lines) if l.startswith('Bag\t'))
-    cols = lines[h].split('\t')
+        rows = f.read().split('\n')
+    h = next(i for i, l in enumerate(rows) if l.startswith('Bag\t'))
+    cols = rows[h].split('\t')
     iz = cols.index('Depth ice/snow [m]')
     ie = [cols.index('EVA%d (Weighted (statistic))' % k) for k in (1, 2, 3)]
     Z, E = [], []
-    for l in lines[h + 1:]:
+    for l in rows[h + 1:]:
         p = l.split('\t')
-        if len(p) <= max(ie):
+        if len(p) <= max(ie + [iz]):
             continue
         try:
-            Z.append(float(p[iz]))
-            E.append([float(p[i]) for i in ie])
+            z, e = float(p[iz]), [float(p[i]) for i in ie]
         except ValueError:
-            pass
+            continue
+        Z.append(z)
+        E.append(e)
     Z, E = np.array(Z), np.array(E)
+    o = np.argsort(Z)
+    return Z[o], E[o]
+
+
+def core_bracket():
+    """Weighted eigenvalues from the EGRIP core, as a horizontal bracket."""
+    Z, E = core_table()
     zc, lo, hi = [], [], []
     for z0, z1 in BANDS:
         m = (Z >= z0) & (Z < z1)
@@ -213,30 +265,16 @@ def main():
     RES = np.full(len(BANDS), np.nan)
     NL = np.zeros(len(BANDS), int)
     for bi in range(len(BANDS)):
-        y = np.array([d['rows'][bi, 0] for d in lines])
-        y2 = np.array([d['rows'][bi, 1] for d in lines])
-        w = np.array([d['rows'][bi, 2] for d in lines])
-        denom = np.maximum(np.abs(y), np.abs(y2))
-        with np.errstate(invalid='ignore', divide='ignore'):
-            agree = np.abs(y - y2) / np.where(denom > 0, denom, np.nan)
-        y = 0.5 * (y + y2)
-        ok = (np.isfinite(y) & np.isfinite(w) & (w > 0.35)
-              & np.isfinite(agree) & (agree < AGREE_TOL))
-        if ok.sum() < 3:
+        y, w, ok = band_estimates(lines, bi)
+        fit = solve_band(az, y, w, ok)
+        if fit is None:
             continue
-        a = np.radians(az[ok])
-        A = np.c_[-np.cos(2 * a), -np.sin(2 * a)]
-        W = np.sqrt(w[ok])[:, None]
-        sol, *_ = np.linalg.lstsq(A * W, y[ok] * W[:, 0], rcond=None)
-        Pb = np.hypot(*sol)
+        Pb, th, res = fit
         if Pb > P_BOUND:
             print('  %d-%d m: P = %.2f exceeds the eigenvalue bound; rejected'
                   % (*BANDS[bi], Pb))
             continue
-        P[bi] = Pb
-        TH[bi] = np.degrees(0.5 * np.arctan2(sol[1], sol[0])) % 180
-        RES[bi] = np.sqrt(np.mean((A @ sol - y[ok])**2))
-        NL[bi] = ok.sum()
+        P[bi], TH[bi], RES[bi], NL[bi] = Pb, th, res, ok.sum()
 
     zc = np.array([0.5 * (a + b) for a, b in BANDS])
     print('\n%9s %5s %8s %9s %9s' % ('depth_m', 'n', 'P', 'theta_deg', 'resid'))
@@ -255,21 +293,18 @@ def main():
     axt = fig.add_subplot(gs[0, 3], sharey=axp)
 
     # (a) the interferogram of the line we use
-    d = next(x for x in lines if x['tag'] == SHOW)
-    nm = near_mask(d)
-    dist = np.concatenate([[0], np.cumsum(haversine_km(
-        d['lat'][1:], d['lon'][1:], d['lat'][:-1], d['lon'][:-1]))])
+    d = next((x for x in lines if x['tag'] == SHOW), None)
+    if d is None:
+        raise SystemExit('%s did not load, so the left panel has nothing to '
+                         'draw; re-run the extract for it or point SHOW at '
+                         'one of: %s'
+                         % (SHOW, ', '.join(x['tag'] for x in lines)))
+    dist = cumdist_km(d['lat'], d['lon'])
     tb = (d['t'] - np.nanmedian(d['surf'])) * 1e6
     zz = tb * C_ICE / 2 * 1e-6
-    st = max(1, d['ifg'].shape[0] // 2000)
-    sx = max(1, d['ifg'].shape[1] // 1400)
-    rgb = hsv_plot_coherence(np.angle(d['ifg'][::st, ::sx]),
-                             d['coh'][::st, ::sx])
-    axi.imshow(rgb, aspect='auto', interpolation='nearest',
-               extent=[dist[0], dist[-1], zz[-1], zz[0]])
+    sty.ifg_panel(axi, fig, dist, zz, np.angle(d['ifg']), d['coh'],
+                  ylabel='depth (m)')
     axi.set_ylim(1300, 0)
-    axi.set_xlabel('distance along profile (km)', color=INK)
-    axi.set_ylabel('depth (m)', color=INK)
     axi.set_title('HH-VV interferogram, %s  (azimuth %.0f$^\\circ$)'
                   % (SHOW, d['az']), fontsize=11, color=INK)
     # where the borehole sits along this line
@@ -286,26 +321,24 @@ def main():
                  ha='left' if side == 'left' else 'right',
                  bbox=dict(boxstyle='round,pad=0.16', fc='#ffd400',
                            ec='black', lw=0.8))
-    sm = plt.cm.ScalarMappable(cmap='hsv', norm=plt.Normalize(-np.pi, np.pi))
-    cb = fig.colorbar(sm, ax=axi, pad=0.02)
-    cb.set_label('phase change (rad)', color=INK)
-    cb.set_ticks([-np.pi, 0, np.pi])
-    cb.set_ticklabels([r'$-\pi$', '0', r'$\pi$'])
 
-    # (b) the azimuthal fit, for the bands that solved
+    # (b) the azimuthal fit, for the bands that solved. Filled markers are
+    # the lines the fit used; hollow ones are lines the agreement or
+    # coherence test rejected, drawn so the curve is not seen to miss
+    # points it was never fitted to.
     show_b = [bi for bi in range(len(BANDS)) if np.isfinite(P[bi])][:4]
     phi = np.linspace(0, 180, 181)
     for j, bi in enumerate(show_b):
         off = j * 0.30
-        y = 0.5 * np.array([d['rows'][bi, 0] + d['rows'][bi, 1]
-                            for d in lines])
-        w = np.array([d['rows'][bi, 2] for d in lines])
-        ok = np.isfinite(y) & (w > 0.35)
+        y, _, ok = band_estimates(lines, bi)
+        drop = np.isfinite(y) & ~ok
         col = plt.get_cmap('viridis')(j / max(len(show_b) - 1, 1))
         axa.plot(phi, -P[bi] * np.cos(2 * np.radians(phi - TH[bi])) + off,
                  '-', color=col, lw=1.8)
         axa.scatter(az[ok], y[ok] + off, s=34, facecolor=col,
                     edgecolor='black', lw=0.7, zorder=5)
+        axa.scatter(az[drop], y[drop] + off, s=30, facecolor='none',
+                    edgecolor=col, lw=0.9, alpha=0.55, zorder=4)
         axa.annotate('%d-%d m' % BANDS[bi], xy=(182, off), fontsize=8,
                      color=col, va='center', annotation_clip=False)
         axa.axhline(off, color='0.85', lw=0.6, zorder=0)
@@ -346,10 +379,14 @@ def main():
              label='other 90$^\\circ$ branch')
     axt.axvline(FLOW_AZ, color=MUTED, lw=1.0, ls=':')
     axt.axvline((FLOW_AZ + 90) % 180, color='0.25', lw=1.2, ls='--')
+    # The agreement gate is allowed to reject every band, so anchor the
+    # axis labels on the band grid rather than on the solved depths, which
+    # can be empty.
+    z_lbl = zc[ok].max() if ok.any() else zc.max()
     axt.annotate('cross-flow\n%.0f$^\\circ$' % ((FLOW_AZ + 90) % 180),
-                 xy=((FLOW_AZ + 90) % 180 + 3, zc[ok].max()), fontsize=7.5,
+                 xy=((FLOW_AZ + 90) % 180 + 3, z_lbl), fontsize=7.5,
                  color='0.25', va='bottom')
-    axt.annotate('flow', xy=(FLOW_AZ + 3, zc[ok].max()), fontsize=7.5,
+    axt.annotate('flow', xy=(FLOW_AZ + 3, z_lbl), fontsize=7.5,
                  color=MUTED, va='bottom')
     axt.set_xlim(0, 180)
     axt.set_xticks([0, 45, 90, 135, 180])
