@@ -206,6 +206,15 @@ Season/data caveats to check before interpreting results:
   polarization rotation that this scalar-traveltime model does not
   capture. Azimuth scanning via multiple `synth_rot_deg` runs is a
   natural extension.
+- With `dtau_source = 'phase'` the inversion takes the depth GRADIENT of
+  dtau from the interferogram phase but its absolute LEVEL from
+  coregistration: `ptt.blockAverage` shifts each block by a WHOLE number
+  of fringes, `round(median(dtau_coreg - dtau)*fc)/fc`. Testing showed
+  dlam is invariant to a whole-fringe coregistration offset but sensitive
+  to a fractional one - a quarter fringe is enough to move the result.
+  This is the likely mechanism behind the weak Thwaites result, where
+  coregistration is poorest; correcting it means changing how
+  `ptt.invertBlocks` anchors the level, which has not been done.
 - Exact layer stripping (`inversion = 'stripping'`) amplifies noise
   between depth intervals; the default joint solve suppresses this with
   its smoothness penalty at the cost of some depth resolution. If

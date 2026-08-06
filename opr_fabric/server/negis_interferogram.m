@@ -12,10 +12,11 @@
 % CSARP_layer would be the other source, but it exists for 20240618_01
 % only - the one segment that is already georeferenced AND was written
 % with incoherent decimation, so it has no phase to interferogram. On
-% that segment the two sources agree to ~1 m (median 1.1 m north,
-% 1.1 m east; see negis_layer_check.m), so interpolating the GPS file
-% onto GPS_time is the layer positions by another route, and it is the
-% only route that covers the complex segments.
+% that segment the two sources agree to ~1 m (median 1.1 m north, 1.1 m
+% east, measured once by hand off the CSARP_layer records; no check
+% script is kept in the repo), so interpolating the GPS file onto
+% GPS_time is the layer positions by another route, and it is the only
+% route that covers the complex segments.
 %
 % Traces the traverse stopped for are culled BEFORE the multilook. They
 % multilook to HIGH coherence with random range phase, so no coherence
