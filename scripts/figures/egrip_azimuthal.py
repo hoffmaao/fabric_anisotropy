@@ -43,7 +43,8 @@ import matplotlib.pyplot as plt          # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import scar_style as sty                 # noqa: E402
-from scar_style import DATA, cumdist_km, track_azimuth   # noqa: E402
+from scar_style import (DATA, INK, MUTED, cumdist_km,  # noqa: E402
+                        track_azimuth)
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
 # The EastGRIP core table is data, not code: Weikusat et al. (2022),
@@ -69,8 +70,9 @@ AGREE_TOL = 0.35     # fractional agreement the two rate estimators must reach
 COH_MIN = 0.35       # band coherence below which a line does not enter the fit
 P_BOUND = 2.0 / 3    # |lam_max - lam_min| cannot exceed 1 - lam_z
 
-INK, MUTED = '#0b0b0b', '#52514e'
 C_FIT, C_PT = '#2a78d6', '#eb6834'
+BAND_OFFSET = 0.30   # vertical separation between bands in panel (b)
+MAX_SHOW_BANDS = 4   # what that offset budget fits before the curves collide
 
 
 def haversine_km(lat, lon, lat0, lon0):
@@ -187,6 +189,40 @@ def solve_band(az, y, w, ok):
             float(np.sqrt(np.mean((A @ sol - y[ok])**2))))
 
 
+EST_NAME = {None: 'mean', 0: 'lag', 1: 'unwrap'}
+
+
+def solve_bands(lines, col=None):
+    """P, theta, residual and accepted-line count for every depth band.
+
+    Shared with egrip_core_compare.py, and for a sharper reason than the
+    other helpers here: `solve_band` is linear in the estimates but P is
+    their NORM, so the mean of two solved P values is not the solve of the
+    mean estimate. Averaging P_lag and P_uw to get a headline number would
+    publish a value the fit never produced, and the two EastGRIP slides
+    would quote different P for the same band. Only `col` differs between
+    the headline solve and the two bracketing ones.
+    """
+    az = np.array([d['az'] for d in lines])
+    n = len(BANDS)
+    P = np.full(n, np.nan)
+    TH = np.full(n, np.nan)
+    RES = np.full(n, np.nan)
+    NL = np.zeros(n, int)
+    for bi in range(n):
+        y, w, ok = band_estimates(lines, bi, col=col)
+        fit = solve_band(az, y, w, ok)
+        if fit is None:
+            continue
+        Pb, th, res = fit
+        if Pb > P_BOUND:
+            print('  %d-%d m (%s estimator): P = %.2f exceeds the eigenvalue '
+                  'bound; rejected' % (*BANDS[bi], EST_NAME[col], Pb))
+            continue
+        P[bi], TH[bi], RES[bi], NL[bi] = Pb, th, res, ok.sum()
+    return P, TH, RES, NL
+
+
 def core_table():
     """Depth and the three weighted eigenvalues from the EGRIP core table.
 
@@ -276,21 +312,7 @@ def main():
     print('\nazimuth coverage: %s' % np.array2string(np.sort(az), precision=1))
 
     # ---- per-band two-parameter fit: dlam = -P cos 2(alpha - theta)
-    P = np.full(len(BANDS), np.nan)
-    TH = np.full(len(BANDS), np.nan)
-    RES = np.full(len(BANDS), np.nan)
-    NL = np.zeros(len(BANDS), int)
-    for bi in range(len(BANDS)):
-        y, w, ok = band_estimates(lines, bi)
-        fit = solve_band(az, y, w, ok)
-        if fit is None:
-            continue
-        Pb, th, res = fit
-        if Pb > P_BOUND:
-            print('  %d-%d m: P = %.2f exceeds the eigenvalue bound; rejected'
-                  % (*BANDS[bi], Pb))
-            continue
-        P[bi], TH[bi], RES[bi], NL[bi] = Pb, th, res, ok.sum()
+    P, TH, RES, NL = solve_bands(lines)
 
     zc = np.array([0.5 * (a + b) for a, b in BANDS])
     print('\n%9s %5s %8s %9s %9s'
@@ -343,10 +365,18 @@ def main():
     # the lines the fit used; hollow ones are lines the agreement or
     # coherence test rejected, drawn so the curve is not seen to miss
     # points it was never fitted to.
-    show_b = [bi for bi in range(len(BANDS)) if np.isfinite(P[bi])][:4]
+    solved = [bi for bi in range(len(BANDS)) if np.isfinite(P[bi])]
+    show_b = solved[:MAX_SHOW_BANDS]
+    if len(solved) > len(show_b):
+        print('\npanel (b) draws the shallowest %d of %d solved bands - the '
+              'offset budget fits no more; omitted: %s (all of them are still '
+              'in panels (c) and (d) and in the table above)'
+              % (len(show_b), len(solved),
+                 ', '.join('%d-%d m' % BANDS[bi]
+                           for bi in solved[len(show_b):])))
     phi = np.linspace(0, 180, 181)
     for j, bi in enumerate(show_b):
-        off = j * 0.30
+        off = j * BAND_OFFSET
         y, _, ok = band_estimates(lines, bi)
         drop = np.isfinite(y) & ~ok
         col = plt.get_cmap('viridis')(j / max(len(show_b) - 1, 1))

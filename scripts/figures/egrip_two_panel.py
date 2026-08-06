@@ -42,7 +42,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cartopy.crs as ccrs               # noqa: E402
 import scar_style as sty                 # noqa: E402
 from scar_style import (DPI, PROFILE_C, PROFILE_FX,  # noqa: E402
-                        PROFILE_LW, TRACK_C, cumdist_km)
+                        PROFILE_LW, SPEED_CB_LABEL, TRACK_C, cumdist_km)
 from egrip_azimuthal import (C_ICE, DATA, EG_LAT, EG_LON,  # noqa: E402
                              haversine_km, load_line)
 
@@ -127,9 +127,14 @@ def main():
     axm.quiver(Xq, Yq, np.where(ok, U / sp, np.nan),
                np.where(ok, V / sp, np.nan), transform=PROJ, color='white',
                scale=26, width=0.005, alpha=0.6, zorder=6)
-    cax = axm.inset_axes([0.05, -0.10, 0.62, 0.03])
+    # Higher than the other sites' -0.12/-0.15: this map is windowed square
+    # on the borehole, so its axes runs the full panel height and an offset
+    # that clears the gridline labels elsewhere pushes the colorbar caption
+    # off the bottom of the canvas here (this figure saves without a tight
+    # bbox, so nothing grows to catch it).
+    cax = axm.inset_axes([0.05, -0.07, 0.62, 0.03])
     fig.colorbar(pcm, cax=cax, orientation='horizontal',
-                 label='surface speed (m/yr)')
+                 label=SPEED_CB_LABEL)
 
     for la, lo in tr:
         axm.plot(lo, la, '-', color=TRACK_C, lw=1.1, alpha=0.9,

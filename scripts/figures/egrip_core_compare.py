@@ -22,9 +22,12 @@ differences are drawn:
 
 The radar points are P = lam_max - lam_min from the azimuthal solve over
 the lines within RADIUS_KM of the borehole (egrip_azimuthal.py), which
-needs no core reorientation. Vertical bars are the depth band; horizontal bars
-are the spread between the two independent fringe-rate estimators, which
-fail in opposite directions and so bracket the answer.
+needs no core reorientation - the SAME solve panel (c) of that figure
+draws, called through the shared solve_bands, so the two EastGRIP slides
+cannot quote different P for one band. Vertical bars are the depth band;
+horizontal bars span that solve and the two run on the individual
+fringe-rate estimators, which fail in opposite directions and so bracket
+the answer.
 
 Usage: python egrip_core_compare.py <out_dir>
 """
@@ -38,12 +41,11 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt          # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from egrip_azimuthal import (BANDS, P_BOUND, RADIUS_KM,  # noqa: E402
-                             band_estimates, core_table, solve_band,
-                             stage_lines)
+from scar_style import INK, MUTED         # noqa: E402
+from egrip_azimuthal import (BANDS, RADIUS_KM, core_table,  # noqa: E402
+                             solve_bands, stage_lines)
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
-INK, MUTED = '#0b0b0b', '#52514e'
 # validated categorical slots 1-3 (dataviz reference palette, light mode)
 C_E = ['#2a78d6', '#eb6834', '#1baf7a']
 C_RAD = '#4a3aa7'
@@ -59,23 +61,28 @@ def runmed(z, v, win=40.0):
     return out
 
 
-def solve(lines, col):
-    """P and theta per band using one estimator column (0 lag, 1 unwrap).
+def bracket(P, P_lag, P_uw):
+    """Lowest and highest solved P per band, over the three solves.
 
-    The acceptance rule and the fit itself are egrip_azimuthal's, so the
-    two bracketing solves here cannot drift from the headline solve; only
-    which estimator is fitted differs.
+    The point drawn is the headline solve, so the bracket has to CONTAIN
+    it: the headline P is the norm of the mean of the two estimator
+    solutions, which is not bounded below by the smaller of their norms
+    when the two solutions are not colinear, and an errorbar computed as
+    P - min(P_lag, P_uw) would then go negative.
+
+    Reduced band by band over the finite entries rather than with
+    np.nanmin/np.nanmax over the stack, because the estimator solves are
+    rejected in most bands - the agreement gate fails below ~650 m - and
+    an all-NaN column would make those emit an empty-slice RuntimeWarning
+    straight into the printed table.
     """
-    az = np.array([d['az'] for d in lines])
-    P = np.full(len(BANDS), np.nan)
-    TH = np.full(len(BANDS), np.nan)
-    for bi in range(len(BANDS)):
-        y, w, ok = band_estimates(lines, bi, col=col)
-        fit = solve_band(az, y, w, ok)
-        if fit is None or fit[0] > P_BOUND:
-            continue
-        P[bi], TH[bi] = fit[0], fit[1]
-    return P, TH
+    lo = np.full(len(BANDS), np.nan)
+    hi = np.full(len(BANDS), np.nan)
+    stack = np.vstack([P, P_lag, P_uw])
+    for bi in np.flatnonzero(np.isfinite(P)):
+        v = stack[np.isfinite(stack[:, bi]), bi]
+        lo[bi], hi[bi] = v.min(), v.max()
+    return lo, hi
 
 
 def main():
@@ -84,12 +91,11 @@ def main():
     print('core: %d sections, %.0f-%.0f m' % (len(Z), Z.min(), Z.max()))
 
     lines = stage_lines()
-    P_lag, TH_lag = solve(lines, 0)
-    P_uw, TH_uw = solve(lines, 1)
+    P, _, _, _ = solve_bands(lines)
+    P_lag, _, _, _ = solve_bands(lines, 0)
+    P_uw, _, _, _ = solve_bands(lines, 1)
     zc = np.array([0.5 * (a + b) for a, b in BANDS])
-    P = np.nanmean(np.vstack([P_lag, P_uw]), axis=0)
-    Plo = np.nanmin(np.vstack([P_lag, P_uw]), axis=0)
-    Phi = np.nanmax(np.vstack([P_lag, P_uw]), axis=0)
+    Plo, Phi = bracket(P, P_lag, P_uw)
 
     print('\n%10s %8s %8s %8s | %8s %8s %8s'
           % ('depth_m', 'P', 'P_lag', 'P_unwrap', 'e2-e1', 'e3-e1', 'e3-e2'))
@@ -126,9 +132,9 @@ def main():
     d32 = runmed(Z, E[:, 2] - E[:, 1])
     axd.plot(d31, Z, '-', color='0.25', lw=1.8,
              label=r'$e_3-e_1$  (middle eigenvalue vertical)')
-    axd.plot(d21, Z, '-', color='0.45', lw=1.8, ls='--',
+    axd.plot(d21, Z, color='0.45', lw=1.8, ls='--',
              label=r'$e_2-e_1$  (largest vertical)')
-    axd.plot(d32, Z, '-', color='0.65', lw=1.6, ls=':',
+    axd.plot(d32, Z, color='0.65', lw=1.6, ls=':',
              label=r'$e_3-e_2$  (smallest vertical)')
     ok = np.isfinite(P)
     axd.errorbar(P[ok], zc[ok],

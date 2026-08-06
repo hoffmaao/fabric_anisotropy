@@ -48,6 +48,18 @@ END_FACES = ('#e8000b', '#ffffff')
 END_SIZE = 130
 END_EDGE = 1.6
 
+# The speed layer is drawn under a LogNorm on every site, so the bar says
+# so: a decade-spaced bar read as if it were linear misplaces every value
+# between its ticks. One constant, because three panels draw it.
+SPEED_CB_LABEL = 'ITS_LIVE surface speed (m/yr, log scale)'
+
+# What the interferogram panel actually shows: the HH-VV phase difference,
+# with coherence on the HSV value channel. Both halves have to be named -
+# these slides carry no legend, so nothing else explains why parts of the
+# panel are dark, and "phase change" is a different quantity from the
+# polarimetric phase difference plotted.
+IFG_CB_LABEL = 'HH-VV phase (rad); brightness = coherence'
+
 TRACK_C = 'white'       # every survey line
 PROFILE_C = 'black'     # the focused profile
 PROFILE_LW = 2.8
@@ -244,7 +256,7 @@ def two_panel_figure(proj):
 
 
 def ifg_panel(ax, fig, dist, t_us, phase, coh, ylabel='TWTT (μs)',
-              cb_label='phase change (rad)'):
+              cb_label=IFG_CB_LABEL):
     """Wrapped interferogram with the shared HSV mapping and colorbar."""
     st = max(1, phase.shape[0] // 2200)
     sx = max(1, phase.shape[1] // 2000)

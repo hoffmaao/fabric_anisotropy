@@ -18,8 +18,8 @@ Sites rendered here: Thwaites eastern shear margin (ITS_LIVE v2.1 window
 streamed from S3; the panel shows that WHOLE window rather than a box
 padded round the tracks, so the trunk the survey sits beside stays in
 frame) and Ridge A (south of satellite velocity coverage, hence a plain
-dark background and no speed colorbar - their absence is what says there
-is no satellite velocity here, in place of an in-map caption).
+dark background, no speed colorbar, and a boxed caption saying so - the
+missing layer alone reads as an omitted one on a slide shown by itself).
 
 Usage: python scar_two_panel.py <out_dir>
 """
@@ -43,7 +43,7 @@ import antarctic_basemap as ab            # noqa: E402
 import cartopy.crs as ccrs                # noqa: E402
 import scar_style as sty                  # noqa: E402
 from scar_style import (DATA, DPI, PROFILE_C, PROFILE_FX,  # noqa: E402
-                        PROFILE_LW, TRACK_C, zoom_inset)
+                        PROFILE_LW, SPEED_CB_LABEL, TRACK_C, zoom_inset)
 
 OUT = sys.argv[1]
 
@@ -122,7 +122,7 @@ def thwaites():
         # the usual -0.07
         cax = ax.inset_axes([0.05, -0.15, 0.62, 0.03])
         fig.colorbar(pcm, cax=cax, orientation='horizontal',
-                     label='surface speed (m/yr)')
+                     label=SPEED_CB_LABEL)
         for la, lo in tracks:
             ax.plot(lo, la, '-', color=TRACK_C, lw=1.1, alpha=0.9,
                     transform=ccrs.PlateCarree(), zorder=7)
@@ -242,9 +242,17 @@ def ridge_a():
         scale_bar_br(ax, extent)
         sty.continental_inset(ax, 'antarctica',
                                       (0.02, 0.755, 0.26, 0.225), extent, proj)
-        # No in-map caption: the absence of a speed layer and its colorbar
-        # already says there is no satellite velocity here, and on a
-        # projected slide the text competed with the survey lines.
+        # A missing speed layer only reads as "no coverage" to someone who
+        # has already seen the other three sites, and this slide gets shown
+        # on its own; without the caption the panel does not distinguish
+        # absent data from an omitted layer. Boxed, which is what the loose
+        # two-line caption lacked when it competed with the survey lines.
+        ax.annotate('no satellite velocity coverage south of 82.7°S\n'
+                    '(interior divide site, flow < 2 m/yr)',
+                    xy=(0.025, 0.025), xycoords='axes fraction', fontsize=7.5,
+                    color='white', va='bottom', zorder=10,
+                    bbox=dict(boxstyle='round,pad=0.3', fc='0.12', ec='none',
+                              alpha=0.5))
         ax.set_title('Ridge A raster survey', fontsize=12)
 
     def ifg(fig, ax):
