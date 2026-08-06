@@ -93,6 +93,27 @@ map.Surface = pol.Surface;
 map.fc = fc;
 map.coherence = abs(pol.interferogram_coherence);
 
+% Waveform-combine boundaries, so ptt.surfaceReference can drop the seams
+% (ptt.imgCombSeam). Prefer the polarimetric product's own array settings:
+% they describe how the images this interferogram was formed from were
+% stitched. param_records is the fallback for products that did not carry
+% their array params forward. img_comb_mult, the surface multiplier
+% img_combine.m applies on top of img_comb, rides along when the product
+% carries it (ptt.imgCombSeam defaults it to Inf otherwise, as OPR does).
+map.img_comb = [];
+for pname = {'param_polarimetric','param_records'}
+  p = pname{1};
+  if isfield(pol,p) && isstruct(pol.(p)) && isfield(pol.(p),'array') ...
+      && isfield(pol.(p).array,'img_comb') && ~isempty(pol.(p).array.img_comb)
+    map.img_comb = pol.(p).array.img_comb;
+    if isfield(pol.(p).array,'img_comb_mult') ...
+        && ~isempty(pol.(p).array.img_comb_mult)
+      map.img_comb_mult = pol.(p).array.img_comb_mult;
+    end
+    break;
+  end
+end
+
 if deltak_en
   % Delta-k derives dtau from the SLC spectra directly; no phase field
   map.phase = [];
@@ -161,6 +182,10 @@ dlam_bot_depth = inv.bot_depth;
 dtau_obs = inv.dtau_obs;
 dtau_fit = inv.dtau_fit;
 dlam_quality = inv.quality;
+% 1 where the interval's dtau observation was interpolated across a gap
+% (waveform-combine seam, incoherent run) rather than measured there;
+% dlam_quality cannot show this, it is the unmasked coherence
+dlam_interpolated = inv.interpolated;
 dlam_clipped = inv.clipped;
 dtau_rms = inv.rms;
 reg_alpha = inv.alpha;
@@ -228,7 +253,7 @@ file_type = 'fabric';
 
 fprintf('Saving output file:\n  %s\n', out_fn);
 opr_save(out_fn,'dlam','dlam_top_depth','dlam_bot_depth','dlam_quality', ...
-  'dlam_clipped','dtau_rms','reg_alpha', ...
+  'dlam_interpolated','dlam_clipped','dtau_rms','reg_alpha', ...
   'dtau_obs','dtau_fit','dtau_blk','coh_blk','coverage_blk','blend_fringes', ...
   'phase_sign','Time','GPS_time','Latitude','Longitude','Elevation','Surface', ...
   'param_fabric','param_polarimetric','param_records','file_type','file_version');

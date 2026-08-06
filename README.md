@@ -44,11 +44,48 @@ units).
     phase unwrapping; alternative to the phase/coreg blend)
   - `ptt.surfaceReference` - the surface-referencing convention
     (coherence mask, reference bins) shared by the dtau estimators
+  - `ptt.imgCombSeam` - fast-time mask of the waveform image-combination
+    seams, where the trace is a crossfade of a short and a long pulse
+    rather than an ice property. The boundaries are read per frame from
+    the product's own `param.array.img_comb` / `img_comb_mult` (0.9 us
+    after the surface return with a 0.1 us image-1 guard on the accum3
+    grids, 8 us with a 1 us guard on the deeper settings, none on
+    single-image frames) instead of being hardcoded, placed with the same
+    surface-relative formula `img_combine.m` uses, and the masked band
+    runs forward from the boundary because that is the way OPR blends.
+    Applied by `ptt.surfaceReference`, so every dtau estimator inherits
+    it; disable with `param.fabric.seam_mask_en = false` or retune the
+    guard with `param.fabric.seam_mask_win`. Delta-k
+    gets a wider band: it resolves its ladder integers from a tau_A
+    smoothed over analysis cells, so every cell whose smoothing window
+    touched the seam is dropped too (`ptt.deltakDefaults` is the one
+    definition of that cell geometry, and `ptt.deltakTraveltime` keeps
+    those cells out of its shallow referencing median as well). The two
+    bands cost very different amounts of record - measured on the
+    6601-bin accum3 frame 20250108_02_009 at the default guard:
+
+    | `dtau_source`    | 0.9 us / 0.1 us blend        | 8 us / 1 us blend              |
+    | ---------------- | ---------------------------- | ------------------------------ |
+    | `phase`, `coreg` | 0.8-1.1 us, 90 bins (1.4%)   | 7-10 us, 900 bins (13.6%)      |
+    | `deltak`         | 0.5-1.4 us, 270 bins (4.1%)  | 6.7-10.3 us, 1080 bins (16.4%) |
+
+    Budget a delta-k run against the `deltak` row: the reach triples the
+    cost on the 0.9 us settings.
   - `ptt.blockAverage` - coherence-weighted along-track block averaging
     with per-block fringe correction
   - `ptt.invertBlocks` - twtt-to-depth mapping and per-block inversion
     (exact layer stripping or the regularized joint solve, selected by
-    `opts.inversion`)
+    `opts.inversion`). Where the seam mask (or an incoherent run) leaves a
+    gap, the node's dtau is interpolated across it so the joint solve
+    keeps a continuous chain, and the node is flagged in
+    `inv.interpolated`, saved as `dlam_interpolated` next to
+    `dlam_quality`/`dlam_clipped`. Layer stripping differences consecutive
+    nodes, so a fabricated node corrupts its own interval and the one
+    below it; `scripts/figures/fabric_qc.py` is the single definition of
+    that predicate, and the figure scripts drop both the way they drop
+    pegged ones - the unmasked coherence in `dlam_quality` cannot tell
+    them apart from measured nodes (`deltak_vs_joint.py` compares two
+    chains, so it drops an interval flagged in either one).
   - `ptt.twttDepthMap` - vertical twtt vs depth from the column model
 
 Scripts (each validates or applies the above end to end):
@@ -88,6 +125,11 @@ Scripts (each validates or applies the above end to end):
   along-profile depth sections of the fabric solution per survey region,
   the delta-k vs joint-chain validation (per-interval dlam scatter and
   difference histogram at Ridge A, printed stats for Thwaites as well),
+  the per-stage delta-k ladder diagnostic (`deltak_stages.py`, from the
+  single-frame extract written by
+  `opr_fabric/server/run_deltak_stages.m`: dtau profiles and retained
+  depth increments per ladder rung against the phase estimators, to
+  locate where the Ridge A amplitude is lost),
   the matching delta-k eigenvalue-difference depth sections along both
   traverses (the Ridge A panel is flagged unvalidated there because
   delta-k is amplitude-suppressed against the joint chain at that site),
@@ -97,6 +139,35 @@ Scripts (each validates or applies the above end to end):
   commands in `scripts/figures/antarctic_basemap.py`), and fall back to
   coastline-only otherwise. See each script's docstring for usage; the
   inversion chain itself stays MATLAB/Octave.
+- The SCAR talk figures are a subset of `scripts/figures/` with their own
+  conventions (see "SCAR figure inputs and outputs" below):
+  - `scar_two_panel.py` - survey overview + wrapped interferogram for
+    Thwaites and Ridge A: the whole survey over log-scale ITS_LIVE speed
+    with all lines white and the focused profile black, red start / white
+    end markers repeated on the map inset and at the interferogram's left
+    and right edges, no legends, plain black scale bars.
+  - `negis_two_panel.py` - the same slide for the NEGIS onset at EGRIP,
+    on a Greenland polar stereographic projection, from the
+    `negis_interferogram.m` extract; it can raise the look count locally
+    because that extract ships the un-normalised power sums.
+  - `scar_style.py` - the one definition of the styling constants,
+    end markers, scale bar, panel geometry and track-azimuth/geometry
+    helpers those figures share, so the three site slides cannot drift
+    apart. Also used by the two section figures below.
+  - `fabric_sections.py` - per-site 2D dlam sections from
+    `opr_fabric/server/run_sections.m`, each cell blended toward grey by
+    its node coherence (a diverging ramp cannot reuse the interferogram's
+    fade-to-black), with a two-dimensional key for that mapping.
+  - `fabric_three_sites.py` - the cross-site depth-profile comparison.
+    Magnitudes are NOT directly comparable: dlam is the difference of the
+    two horizontal eigenvalues on each profile's own axis and its
+    perpendicular, and those azimuths differ per site, which is why both
+    figures name them.
+- `scripts/prototypes/deltak_remedy.py` - a PARKED investigation into the
+  delta-k stage-A suppression at Ridge A (deramped coherent multilook
+  before the cross products). It runs and reports, but it does not resolve
+  the suppression and its deep profile still anti-correlates with SNAPHU;
+  the docstring states the numbers. Not wired into `+ptt`.
 - `scripts/figures/ghost2_swath_movie.py` is the one figure script outside
   that batch-output family: it renders a look-angle sweep movie (one
   along-track radargram per steering angle, TWTT axis, rotating beam icon)
@@ -106,6 +177,17 @@ Scripts (each validates or applies the above end to end):
   npz (locally), writes .mp4 when ffmpeg is available and .gif otherwise,
   and `--selftest` exercises it on a synthetic cube where the real,
   server-only data is unavailable.
+
+### SCAR figure inputs and outputs
+
+The SCAR talk figures follow this project's usual convention of keeping
+mirrored products out of git. Their INPUT data - ITS_LIVE velocity
+windows streamed from S3, the NEGIS track and interferogram extracts
+pulled off mem1, the `fabric_sections.mat` stage - is staged under
+`~/data/opr/scar`, override with the `SCAR_DATA` environment variable.
+Their OUTPUT goes wherever the `<out_dir>` argument points, which for the
+talk is `~/presentations/SCAR_figures`, outside the repo; unlike the rest
+of `scripts/figures/`, they do not write to `figs/`.
 
 ## OPR toolbox integration (`opr_fabric/`)
 

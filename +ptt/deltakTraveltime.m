@@ -27,7 +27,9 @@ function [dtau, info] = deltakTraveltime(slc, map, opts)
 %   map: as for ptt.blendTraveltime (Time, Surface, fc, coherence, and
 %   optionally row_offset for the orientation regression).
 %
-%   opts fields used (all optional, under opts.deltak unless noted):
+%   opts fields used (all optional, under opts.deltak unless noted, and
+%   defaulted by ptt.deltakDefaults so ptt.imgCombSeam can widen the seam
+%   band by the same analysis-cell reach):
 %     n_sub (12)            narrow sub-bands for stage A
 %     cell_twtt (100e-9)    analysis-cell fast-time extent [s]
 %     cell_ntr (31)         analysis-cell trace count
@@ -40,12 +42,23 @@ function [dtau, info] = deltakTraveltime(slc, map, opts)
 %                           takes precedence over orientation and the
 %                           regression
 %     ref_band ([150e-9 600e-9])  referencing band below the surface
+%     ref_min_cells (2)     analysis cells the referencing band must keep
+%                           after the waveform-combine seam cells are
+%                           excluded; below it the column is unreferenced
+%     ref_extend_max (1e-6) how much deeper than ref_band(2) the band may
+%                           step to reach ref_min_cells usable cells when
+%                           the seam ate into it; past the cap the column
+%                           is unreferenced rather than referenced off
+%                           something that is no longer a shallow band
 %     coherence_threshold (opts.*, 0.5)  as in blendTraveltime
 %
 %   info: phase_sign (the detected/forced orientation s), coh_mask,
 %   dtau_coreg = [] (delta-k needs no fringe blending), phase_is_unwrapped
 %   = true, ref_bin, and diagnostics under info.deltak (cell-grid taus,
-%   band frequencies, ladder rounding margins).
+%   band frequencies, ladder rounding margins, and the surface-referenced
+%   per-rung cell taus under .stage - tau_A/tau_Q/tau_B - so the ladder
+%   can be compared rung by rung against the phase estimators; see
+%   opr_fabric/server/run_deltak_stages.m).
 %
 %   The full-carrier refinement (resolving the fc fringe integer from
 %   stage B) is deliberately NOT applied: on real data the carrier phase
@@ -53,17 +66,7 @@ function [dtau, info] = deltakTraveltime(slc, map, opts)
 %   fringe level (registration application details / channel dispersion),
 %   so the synthetic-wavelength stage-B product is the deliverable.
 
-if ~isfield(opts,'deltak') || isempty(opts.deltak)
-  opts.deltak = struct();
-end
-dk = opts.deltak;
-if ~isfield(dk,'n_sub') || isempty(dk.n_sub), dk.n_sub = 12; end
-if ~isfield(dk,'cell_twtt') || isempty(dk.cell_twtt), dk.cell_twtt = 100e-9; end
-if ~isfield(dk,'cell_ntr') || isempty(dk.cell_ntr), dk.cell_ntr = 31; end
-if ~isfield(dk,'smooth') || isempty(dk.smooth), dk.smooth = 5; end
-if ~isfield(dk,'band_frac') || isempty(dk.band_frac), dk.band_frac = [0.02 0.98]; end
-if ~isfield(dk,'orientation') || isempty(dk.orientation), dk.orientation = 0; end
-if ~isfield(dk,'ref_band') || isempty(dk.ref_band), dk.ref_band = [150e-9 600e-9]; end
+dk = ptt.deltakDefaults(opts);
 % coherence_threshold and ref_twtt_offset are defaulted by
 % ptt.surfaceReference, which owns the referencing convention
 
@@ -103,6 +106,16 @@ ntc = floor(Nt/tg);
 nxc = floor(Nx/xg);
 t_cell = map.Time(1) + ((0:ntc-1).' + 0.5)*tg*dt;
 x_cell = ((0:nxc-1) + 0.5)*xg;
+
+% The ladder integers come from a tau_A smoothed over the analysis cells,
+% so a cell whose smoothing window merely touched a waveform-combine seam
+% is already resolved to the wrong 1/dfQ step: ask for the widened band
+% (ptt.imgCombSeam takes the reach from the same ptt.deltakDefaults). The
+% same cells are kept out of the referencing median in band_ref, so the
+% estimator and ptt.surfaceReference agree on which cells are usable.
+opts.seam_mask_deltak = true;
+seam_cell = seam_cells();
+n_ref_extended = 0;
 
 %% Ladder stages: per-pixel cross products, multilook after differencing
 edgesA = round(linspace(b0, b1, dk.n_sub+1));
@@ -171,18 +184,31 @@ fprintf('deltak: rounding margins Q %.2f/%.2f, B %.2f/%.2f (median/90th; <<0.5)\
   nmed(mQ(:)), prctile_ish(mQ(:),90), nmed(mB(:)), prctile_ish(mB(:),90));
 
 %% Surface referencing (robust shallow-band median per cell column)
+% The A and Q rungs are referenced with the SAME band so the per-stage
+% diagnostic (opr_fabric/server/run_deltak_stages.m) compares like with
+% like; band_ref resets its extension counter per call, so referencing
+% them first leaves the warnings below describing the tau_B pass exactly
+% as before.
+stage_A = band_ref(tau_A);
+stage_Q = band_ref(tau_Q);
 tau_ref = band_ref(tau_B);
+if n_ref_extended > 0
+  warning('ptt:deltakTraveltime:refExtended', ...
+    '%d of %d analysis-cell columns kept fewer than %g reference cells inside %.0f ns of the surface, so the band was stepped up to %.0f ns deeper to reach them.', ...
+    n_ref_extended, nxc, dk.ref_min_cells, dk.ref_band(2)*1e9, ...
+    dk.ref_extend_max*1e9);
+end
 n_unref = nnz(all(~isfinite(tau_ref), 1));
 if n_unref > 0
   warning('ptt:deltakTraveltime:unreferenced', ...
-    '%d of %d analysis-cell columns have no usable reference band and are excluded from dtau.', ...
-    n_unref, nxc);
+    '%d of %d analysis-cell columns keep fewer than %d usable reference cells (no surface pick, band outside the record, or the waveform-combine seam) and are excluded from dtau.', ...
+    n_unref, nxc, dk.ref_min_cells);
 end
 
 %% Interpolate to the full grid for ptt.blockAverage
-ti = min(max(interp1(t_cell, (1:ntc).', map.Time(:), 'linear', 'extrap'), 1), ntc);
-xi = min(max(interp1(x_cell, (1:nxc).', (1:Nx).', 'linear', 'extrap'), 1), nxc);
-dtau = interp2(tau_ref, xi.', ti, 'linear');
+% ptt.cellToGrid is the one definition of this resampling, shared with
+% the per-stage diagnostic runner so the two cannot drift apart.
+dtau = ptt.cellToGrid(tau_ref, t_cell, x_cell, map.Time, Nx);
 
 [coh_mask, ref_bin] = ptt.surfaceReference(map, opts);
 
@@ -201,7 +227,8 @@ info.ref_bin = ref_bin;
 info.deltak = struct('tau_cell', tau_ref, 't_cell', t_cell, ...
   'x_cell', x_cell, 'df', [dfA dfQ dfB], ...
   'margin_Q', [nmed(mQ(:)) prctile_ish(mQ(:),90)], ...
-  'margin_B', [nmed(mB(:)) prctile_ish(mB(:),90)]);
+  'margin_B', [nmed(mB(:)) prctile_ish(mB(:),90)], ...
+  'stage', struct('tau_A', stage_A, 'tau_Q', stage_Q, 'tau_B', tau_ref));
 
 %% ---- nested helpers ------------------------------------------------
   function [acc, df] = stage_cross(edges)
@@ -260,16 +287,80 @@ info.deltak = struct('tau_cell', tau_ref, 't_cell', t_cell, ...
     end
   end
 
+  function C = seam_cells()
+    % Analysis cells the widened waveform-combine seam band covers, as
+    % (ntc x 1) when the band is column-independent and (ntc x nxc) when a
+    % boundary tracks the surface. The band itself is never recomputed
+    % here: it comes from ptt.imgCombSeam, the same mask
+    % ptt.surfaceReference applies to the coherence. A cell is judged by
+    % the sample at its centre, t_cell, because the widened band already
+    % carries the neighbourhood reach - testing every sample in the cell
+    % would count that half-cell twice and swallow the cell next door.
+    if isfield(opts,'seam_mask_en') && ~isempty(opts.seam_mask_en) ...
+        && ~opts.seam_mask_en
+      C = false(ntc, 1);
+      return;
+    end
+    sm = ptt.imgCombSeam(map, opts);
+    if ~any(sm(:))
+      C = false(ntc, 1);
+      return;
+    end
+    ci = (0:ntc-1).'*tg + floor(tg/2) + 1;   % bin at each t_cell
+    if size(sm,2) == 1
+      C = sm(ci);
+    else
+      % ptt.imgCombSeam resolves the surface-tracking case per TRACE;
+      % reduce onto the cell columns band_ref indexes, the way cellavg
+      % and cellavg_row do, so a cell column is judged by its own traces
+      Bs = reshape(sm(ci, 1:nxc*xg), ntc, xg, nxc);
+      C = reshape(any(Bs, 2), ntc, nxc);
+      Bs = [];
+    end
+    sm = [];
+  end
+
   function A = band_ref(A)
-    % Subtract a robust shallow-band median per cell column. A column with
-    % no usable reference band (no finite Surface pick in the cell, or the
-    % band falling outside the record) is NaN rather than unreferenced: the
-    % channel timing bias it would otherwise keep is not a delay, and
-    % interp2 would smear it into the valid cells on either side.
+    % Subtract a robust shallow-band median per cell column, over the cells
+    % the seam mask leaves usable. Where the seam has eaten into the
+    % declared band the far edge steps DEEPER - never shallower, the near
+    % edge is pinned by the surface - by at most dk.ref_extend_max, taking
+    % the shallowest dk.ref_min_cells usable cells it finds. That keeps a
+    % column referenced instead of lost when the record starts too late for
+    % the declared window to hold enough cells on its own; the cap is there
+    % because this is supposed to be a shallow-band zero level, and a
+    % reference taken that much deeper already carries whatever dtau the
+    % column has accumulated by then.
+    %
+    % A column that still keeps fewer than dk.ref_min_cells (no finite
+    % Surface pick in the cell, the band falling outside the record, or the
+    % seam swallowing it beyond the cap) is NaN rather than unreferenced:
+    % the channel timing bias it would otherwise keep is not a delay, and
+    % interp2 would smear it into the valid cells on either side. That is
+    % per column - it costs those traces, never the frame - and the count
+    % is reported by the ptt:deltakTraveltime:unreferenced warning.
+    % Referencing off a single surviving cell is not robust enough to be
+    % worth preferring to either.
+    nmin = max(1, round(dk.ref_min_cells));
+    n_ref_extended = 0;
     for i = 1:nxc
-      band = t_cell > surf_c(i) + dk.ref_band(1) & ...
-        t_cell < surf_c(i) + dk.ref_band(2);
-      if any(band)
+      if size(seam_cell,2) == 1
+        usable = ~seam_cell;
+      else
+        usable = ~seam_cell(:,i);
+      end
+      usable = usable & t_cell > surf_c(i) + dk.ref_band(1);
+      band = usable & t_cell < surf_c(i) + dk.ref_band(2);
+      if nnz(band) < nmin
+        deeper = find(usable & ...
+          t_cell < surf_c(i) + dk.ref_band(2) + dk.ref_extend_max);
+        if numel(deeper) >= nmin
+          band = false(ntc,1);
+          band(deeper(1:nmin)) = true;
+          n_ref_extended = n_ref_extended + 1;
+        end
+      end
+      if nnz(band) >= nmin
         A(:,i) = A(:,i) - nmed(A(band,i));
       else
         A(:,i) = NaN;

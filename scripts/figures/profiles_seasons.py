@@ -17,6 +17,9 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy.io import loadmat
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fabric_qc import interpolated_intervals
+
 ROOT = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser('~/data/opr/fabric_batch')
 OUT = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(__file__), '..', '..', 'figs')
 
@@ -39,6 +42,7 @@ def block_cols(pattern):
         dlam, top, bot = d['dlam'], d['dlam_top_depth'], d['dlam_bot_depth']
         qual = d['dlam_quality']
         clip = d.get('dlam_clipped')
+        itp = interpolated_intervals(d)
         for b in range(dlam.shape[1]):
             if not np.any(np.isfinite(dlam[:, b])):
                 continue
@@ -46,7 +50,8 @@ def block_cols(pattern):
             for k in range(dlam.shape[0]):
                 pegged = (clip is not None and clip.size and clip[k, b] == 1) \
                     or abs(dlam[k, b]) > 0.6
-                ok = np.isfinite(dlam[k, b]) and not pegged \
+                filled = itp is not None and itp[k, b]
+                ok = np.isfinite(dlam[k, b]) and not pegged and not filled \
                     and np.isfinite(qual[k, b]) and qual[k, b] > 0.35
                 if ok:
                     m = (DEPTH >= top[k, b]) & (DEPTH < bot[k, b])
