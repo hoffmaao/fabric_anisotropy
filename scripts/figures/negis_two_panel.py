@@ -33,7 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cartopy.crs as ccrs                # noqa: E402
 import scar_style as sty                  # noqa: E402
 from scar_style import (DATA, DPI, PROFILE_C, PROFILE_FX,  # noqa: E402
-                        PROFILE_LW, TRACK_C, zoom_inset)
+                        PROFILE_LW, SPEED_CB_LABEL, TRACK_C, zoom_inset)
 
 OUT = sys.argv[1]
 # 20240626_03_001: the along-flow line beside the southeastern shear
@@ -193,7 +193,7 @@ def main():
     pcm = speed_layer(ax, dec=40)
     cax = ax.inset_axes([0.05, -0.12, 0.62, 0.03])
     fig.colorbar(pcm, cax=cax, orientation='horizontal',
-                 label='surface speed (m/yr)')
+                 label=SPEED_CB_LABEL)
     for la, lo in tracks:
         ax.plot(lo, la, '-', color=TRACK_C, lw=1.1, alpha=0.9,
                 transform=ccrs.PlateCarree(), zorder=7)
@@ -240,8 +240,7 @@ def main():
     tb = (t - np.nanmedian(surf)) * 1e6
     sty.ifg_panel(
         axi, fig, dist, tb, np.angle(ifg), coh,
-        ylabel='TWTT below surface (μs)',
-        cb_label='phase change (rad)')
+        ylabel='TWTT below surface (μs)')
     axi.set_ylim(min(22.0, tb[-1]), -0.5)
     sty.draw_ifg_ends(axi, dist)
     axi.set_title('along-flow profile, frame %s' % TAG, fontsize=12,

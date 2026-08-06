@@ -168,9 +168,13 @@ Scripts (each validates or applies the above end to end):
   - `egrip_core_compare.py` - that radar solve against the EastGRIP core's
     own eigenvalues with depth. The core gives magnitudes but no
     eigenvectors, so all three candidate horizontal differences are drawn;
-    the line staging, the acceptance rule and the fit are imported from
-    `egrip_azimuthal.py` rather than restated, so the two EastGRIP figures
-    cannot disagree about which lines entered a solve.
+    the line staging, the acceptance rule and the whole per-band solve are
+    imported from `egrip_azimuthal.py` rather than restated, so the two
+    EastGRIP figures cannot disagree about which lines entered a solve or
+    about the P it produced. The horizontal bars are the same solve run on
+    each rate estimator on its own, which is not the same thing as
+    averaging their two P values - the fit is linear in the estimates, P
+    is their norm.
   - `scar_style.py` - the one definition of the styling constants,
     end markers, scale bar, panel, zoom-inset and continental-locator
     geometry and the track-azimuth/geometry helpers those figures share,
