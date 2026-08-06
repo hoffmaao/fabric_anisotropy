@@ -94,9 +94,12 @@ def thwaites():
     vx, vy = z['vx'], z['vy']
 
     proj = ab.proj3031()
-    extent = ab.points_extent(np.concatenate([tla, lats]),
-                              np.concatenate([tlo, lons]),
-                              pad_frac=0.45, min_pad_m=15e3)
+    # The whole ITS_LIVE window rather than a padded box round the survey:
+    # at 41 x 113 km the tracks occupy a fraction of the 180 x 240 km
+    # window, and padding to them cropped away most of the Thwaites trunk
+    # the survey exists to sit beside. The zoom inset and the continental
+    # locator carry the other two scales.
+    extent = (wx.min(), wx.max(), wy.min(), wy.max())
 
     norm = LogNorm(vmin=5, vmax=600)
 
@@ -130,6 +133,9 @@ def thwaites():
         gl.top_labels = False
         gl.right_labels = False
         scale_bar_br(ax, extent)
+        sty.continental_inset(ax, float(np.mean(lats)),
+                              float(np.mean(lons)), 'antarctica',
+                              (0.665, 0.775, 0.30, 0.20))
         ax.set_title('Thwaites Glacier survey', fontsize=12)
 
         # Zoom inset: at survey scale the 10 km profile is a blob, and
@@ -229,6 +235,9 @@ def ridge_a():
         gl.top_labels = False
         gl.right_labels = False
         scale_bar_br(ax, extent)
+        sty.continental_inset(ax, float(np.mean(lats)),
+                              float(np.mean(lons)), 'antarctica',
+                              (0.02, 0.755, 0.26, 0.225))
         # No in-map caption: the absence of a speed layer and its colorbar
         # already says there is no satellite velocity here, and on a
         # projected slide the text competed with the survey lines.

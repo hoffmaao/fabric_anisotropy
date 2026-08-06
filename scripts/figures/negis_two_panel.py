@@ -206,6 +206,8 @@ def main():
     gl.right_labels = False
     gl.bottom_labels = False   # they rotate into the speed colorbar
     sty.scale_bar_br(ax, extent, PROJ)
+    sty.continental_inset(ax, float(np.mean(lats)), float(np.mean(lons)),
+                          'greenland', (0.02, 0.035, 0.24, 0.235))
     ax.set_title('NEGIS onset survey (EGRIP)', fontsize=12)
 
     # Zoom inset so the profile's two ends separate, as on the other sites
