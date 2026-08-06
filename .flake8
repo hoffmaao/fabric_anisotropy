@@ -1,0 +1,38 @@
+[flake8]
+# The limit the actively-maintained figure scripts are already written to -
+# scar_style.py and the *_two_panel.py / egrip_* family all cap at 79.
+max-line-length = 79
+
+exclude =
+    .git,
+    __pycache__
+
+# Every figure script calls matplotlib.use('Agg') before importing pyplot so
+# it renders headless, which necessarily puts module-level imports after a
+# statement and trips E402. The maintained scripts mark each such import
+# `# noqa: E402` at the point it happens, which is preferable to a blanket
+# ignore because it still catches genuinely misplaced imports.
+#
+# The files below predate that habit. They are grandfathered here rather than
+# reformatted so the check passes from day one and new violations are caught
+# immediately; clearing them is a separate mechanical pass, and this list
+# should only ever shrink.
+per-file-ignores =
+    scripts/figures/antarctic_basemap.py:E501
+    scripts/figures/crossval_2024.py:E402,E501
+    scripts/figures/deltak_sections.py:E402
+    scripts/figures/deltak_vs_joint.py:E402
+    scripts/figures/ghost2_swath_movie.py:E402
+    scripts/figures/profiles_seasons.py:E402,E501
+    scripts/figures/region_maps.py:E402,E501,E702
+    scripts/figures/ridge_a_azimuthal.py:E402,E501
+    scripts/figures/ridge_a_scene.py:E402,E501
+    scripts/figures/segment_sections.py:E402,E501
+    scripts/figures/summary_map_profiles.py:E402,E501,E702
+    scripts/figures/thwaites_fabric.py:E402,E501
+    scripts/figures/thwaites_interferogram.py:E402,E501
+    scripts/figures/thwaites_margin_scene.py:E402,E501
+    scripts/figures/transect_seasons.py:E401,E402,E501,E702
+    scripts/prototypes/beat_v2.py:E128,E225,E231,E302,E305,E501,E701,E702,E703,W291
+    scripts/prototypes/branch_cuts.py:E402,E501
+    scripts/prototypes/deltak_prototype.py:E402,E501,E741
