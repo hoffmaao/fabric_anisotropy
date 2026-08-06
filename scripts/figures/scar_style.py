@@ -134,6 +134,46 @@ def inset_frame(axz, color='white', lw=1.5):
         spine.set_linewidth(lw)
 
 
+# Continental locators. Natural Earth 50m land is already cached under
+# ~/.local/share/cartopy, so these need no network.
+CONTINENT = {
+    'antarctica': ('SouthPolarStereo', {}, [-180, 180, -90, -63]),
+    'greenland': ('NorthPolarStereo', {'central_longitude': -42},
+                  [-58, -8, 58.5, 84]),
+}
+LOCATOR_LAND = '0.86'
+LOCATOR_EDGE = '0.45'
+
+
+def continental_inset(ax, lat, lon, region, rect):
+    """Small locator putting the survey on its ice sheet.
+
+    These slides get shown to people who do not know where Ridge A or the
+    EastGRIP borehole are, and the survey-scale panel cannot tell them: at
+    that zoom every site is an anonymous patch of white. One marker on the
+    continent fixes it.
+
+    Lifted above the parent's layers for the same reason as zoom_inset -
+    ax.inset_axes() registers the child inside the PARENT's artist
+    ordering at zorder 5, below the map's own quiver, tracks and profile.
+    """
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+    name, kw, extent = CONTINENT[region]
+    axc = ax.inset_axes(rect, projection=getattr(ccrs, name)(**kw))
+    axc.set_zorder(ax.get_zorder() + 21)
+    axc.set_extent(extent, crs=ccrs.PlateCarree())
+    axc.add_feature(cfeature.LAND.with_scale('50m'), facecolor=LOCATOR_LAND,
+                    edgecolor=LOCATOR_EDGE, lw=0.4)
+    axc.set_facecolor('white')
+    axc.scatter([lon], [lat], s=52, c=END_FACES[0], edgecolor='black',
+                lw=0.9, transform=ccrs.PlateCarree(), zorder=6)
+    for sp in axc.spines.values():
+        sp.set_edgecolor('0.25')
+        sp.set_linewidth(0.9)
+    return axc
+
+
 def zoom_inset(ax, rect, proj):
     """Zoom inset that composites ABOVE the parent map's own layers.
 
