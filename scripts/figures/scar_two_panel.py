@@ -134,9 +134,14 @@ def thwaites():
         gl.top_labels = False
         gl.right_labels = False
         scale_bar_br(ax, extent)
+        # Hard right in the top corner: the zoom window sits high and
+        # slightly left of centre here, so at 0.665 the locator painted
+        # over the top-right corner of its dashed box. The locator keeps
+        # its square aspect and is centred in the rect, which leaves the
+        # visual margin inside the panel edge.
         sty.continental_inset(ax, float(np.nanmean(lats)),
                               float(np.nanmean(lons)), 'antarctica',
-                              (0.665, 0.775, 0.30, 0.20))
+                              (0.695, 0.775, 0.29, 0.20))
         ax.set_title('Thwaites Glacier survey', fontsize=12)
 
         # Zoom inset: at survey scale the 10 km profile is a blob, and
