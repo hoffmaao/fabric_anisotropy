@@ -1,11 +1,12 @@
-%RUN_NEGIS_FABRIC Rathmann eigenvalue inversion for the NEGIS profile.
+%RUN_NEGIS_FABRIC Rathmann eigenvalue inversion for the NEGIS profiles.
 %
-% The NEGIS data are not in CSARP_polarimetric form, so this first
-% repackages one qlook HH/VV pair into that layout and then runs the
-% ordinary fabric_task delta-k chain on it. Repackaging rather than
-% reimplementing keeps the inversion identical to the one that produced
-% the Thwaites and Ridge A results - the only thing that differs between
-% the three profiles is where dtau came from.
+% The NEGIS data are not in CSARP_polarimetric form, so for each frame in
+% `targets` this first repackages its qlook HH/VV pair into that layout
+% and then runs the ordinary fabric_task delta-k chain on it. Repackaging
+% rather than reimplementing keeps the inversion identical to the one that
+% produced the Thwaites and Ridge A results - the only thing that differs
+% between the profiles is where dtau came from. A target that fails is
+% warned about and skipped, so one bad frame does not cost the batch.
 %
 % Three season-specific repairs happen here and nowhere else:
 %   1. Latitude/Longitude are rebuilt from the GPS file (the records time
@@ -29,8 +30,15 @@ season_dir = '/cresis/dataproducts/opr_data/accum/2024_Greenland_Ground2';
 gps_dir = '/cresis/dataproducts/opr_data/opr_support/gps/2024_Greenland_Ground2';
 scratch = '/kucresis/scratch/hoffmana_sta/fabric';
 season = '2024_Greenland_Ground2';
-day_seg = '20240626_03';
-frm = 1;
+% Frames to repackage and invert. The first is the along-flow line beside
+% the southeastern shear margin; the second stands 0.32 km off the
+% EastGRIP borehole, so its fabric can be set against the core's own
+% measurements. The borehole's own segment 20240618_01 carries no phase
+% (incoherent decimation). Two lines pass NEARER - 20240621_01_010 at
+% 0.13 km and 20240626_01_001 at 0.15 km - but both drive 0.8-1.6% of
+% intervals onto the eigenvalue bound at |dlam| = 2/3 with 0.54-0.74 ns
+% misfit, so this is the nearest line that inverts stably.
+targets = { '20240626_03', 1; '20240619_01', 1 };
 
 MIN_STEP_M = 1.0;      % below this the vehicle was stopped
 CROP_PRE = 0.5e-6;     % keep this much above the surface
@@ -42,6 +50,10 @@ addpath(code);
 addpath(fullfile(code, 'opr_fabric'));
 addpath(fullfile(code, 'opr_fabric', 'test', 'stubs'));
 
+for ti = 1:size(targets, 1)
+day_seg = targets{ti, 1};
+frm = targets{ti, 2};
+
 season_root = fullfile(scratch, season);
 in_name = 'polarimetric_negis';
 in_dir = fullfile(season_root, ['CSARP_' in_name], day_seg);
@@ -52,6 +64,7 @@ in_fn = fullfile(in_dir, sprintf('Data_%s_%03d.mat', day_seg, frm));
 if exist(in_fn, 'file')
   fprintf('Reusing existing repackaged product %s\n', in_fn);
 else
+try
   name = sprintf('Data_%s_%03d.mat', day_seg, frm);
   hh_fn = fullfile(season_dir, 'CSARP_qlook_HH', day_seg, name);
   vv_fn = fullfile(season_dir, 'CSARP_qlook_VV', day_seg, name);
@@ -95,10 +108,15 @@ else
       day_seg, frm, nnz(~located), Nx, 100*nnz(~located)/Nx);
   end
   if nnz(keep) < COH_WIN(2)
-    error('run_negis_fabric:tooFewTraces', ...
+    % Warn and move on rather than abort: `targets` is a batch, and under
+    % matlab -batch a bad day GPS file on the first target would otherwise
+    % cost every later target too.
+    warning('run_negis_fabric:tooFewTraces', ...
       ['%s frame %d: only %d traces survive the cull, fewer than the ' ...
        '%d-trace coherence boxcar. Check the day GPS file covers this ' ...
-       'frame.'], day_seg, frm, nnz(keep), COH_WIN(2));
+       'frame; skipping this target.'], day_seg, frm, nnz(keep), COH_WIN(2));
+    clear H V;
+    continue;
   end
   H.Data = H.Data(:, keep); V.Data = V.Data(:, keep);
   Latitude = Latitude(keep); Longitude = Longitude(keep);
@@ -153,6 +171,20 @@ else
     'Surface', 'Latitude', 'Longitude', 'Elevation', 'GPS_time', ...
     'param_records', 'param_polarimetric', 'file_type', 'file_version');
   clear ref sec interferogram_coherence;
+catch err
+  % Everything the repackaging can throw - a qlook product that is absent
+  % or real-valued, mismatched HH/VV axes, a day GPS file that will not
+  % load - is a property of THIS target, so it is warned about and skipped
+  % like the cull guard above and the inversion guard below. A save that
+  % died part way leaves a file the `exist` test would happily reuse next
+  % run, so it is removed.
+  warning('run_negis_fabric:repackageFailed', ...
+    '%s frame %d: repackaging failed (%s: %s); skipping this target', ...
+    day_seg, frm, err.identifier, err.message);
+  clear H V ref sec interferogram_coherence;
+  if exist(in_fn, 'file'), delete(in_fn); end
+  continue;
+end
 end
 
 %% ---- invert ------------------------------------------------------------
@@ -184,8 +216,18 @@ pf.ptt = struct('H', 2000, 'bco_depth', 60, 'lam_z_sfc', 1/3, 'lam_z_bed', 1/3);
 param.fabric = pf;
 
 t1 = tic;
-ok = fabric_task(param);
-fprintf('\nfabric_task returned %d (%.1f min)\n', ok, toc(t1)/60);
+try
+  ok = fabric_task(param);
+  fprintf('\nfabric_task returned %d (%.1f min)\n', ok, toc(t1)/60);
+catch err
+  % Same reasoning as the cull guard above: one target that cannot invert
+  % must not take the rest of the batch down with it.
+  warning('run_negis_fabric:inversionFailed', ...
+    '%s frame %d: fabric_task failed after %.1f min (%s: %s); continuing', ...
+    day_seg, frm, toc(t1)/60, err.identifier, err.message);
+end
+
+end   % targets
 
 function pr = H_param_records_from(fn)
 % param_records straight from the qlook product, so array.img_comb and

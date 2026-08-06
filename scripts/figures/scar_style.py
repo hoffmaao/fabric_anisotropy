@@ -1,7 +1,8 @@
 """Shared slide styling and geometry for the SCAR site figures.
 
 scar_two_panel.py (Thwaites, Ridge A), negis_two_panel.py (NEGIS),
-fabric_sections.py and fabric_three_sites.py are one deck. The three site
+egrip_two_panel.py (the EastGRIP borehole), fabric_sections.py and
+fabric_three_sites.py are one deck. The site
 slides only read as a set while their end markers, track colours, profile
 weight, scale bars and panel proportions stay identical, so those
 constants and the helpers that draw them live here rather than being
@@ -46,6 +47,17 @@ INK, MUTED = '#0b0b0b', '#52514e'
 END_FACES = ('#e8000b', '#ffffff')
 END_SIZE = 130
 END_EDGE = 1.6
+
+# Both colorbar captions are deliberately terse, and are NOT to be
+# re-expanded with the provenance and scaling they omit. These are
+# conference-talk slides, narrated live: the speed layer's source
+# (ITS_LIVE v2.1) and its log scaling, and the coherence on the HSV value
+# channel, are all said out loud and written in the abstract, so on the
+# slide they are words the audience reads instead of looking at the
+# figure. One constant each, because three panels draw the speed bar and
+# four draw the interferogram bar.
+SPEED_CB_LABEL = 'surface speed (m/yr)'
+IFG_CB_LABEL = 'phase change (rad)'
 
 TRACK_C = 'white'       # every survey line
 PROFILE_C = 'black'     # the focused profile
@@ -133,6 +145,90 @@ def inset_frame(axz, color='white', lw=1.5):
         spine.set_linewidth(lw)
 
 
+# Continental locators. Natural Earth 50m land is already cached under
+# ~/.local/share/cartopy, so these need no network.
+CONTINENT = {
+    'antarctica': ('SouthPolarStereo', {}, [-180, 180, -90, -63]),
+    'greenland': ('NorthPolarStereo', {'central_longitude': -42},
+                  [-58, -8, 58.5, 84]),
+}
+LOCATOR_LAND = '0.86'
+LOCATOR_EDGE = '0.45'
+# Floor on the drawn AOI box, as a fraction of the locator's width.
+# True footprints here are 0.7-4% of the ice sheet, sub-pixel at
+# three of the four sites.
+AOI_MIN_FRAC = 0.055
+
+
+def continental_inset(ax, region, rect, extent, proj):
+    """Small locator putting the study area on its ice sheet.
+
+    These slides get shown to people who do not know where Ridge A or the
+    EastGRIP borehole are, and the survey-scale panel cannot tell them: at
+    that zoom every site is an anonymous patch of white. One box on the
+    continent fixes it.
+
+    The area of interest is drawn as a black square from the map panel's
+    own `extent`, so it is the study area rather than a symbol placed near
+    it. It is FLOORED at AOI_MIN_FRAC of the locator's width, because the
+    true footprint is 0.7-4% of the ice sheet across these four sites and
+    would be one pixel or less at three of them - a box that cannot be
+    seen locates nothing. Read the square as "here", not as a scale bar.
+
+    Lifted above the parent's layers for the same reason as zoom_inset -
+    ax.inset_axes() registers the child inside the PARENT's artist
+    ordering at zorder 5, below the map's own quiver, tracks and profile.
+    """
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+    from matplotlib.patches import Rectangle
+    name, kw, cext = CONTINENT[region]
+    iproj = getattr(ccrs, name)(**kw)
+    axc = ax.inset_axes(rect, projection=iproj)
+    axc.set_zorder(ax.get_zorder() + 21)
+    axc.set_extent(cext, crs=ccrs.PlateCarree())
+    axc.add_feature(cfeature.LAND.with_scale('50m'), facecolor=LOCATOR_LAND,
+                    edgecolor=LOCATOR_EDGE, lw=0.4)
+    axc.set_facecolor('white')
+
+    x0, x1, y0, y1 = extent
+    lon, lat = ccrs.PlateCarree().transform_point(
+        (x0 + x1) / 2, (y0 + y1) / 2, proj)[:2]
+    ix, iy = iproj.transform_point(lon, lat, ccrs.PlateCarree())[:2]
+    cx0, cx1 = axc.get_xlim()
+    half = max(abs(x1 - x0) / 2, abs(y1 - y0) / 2,
+               AOI_MIN_FRAC * abs(cx1 - cx0) / 2)
+    axc.add_patch(Rectangle((ix - half, iy - half), 2 * half, 2 * half,
+                            transform=iproj, facecolor='none',
+                            edgecolor='black', lw=1.5, zorder=6))
+    for sp in axc.spines.values():
+        sp.set_edgecolor('0.25')
+        sp.set_linewidth(0.9)
+    return axc
+
+
+def zoom_inset(ax, rect, proj):
+    """Zoom inset that composites ABOVE the parent map's own layers.
+
+    `ax.inset_axes()` gives the child zorder 5 (not 0) AND registers it
+    with `add_child_axes`, so it lands in `ax.child_axes` rather than
+    `fig.axes` and is drawn inside the PARENT's artist ordering. These maps
+    draw their quiver, survey tracks, profile and scale bar at explicit
+    zorders 6-9, all above 5, so the parent's layers paint straight over
+    the inset: the result reads as two sets of arrows at two different
+    scales inside one box.
+
+    Measured, rather than reasoned: in a controlled render the parent's
+    arrows inside the inset drop from 469 to 137 px with the zorder bump
+    and are unchanged without it. Making the patch opaque does NOT help
+    and is not done here - an inset axes' patch is already visible with an
+    opaque white facecolor by default, so those calls are no-ops.
+    """
+    axz = ax.inset_axes(rect, projection=proj)
+    axz.set_zorder(ax.get_zorder() + 20)
+    return axz
+
+
 def draw_map_ends(ax, lats, lons):
     """Red start / white end markers on the profile, black outlined."""
     import cartopy.crs as ccrs
@@ -159,7 +255,7 @@ def two_panel_figure(proj):
 
 
 def ifg_panel(ax, fig, dist, t_us, phase, coh, ylabel='TWTT (μs)',
-              cb_label='interferogram phase (rad); brightness = coherence'):
+              cb_label=IFG_CB_LABEL):
     """Wrapped interferogram with the shared HSV mapping and colorbar."""
     st = max(1, phase.shape[0] // 2200)
     sx = max(1, phase.shape[1] // 2000)

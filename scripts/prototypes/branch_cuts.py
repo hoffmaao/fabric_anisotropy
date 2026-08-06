@@ -92,7 +92,7 @@ def main():
     n0, n1 = np.abs(res0).sum(), np.abs(res1).sum()
     npix = res0.size
     print(f'residues: raw {n0} ({1e2*n0/npix:.2f}% of loops), '
-          f'filtered {n1} ({1e2*n1/npix:.2f}%)  [x{n0/max(n1,1):.1f} fewer]')
+          f'filtered {n1} ({1e2*n1/npix:.2f}%)  [x{n0/max(n1, 1):.1f} fewer]')
 
     # residue density vs coherence
     cmid = 0.25 * (coh[:-1, :-1] + coh[1:, :-1] + coh[:-1, 1:] + coh[1:, 1:])

@@ -37,7 +37,8 @@ from scar_style import (DATA, INK, MUTED, cumdist_km,  # noqa: E402
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
 GREY = np.array([0.74, 0.74, 0.74])   # what an unconstrained cell fades to
-# Node coherence spans ~0.15-0.90 at all three sites (median ~0.47), so
+# Node coherence spans ~0.15-0.90 (median ~0.47 at Ridge A, Thwaites and
+# NEGIS, ~0.34 on the noisier EastGRIP borehole line), so
 # these limits put the fade across the range that actually occurs. The
 # gamma keeps mid-coherence cells legible instead of washing out the
 # middle of every column; only genuinely poor nodes go fully grey.
@@ -47,6 +48,7 @@ TITLES = {
     'ridge_a': ('Ridge A divide', '20250108_02_009', 150.0),
     'thwaites': ('Thwaites eastern shear margin', '20240108_01_001', 150.0),
     'negis': ('NEGIS onset (EGRIP)', '20240626_03_001', 200.0),
+    'egrip': ('EastGRIP borehole line', '20240619_01_001', 200.0),
 }
 SRC_LABEL = {'phase': 'SNAPHU + coregistration', 'deltak': 'delta-k'}
 # The eigenvalue pair is defined by the profile's own axes, so name the
