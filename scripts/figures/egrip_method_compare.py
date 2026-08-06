@@ -30,18 +30,33 @@ Deltaeps' = 0.034 implies 6.39e-11 s/m per unit dlam, ours 6.35e-11 from
 an independent calibration of ptt.twttDifference. So a difference in the
 answer is a difference of estimator, not of constants.
 
-WHAT IT SHOWS, as of the first run. All three under-read the core, and
-the joint inversion - the most complete of them - does WORST (RMS 0.411
-against 0.280 for the bare fringe rate and 0.356 for Zeising, over the
-three bands all three solve). It returns roughly a third of the fringe
-rate's amplitude above 650 m and changes sign below it, while agreeing
-with the fringe rate in sign at every azimuth above that. That is the
-signature of the delta-k stage-A suppression already diagnosed on Ridge
-A - the sub-bands are SNR-starved at depth, so smoothing noise-dominated
-phasors biases the recovered angle toward zero - reaching the inversion
-through its dtau. The bare fringe rate partly escapes it by never going
-through delta-k, and the Zeising estimator escapes it entirely, because
-its coarse lag is an amplitude cross-correlation.
+WHAT IT SHOWS. Over the three bands all three methods solve, RMS against
+the core is 0.282 for the joint inversion, 0.280 for the bare fringe rate
+and 0.356 for Zeising's estimator. The joint inversion is the one being
+tested and it now edges the reference method, at parity with the far
+simpler fringe rate.
+
+That took fixing the dtau source, not the inversion. On delta-k the same
+joint inversion scored 0.411 - WORSE than either - returning about a
+third of the fringe rate's amplitude above 650 m and flipping sign below
+it, while agreeing with the fringe rate in sign at every azimuth above
+that. It was the delta-k stage-A suppression diagnosed on Ridge A (15 MHz
+sub-bands SNR-starved at depth, so smoothing noise-dominated phasors
+biases the recovered angle toward zero) arriving through dtau. Moving
+NEGIS/EastGRIP onto Goldstein-filtered SNAPHU phase roughly tripled the
+recovered amplitude over 500-950 m and removed the sign flip down to
+950 m. The bare fringe rate never went through delta-k, so it is
+unchanged; Zeising's estimator escapes the same way, its coarse lag
+being an amplitude cross-correlation.
+
+Two honest caveats. The per-frame dtau misfit ROSE when SNAPHU replaced
+delta-k (0.21-1.16 ns against 0.19-0.43), which is the expected
+direction: suppressed dtau is smooth and easy to fit and wrong, while
+unwrapped phase is larger and noisier and right - so misfit alone would
+have preferred the worse answer, exactly as run_sections.m warns about
+rms endorsing an overfit. And all three still under-read a core sitting
+at 0.35-0.55, and only three of seven bands solve at all, which is a
+property of this two-azimuth acquisition rather than of any estimator.
 
 WHICH EIGENVALUE PAIR THE CORE CONTRIBUTES. dlam is the difference of the
 two HORIZONTAL eigenvalues, so which core pair to use depends on which
