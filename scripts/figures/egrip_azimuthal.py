@@ -43,10 +43,7 @@ import matplotlib.pyplot as plt          # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import scar_style as sty                 # noqa: E402
-# track_azimuth is re-exported deliberately: the sibling EastGRIP scripts
-# import it from here alongside FRAMES/BANDS, and they must use the same
-# NaN-guarded axis fit the rest of the deck does.
-from scar_style import DATA, cumdist_km, track_azimuth   # noqa: E402,F401
+from scar_style import DATA, cumdist_km, track_azimuth   # noqa: E402
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
 # The EastGRIP core table is data, not code: Weikusat et al. (2022),

@@ -139,8 +139,8 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     into `CSARP_polarimetric` layout and runs the ordinary `fabric_task`
     delta-k chain over it, so the inversion is identical to the one that
     produced the other sites rather than a reimplementation. A target that
-    loses too many traces to the cull, or whose inversion throws, warns
-    and is skipped so the rest of the batch still runs.
+    fails at any stage - repackaging, the trace cull, or the inversion -
+    warns and is skipped so the rest of the batch still runs.
 
 ## Margin display extracts
 
