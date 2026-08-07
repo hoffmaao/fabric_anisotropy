@@ -49,6 +49,12 @@ C_ICE = C0 / sqrt(EPS_ICE);
 Z_MAX = 1500;
 ZSUB = 4;               % store every 4th depth sample; ~1.1 m is far finer
                         % than the 200 m gradient window resolves anyway
+% Traces per heading block. The moments are averaged within a block in the
+% ANTENNA frame and the block is then rotated to geographic before being
+% accumulated, so the block only has to be short enough that the heading is
+% constant across it. At ~1 m trace spacing 200 traces is ~200 m of track,
+% over which the measured wander is under a degree.
+NBLK = 200;
 
 hh_dir = fullfile(site_root, 'CSARP_standardphase_HH');
 d = dir(fullfile(hh_dir, '*', 'Data_*.mat'));
@@ -116,26 +122,70 @@ for fi = 1:numel(d)
     xr = 10*log10(0.5*(p_hv + p_vh) ./ max(p_hh, realmin));
     mid = z > 200 & z < 1200;
 
-    % --- inversion
+    % --- per-trace heading, for the geographic-frame average
+    la = ref.Latitude(:); lo = ref.Longitude(:);
+    SMH = 51;
+    ih0 = 1:(Nx-SMH); ih1 = (1+SMH):Nx;
+    ph0 = deg2rad(la(ih0)); ph1 = deg2rad(la(ih1));
+    dlh = deg2rad(lo(ih1) - lo(ih0));
+    az_tr = mod(rad2deg(atan2(sin(dlh).*cos(ph1), ...
+      cos(ph0).*sin(ph1) - sin(ph0).*cos(ph1).*cos(dlh))), 180);
+    az_tr = interp1((1:numel(az_tr)).' + SMH/2, az_tr, (1:Nx).', ...
+      'linear', 'extrap');
+
+    % --- moments, both ways.
+    % ANTENNA frame: average every trace as measured. This is what the
+    % first run did and it prefers whatever is fixed to the instrument.
+    % GEOGRAPHIC frame: average blocks of near-constant heading after
+    % rotating each into a common north-referenced frame, which prefers
+    % whatever is fixed in the ice. Comparing them is the only way to tell
+    % an instrument leakage term from an artifact of the averaging.
     M = ptt.quadpolMoments(S, [NR Nx]);
+    nb = max(1, floor(Nx / NBLK));
+    Mg = complex(zeros(size(M)));
+    wsum = 0;
+    for b = 1:nb
+      j0 = (b-1)*NBLK + 1;
+      j1 = min(b*NBLK, Nx);
+      if j1 - j0 < 8, continue; end
+      Sb = struct();
+      for k = 1:4, Sb.(CHAN{k}) = S.(CHAN{k})(:, j0:j1); end
+      Mb = ptt.quadpolMoments(Sb, [NR (j1-j0+1)]);
+      % rotate the block into geographic: antennas sit at az_blk, so the
+      % rotation that carries them to north is -az_blk
+      az_blk = mod(rad2deg(angle(mean(exp(2i*deg2rad(az_tr(j0:j1)))))) / 2, 180);
+      Mg = Mg + ptt.rotateMoments(Mb, -deg2rad(az_blk)) * (j1-j0+1);
+      wsum = wsum + (j1-j0+1);
+      clear Sb Mb;
+    end
+    if wsum > 0, Mg = Mg / wsum; end
+    hdg_spread = diff(prctile(mod(az_tr - median(az_tr) + 90, 180) - 90, ...
+      [5 95]));
     clear S;
     psi = (0:PSI_STEP_DEG:180-PSI_STEP_DEG) * pi/180;
     A = ptt.quadpolAzimuth(M, psi);
     out = ptt.quadpolFabric(A, z, struct('fc', FC, 'win_m', 50, ...
       'grad_win_m', 200));
+    Ag = ptt.quadpolAzimuth(Mg, psi);
+    outg = ptt.quadpolFabric(Ag, z, struct('fc', FC, 'win_m', 50, ...
+      'grad_win_m', 200));
 
-    la = ref.Latitude(:); lo = ref.Longitude(:);
     p0 = deg2rad(la(1)); p1 = deg2rad(la(end));
     dl = deg2rad(lo(end) - lo(1));
     track_az = mod(rad2deg(atan2(sin(dl)*cos(p1), ...
       cos(p0)*sin(p1) - sin(p0)*cos(p1)*cos(dl))), 180);
     theta_geo = mod(rad2deg(out.theta) + track_az, 180);
+    % Already north-referenced: the block rotation removed the heading, so
+    % adding track_az again would put it back.
+    theta_geo_g = mod(rad2deg(outg.theta), 180);
 
-    fprintf(['  track %5.1f | theta_geo %5.1f | dlam %.3f | aniso %.2f | ' ...
-             'x/co %.1f dB | recip %.3f\n'], track_az, ...
-      mod(H_cmed(theta_geo(mid)), 180), median(out.dlam(mid), 'omitnan'), ...
-      median(out.aniso(mid), 'omitnan'), median(xr(mid), 'omitnan'), ...
-      median(recip(mid), 'omitnan'));
+    fprintf(['  track %5.1f (spread %4.1f) | theta_geo ant %5.1f  geo %5.1f' ...
+             ' | dlam %.3f / %.3f | aniso %.2f / %.2f | x/co %.1f | ' ...
+             'recip %.3f\n'], track_az, hdg_spread, ...
+      mod(H_cmed(theta_geo(mid)), 180), mod(H_cmed(theta_geo_g(mid)), 180), ...
+      median(out.dlam(mid), 'omitnan'), median(outg.dlam(mid), 'omitnan'), ...
+      median(out.aniso(mid), 'omitnan'), median(outg.aniso(mid), 'omitnan'), ...
+      median(xr(mid), 'omitnan'), median(recip(mid), 'omitnan'));
 
     s = 1:ZSUB:numel(z);
     n = n + 1;
@@ -154,12 +204,16 @@ for fi = 1:numel(d)
     Q(n).lat0 = la(1); Q(n).lon0 = lo(1);
     Q(n).lat1 = la(end); Q(n).lon1 = lo(end);
     Q(n).branch_flipped = out.branch_flipped;
+    Q(n).hdg_spread = hdg_spread;
+    Q(n).theta_geo_g = single(theta_geo_g(s));
+    Q(n).dlam_g = single(outg.dlam(s));
+    Q(n).aniso_g = single(outg.aniso(s));
     save(out_fn, '-v7.3', 'Q');   % incremental, as run_survey_fabric does
-    clear M A out;
+    clear M Mg A Ag out outg;
   catch ME
     warning('run_quadpol_survey:frameFailed', '%s failed (%s): %s', ...
       tag, ME.identifier, ME.message);
-    clear S M A out;
+    clear S M Mg A Ag out outg;
     continue;
   end
 end
