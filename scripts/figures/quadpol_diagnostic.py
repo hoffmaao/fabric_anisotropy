@@ -48,8 +48,9 @@ Z_SHOW = (0.0, 1400.0)
 
 def main():
     if not os.path.exists(FN):
-        raise SystemExit('missing %s; run opr_fabric/server/run_quadpol_frame.m'
-                         ' and mirror the result there' % FN)
+        raise SystemExit(
+            'missing %s; run opr_fabric/server/run_quadpol_frame.m on the '
+            'server and mirror the result there' % FN)
     with h5py.File(FN) as f:
         z = np.array(f['z']).ravel()
         A = f['A']
