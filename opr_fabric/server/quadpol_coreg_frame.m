@@ -19,8 +19,13 @@
 % is exact, and if it is not the same data every number downstream is
 % being computed on a different version than the products were.
 %
-% Saves the offset FIELDS, not the coregistered images: the images are
-% ~370 MB a frame and regenerate from the offsets in seconds.
+% Saves the offset fields DECIMATED. Writing them at full resolution made a
+% 499 MB file per frame - they are 6601 x 4346 doubles, i.e. bigger than
+% the images they describe - and they carry nothing at that resolution:
+% the field is a near-constant instrument delay, +0.777 samples for VV with
+% a 0.19-1.75 5-95 spread, and col_offset is identically zero. A 32x
+% decimation preserves every feature the tiling could resolve (tiles are
+% 101 x 301 samples) and lands under a megabyte.
 if ~exist('site_root', 'var') || isempty(site_root)
   site_root = '/cresis/nvme/opr_data/accum/2024_Antarctica_Ground2';
 end
@@ -123,12 +128,28 @@ for k = 2:4
   fprintf('  %-3s %+.3f\n', upper(CHAN{k}), info.row_med.(CHAN{k}));
 end
 
-row_offset = info.row_offset;
-col_offset = info.col_offset;
+DEC = 32;
+row_offset = struct(); col_offset = struct();
+for k = 2:4
+  ch = CHAN{k};
+  row_offset.(ch) = single(info.row_offset.(ch)(1:DEC:end, 1:DEC:end));
+  col_offset.(ch) = single(info.col_offset.(ch)(1:DEC:end, 1:DEC:end));
+end
 row_med = info.row_med;
+col_med = struct();
+for k = 2:4
+  c = info.col_offset.(CHAN{k});
+  col_med.(CHAN{k}) = median(c(isfinite(c)));
+end
+coh_before = before; coh_after = zeros(size(before));
+for p = 1:size(pairs,1)
+  coh_after(p) = H_coh(T.(pairs{p,1}), T.(pairs{p,2}), kr, band);
+end
+pair_names = pairs;
 out_fn = fullfile(out_dir, sprintf('coreg_%s_%03d.mat', day_seg, frm));
-save(out_fn, '-v7.3', 'row_offset', 'col_offset', 'row_med', 'z', ...
-  'day_seg', 'frm', 'CO', 'r0', 'r1');
+save(out_fn, '-v7.3', 'row_offset', 'col_offset', 'row_med', 'col_med', ...
+  'z', 'day_seg', 'frm', 'CO', 'r0', 'r1', 'DEC', 'coh_before', ...
+  'coh_after', 'pair_names');
 fprintf('\nwrote %s\n', out_fn);
 
 function c = H_coh(a, b, kr, band)
