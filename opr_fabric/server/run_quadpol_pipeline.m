@@ -38,6 +38,12 @@ Z_BAND = [200 1200];
 Z_MAX = 1500;
 FC = 750e6;
 PSI_STEP_DEG = 1;
+% Traces per along-track block for the SECTION. 125 is what run_sections.m
+% uses for the co-polarized Ridge A section, so the two sections have the
+% same along-track sampling and can be read against each other cell for
+% cell rather than approximately.
+NBLK_TR = 125;
+CACHE_COREG = true;   % keep the coregistered channels; see below
 name = sprintf('Data_%s_%03d.mat', day_seg, frm);
 t_all = tic;
 
@@ -96,6 +102,9 @@ for k = 1:4, S.(CHAN{k}) = S.(CHAN{k})(keep, :); end
 z = z(keep);
 band = z > Z_BAND(1) & z < Z_BAND(2);
 kr = ones(NRW,1)/NRW;
+% Positions, needed by the section loop below as well as by the reporting,
+% so they are defined once here rather than after the first use.
+la = P.Latitude(:); lo = P.Longitude(:);
 fprintf('depth window %.0f..%.0f m (%d samples)\n', z(1), z(end), numel(z));
 
 %% 3. coregistration
@@ -120,6 +129,22 @@ end
 fprintf('row offsets: VV %+.3f  HV %+.3f  VH %+.3f\n', ...
   cinfo.row_med.vv, cinfo.row_med.hv, cinfo.row_med.vh);
 
+%% 3b. cache the coregistered channels
+% ~730 MB a frame, which is worth it: coregistration is 24-56 min and the
+% inversion is 6 seconds, so anything that needs re-inverting - a different
+% window, a different block size, a bug - would otherwise pay the whole
+% coregistration again. The cache is keyed by frame and by the settings
+% that produced it.
+if CACHE_COREG
+  cdir = fullfile(out_dir, 'coreg_cache');
+  if exist(cdir, 'dir') ~= 7, mkdir(cdir); end
+  hh = single(T.hh); vv = single(T.vv); hv = single(T.hv); vh = single(T.vh);
+  cache_fn = fullfile(cdir, sprintf('creg_%s_%03d.mat', day_seg, frm));
+  save(cache_fn, '-v7.3', 'hh', 'vv', 'hv', 'vh', 'z', 'CO', 'r0', 'r1');
+  clear hh vv hv vh;
+  fprintf('cached coregistered channels -> %s\n', cache_fn);
+end
+
 %% 4. inversion, on the coregistered channels
 t0 = tic;
 out = ptt.ershadiFabric(T, z, struct('fc', FC, 'psi_step_deg', PSI_STEP_DEG, ...
@@ -131,7 +156,41 @@ out_raw = ptt.ershadiFabric(S, z, struct('fc', FC, ...
   'coh_min', 0.4, 'deramped', true));
 fprintf('\ninversion %.1f min\n', toc(t0)/60);
 
-la = P.Latitude(:); lo = P.Longitude(:);
+%% 4b. the SECTION: the same inversion, per along-track block
+% The frame-average profile above answers "what is the fabric here"; this
+% answers "how does it vary along the line", which is the quantity the
+% co-polarized section already shows and the one worth comparing against.
+t0 = tic;
+nb = max(1, floor(Nx / NBLK_TR));
+sec_dlam = nan(numel(z), nb);
+sec_theta = nan(numel(z), nb);
+sec_cmag = nan(numel(z), nb);
+sec_lat = nan(1, nb); sec_lon = nan(1, nb); sec_az = nan(1, nb);
+for b = 1:nb
+  j0 = (b-1)*NBLK_TR + 1;
+  j1 = min(b*NBLK_TR, Nx);
+  if j1 - j0 < 16, continue; end
+  Tb = struct();
+  for k = 1:4, Tb.(CHAN{k}) = T.(CHAN{k})(:, j0:j1); end
+  ob = ptt.ershadiFabric(Tb, z, struct('fc', FC, ...
+    'psi_step_deg', PSI_STEP_DEG, 'win_m', 30, 'grad_win_m', 25, ...
+    'coh_min', 0.4, 'deramped', true));
+  sec_dlam(:, b) = ob.dlam;
+  sec_theta(:, b) = rad2deg(ob.theta);
+  sec_cmag(:, b) = ob.Cmag(:, 1);
+  sec_lat(b) = mean(la(j0:j1));
+  sec_lon(b) = mean(lo(j0:j1));
+  p0b = deg2rad(la(j0)); p1b = deg2rad(la(j1));
+  dlb = deg2rad(lo(j1) - lo(j0));
+  sec_az(b) = mod(rad2deg(atan2(sin(dlb)*cos(p1b), ...
+    cos(p0b)*sin(p1b) - sin(p0b)*cos(p1b)*cos(dlb))), 180);
+  clear Tb ob;
+end
+fprintf('section: %d blocks of %d traces, %.1f min\n', nb, NBLK_TR, ...
+  toc(t0)/60);
+fprintf('section dlam %.3f..%.3f (median %.3f)\n', ...
+  min(sec_dlam(:)), max(sec_dlam(:)), median(sec_dlam(:), 'omitnan'));
+
 p0 = deg2rad(la(1)); p1 = deg2rad(la(end));
 dl = deg2rad(lo(end) - lo(1));
 track_az = mod(rad2deg(atan2(sin(dl)*cos(p1), ...
@@ -162,6 +221,9 @@ res = struct('tag', sprintf('%s_%03d', day_seg, frm), ...
   'Cmag', single(out.Cmag(s,1)), ...
   'theta_raw', single(rad2deg(out_raw.theta(s))), ...
   'dlam_raw', single(out_raw.dlam(s)), ...
+  'sec_dlam', single(sec_dlam(s,:)), 'sec_theta', single(sec_theta(s,:)), ...
+  'sec_cmag', single(sec_cmag(s,:)), 'sec_lat', sec_lat, ...
+  'sec_lon', sec_lon, 'sec_az', sec_az, 'nblk_tr', NBLK_TR, ...
   'row_med', cinfo.row_med, 'coh_before', coh_before, ...
   'coh_after', coh_after, 'pairs', {pairs}, ...
   'lat', median(la), 'lon', median(lo), ...
