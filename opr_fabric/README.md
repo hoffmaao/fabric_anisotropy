@@ -353,3 +353,18 @@ the same way:
   are written out independently, so a transcription slip would rotate the
   survey's geographic average by the wrong angle and surface only as an
   inflated circular spread - the very quantity the heading test keys on.
+
+`test/test_goldstein.m` covers the unwrapping side, `ptt.goldsteinFilter`
+(its header carries the `matlab -batch` line, as the quad-pol tests do). It
+measures RESIDUES rather than asserting on the filtered waveform, because
+residues are what SNAPHU pays for in branch cuts and are the whole reason
+`run_negis_fabric.m` filters before it unwraps - a filter that reduced
+nothing would leave the unwrap as slow as it was and nothing downstream
+would say so. The residue drop is paired with a phase-error check, since
+flattening the signal would cut residues too. It also pins the properties
+the caller depends on: alpha = 0 is exactly the identity (so the
+overlap-add and taper normalization reconstruct the input rather than
+approximate it), single in gives single out for the float32 SNAPHU file, a
+grid smaller than one window warns and returns the input instead of zeros
+that would read as a coherence collapse stages later, and an alpha outside
+[0,1] is rejected rather than silently clamped.
