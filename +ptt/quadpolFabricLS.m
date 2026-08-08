@@ -35,8 +35,20 @@ function out = quadpolFabricLS(S, z, opts)
 % (Rotate diag(e^{i delta}, 1) by (psi - theta0) and form <hh vv*>; den is
 % the co-polarized power, whose odd-pi dips are the dropout bands.) Within
 % a window delta(z) = delta0 + ddelta*(z - zc). gamma in (0, 1] absorbs
-% SNR and volume decorrelation; it is solved in closed form, so the grid
-% search is only over (theta0, delta0, ddelta).
+% SNR and volume decorrelation, and three PEDESTAL NUISANCE terms -
+% (1, i)*sin(2psi) and sin^2(2psi), in the antenna frame - absorb the
+% first-order signature of the reciprocal cross-pol pedestal carried
+% through the synthesis, which otherwise doubles ddelta in ~40 m bands
+% once per fringe (at every delta = 2*pi*m, where the fabric's own
+% signature vanishes and the pedestal is all that remains; measured
+% directly on frame 009 as a collapsed-DC, 4psi-dominant coherence field
+% at those depths, with the on-axis phase gradient still clean). All four
+% amplitudes enter linearly and are solved in closed form at every grid
+% node, so the search is still only over (theta0, delta0, ddelta). Their
+% joint magnitude is returned as out.leak - itself a per-window
+% calibration diagnostic. CAVEAT: theta0 within a few degrees of 45 to
+% the antenna axes makes sin(2psi) partially degenerate with the fabric
+% phase term; the ridge in H_solve is the only guard there.
 %
 % AMBIGUITY AND SIGN. (theta0 + 90, -delta0, -ddelta) produces the same
 % field, so ddelta >= 0 is enforced and theta0 is unique modulo 180: it is
@@ -165,6 +177,7 @@ d0_grid = (0:15:345) * pi/180;
 
 theta0 = nan(Nw, 1); dlam = nan(Nw, 1); gam = nan(Nw, 1);
 resid = nan(Nw, 1); q_theta = nan(Nw, 1); delta0 = nan(Nw, 1);
+leak = nan(Nw, 1);
 
 for w = 1:Nw
   jj = find(z >= zw(w) - half & z <= zw(w) + half);
@@ -178,6 +191,35 @@ for w = 1:Nw
   wgt(~ok) = 0;
   C2 = sum(wgt .* abs(Cw).^2, 'all');
   if C2 <= 0, continue; end
+
+  % Pedestal nuisance bases, in the ANTENNA frame because the leakage is
+  % antenna-fixed. A reciprocal cross-pol pedestal L carried through the
+  % synthesis adds 2cs(<L F*> - <F L*>) to <T_hh T_vv*> - an odd,
+  % complex sin(2psi) term - and -4c^2s^2 <|L|^2>, an even real
+  % sin^2(2psi) dip. That is exactly the collapsed-DC, 4psi-dominant
+  % field measured at the even-2pi crossings on frame 009, where the
+  % fabric's own signature vanishes and the pedestal is all that is left;
+  % the single-column model has |H| = 1 identically and cannot represent
+  % it, which is what dragged ddelta to ~2x there ("regular jumps").
+  % All three enter LINEARLY, so they are solved jointly with gamma in
+  % closed form at every grid node. The small ridge keeps them quiet when
+  % unidentified; note theta0 within a few degrees of 45 to the antenna
+  % axes makes sin(2psi) partially degenerate with the fabric phase term,
+  % where the ridge is the only guard - flag, not fixed.
+  sb = sin(2 * psi(:));
+  s2b = sb.^2;
+  wrow = sum(wgt, 2);
+  rCrow = sum(wgt .* real(Cw), 2);
+  iCrow = sum(wgt .* imag(Cw), 2);
+  K = struct();
+  K.W2 = (sb.^2).' * wrow;
+  K.W3 = (sb.^3).' * wrow;
+  K.W4 = (sb.^4).' * wrow;
+  K.d1 = sb.' * rCrow;
+  K.d2 = sb.' * iCrow;
+  K.d3 = s2b.' * rCrow;
+  K.tau = 0.02 * max(K.W2, realmin);
+  K.sb = sb; K.s2b = s2b;
 
   if isfinite(th_fix(w))
     ths = th_fix(w);
@@ -199,9 +241,13 @@ for w = 1:Nw
         num = Ak + Bk * cd + 1i * (mu * sd);
         den = max(1 - Ak * (1 - cd), 0.05);
         H = num ./ den;
-        G1 = sum(wgt .* real(Cw .* conj(H)), 'all');
-        G2 = sum(wgt .* abs(H).^2, 'all');
-        cost = C2 - max(G1, 0)^2 / max(G2, realmin);
+        rH = real(H); iH = imag(H);
+        G1 = sum(wgt .* (real(Cw) .* rH + imag(Cw) .* iH), 'all');
+        G2 = sum(wgt .* (rH.^2 + iH.^2), 'all');
+        rHrow = sum(wgt .* rH, 2);
+        iHrow = sum(wgt .* iH, 2);
+        cost = H_solve(C2, G1, G2, sb.' * rHrow, sb.' * iHrow, ...
+          s2b.' * rHrow, K);
         if cost < cost_th(it), cost_th(it) = cost; end
         if cost < best.cost
           best = struct('cost', cost, 'th', ths(it), ...
@@ -225,14 +271,14 @@ for w = 1:Nw
   % wander off the frame axis, so only (delta0, ddelta) are polished then.
   os = optimset('Display', 'off', 'MaxFunEvals', 400, 'MaxIter', 400, ...
     'TolFun', 1e-6, 'TolX', 1e-6);
-  fun = @(p) H_cost(p, psi, u, Cw, wgt, C2, dlam_max * grad_per_dlam);
+  fun = @(p) H_cost(p, psi, u, Cw, wgt, C2, dlam_max * grad_per_dlam, K);
   if isfinite(th_fix(w))
     p2 = fminsearch(@(q) fun([th_fix(w); q(:)]), [best.d0; best.dd], os);
     p = [th_fix(w); p2(:)];
   else
     p = fminsearch(fun, [best.th; best.d0; best.dd], os);
   end
-  [cst, g] = fun(p);
+  [cst, g, la] = fun(p);
   dd = min(max(p(3), 0), dlam_max * grad_per_dlam);
 
   theta0(w) = mod(p(1), pi);
@@ -245,6 +291,7 @@ for w = 1:Nw
     dlam(w) = dd / grad_per_dlam;
   end
   gam(w) = g;
+  leak(w) = la;
   resid(w) = sqrt(max(cst, 0) / C2);
 end
 
@@ -266,7 +313,7 @@ if nnz(okd) >= 2
 end
 
 out = struct('zw', zw, 'theta0', theta0, 'dlam', dlam, 'gamma', gam, ...
-  'resid', resid, 'q_theta', q_theta, 'delta0', delta0, ...
+  'leak', leak, 'resid', resid, 'q_theta', q_theta, 'delta0', delta0, ...
   'theta0_z', theta0_z, 'dlam_z', dlam_z, ...
   'grad_per_dlam', grad_per_dlam, 'psi', psi);
 
@@ -276,11 +323,10 @@ function v = H_opt(o, f, d)
 if isstruct(o) && isfield(o, f) && ~isempty(o.(f)), v = o.(f); else, v = d; end
 end
 
-function [cost, gamma] = H_cost(p, psi, u, Cw, wgt, C2, dd_max)
+function [cost, gamma, amp] = H_cost(p, psi, u, Cw, wgt, C2, dd_max, K)
 % Weighted misfit of the model against the measured coherence field, with
-% the scale gamma eliminated in closed form (clipped to [0, 1.05]: a
-% coherence above 1 is not physical, and letting gamma chase one would let
-% a noise spike buy a better cost than the data support).
+% the scale gamma AND the three pedestal nuisance amplitudes eliminated in
+% closed form per evaluation (see H_solve).
 th = p(1);
 d0 = p(2);
 dd = min(max(p(3), 0), dd_max);
@@ -292,8 +338,39 @@ sd = sin(d0 + dd * u);
 num = Ak + Bk * cd + 1i * (mu * sd);
 den = max(1 - Ak * (1 - cd), 0.05);
 H = num ./ den;
-G1 = sum(wgt .* real(Cw .* conj(H)), 'all');
-G2 = sum(wgt .* abs(H).^2, 'all');
-gamma = min(max(G1, 0) / max(G2, realmin), 1.05);
-cost = C2 - 2 * gamma * G1 + gamma^2 * G2;
+rH = real(H); iH = imag(H);
+G1 = sum(wgt .* (real(Cw) .* rH + imag(Cw) .* iH), 'all');
+G2 = sum(wgt .* (rH.^2 + iH.^2), 'all');
+rHrow = sum(wgt .* rH, 2);
+iHrow = sum(wgt .* iH, 2);
+[cost, gamma, amp] = H_solve(C2, G1, G2, K.sb.' * rHrow, ...
+  K.sb.' * iHrow, K.s2b.' * rHrow, K);
+end
+
+function [cost, gamma, amp] = H_solve(C2, G1, G2, b01, b02, b03, K)
+% Joint closed-form solve for the model scale gamma and the pedestal
+% amplitudes (a1 + i a2 on sin 2psi, a3 on sin^2 2psi): all four enter
+% the model linearly, so the weighted LS reduces to a 4x4 normal system.
+% gamma is clamped to [0, 1.05] (a coherence above 1 is not physical) by
+% refitting the nuisances at the clamped value, so a clamp never buys a
+% better cost than the data support. The ridge tau keeps the nuisances
+% quiet where the geometry cannot separate them from the fabric term.
+M = [G2,  b01,          b02,          b03; ...
+     b01, K.W2 + K.tau, 0,            K.W3; ...
+     b02, 0,            K.W2 + K.tau, 0; ...
+     b03, K.W3,         0,            K.W4 + K.tau];
+r = [G1; K.d1; K.d2; K.d3];
+x = M \ r;
+if ~all(isfinite(x))
+  cost = C2; gamma = 0; amp = 0;
+  return;
+end
+if x(1) < 0 || x(1) > 1.05
+  g = min(max(x(1), 0), 1.05);
+  xa = M(2:4, 2:4) \ (r(2:4) - g * M(2:4, 1));
+  x = [g; xa];
+end
+cost = C2 - 2 * (x.' * r) + x.' * M * x;
+gamma = x(1);
+amp = sqrt(x(2)^2 + x(3)^2 + x(4)^2);
 end
