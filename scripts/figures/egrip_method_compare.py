@@ -19,7 +19,7 @@ in how the delay becomes a fabric estimate:
                (opr_fabric/server/egrip_zeising.m)
   fringe rate  our per-band fringe rate straight through the forward
                model, with no layer stripping (egrip_azimuthal.py)
-  joint        our full path: delta-k dtau into ptt.invertBlocks /
+  joint        our full path: SNAPHU-unwrapped dtau into ptt.invertBlocks /
                invertHorizontalFabricJoint, a regularised solve that
                additionally fits the returned POWER. This is the one the
                comparison is about (run_negis_fabric.m, inversion =

@@ -1,7 +1,9 @@
 %EGRIP_COLLECT_INVERSION Gather our inversion's dlam for the EastGRIP lines.
 %
 % run_negis_fabric.m, driven with the nine borehole-proximal frames, leaves
-% one CSARP_fabric_deltak_negis product per line. Each is small already
+% one product per line - CSARP_fabric_snaphu_negis as it now runs, or
+% CSARP_fabric_deltak_negis from the superseded delta-k runs the comparison
+% still reads (see in_name below). Each is small already
 % (10 intervals x ~3 blocks), so this just concatenates the fields the
 % method comparison needs into a single file to mirror back, rather than
 % copying nine products.

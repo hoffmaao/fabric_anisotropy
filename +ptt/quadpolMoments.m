@@ -24,8 +24,13 @@ function M = quadpolMoments(S, looks)
 %
 % Inputs
 %   S      struct with complex fields hh, vv, hv, vh, each [Nt x Nx]
-%   looks  [nr na] boxcar looks in (range, trace). Default [1 Nx]: average
-%          over every trace, no range smoothing.
+%   looks  [nr na] boxcar looks in (range, trace). Default [1 Nx]. Only
+%          the range term is used: the trace direction is always averaged
+%          whole, because a single Nt x 4 x 4 moment matrix is the output
+%          and a per-look trace axis would have nowhere to go. Callers pass
+%          the trace count in looks(2) for documentation; pass a smaller
+%          block by slicing S instead, which is what run_quadpol_survey.m
+%          does for its along-track blocks.
 %
 % Output
 %   M      [Nt x 4 x 4] complex; M(:,k,l) = conj(M(:,l,k))
@@ -39,7 +44,6 @@ end
 [Nt, Nx] = size(S.hh);
 if nargin < 2 || isempty(looks), looks = [1 Nx]; end
 nr = max(1, round(looks(1)));
-na = max(1, round(looks(min(2, numel(looks)))));
 
 M = complex(zeros(Nt, 4, 4));
 kr = ones(nr, 1) / nr;
@@ -48,12 +52,7 @@ for k = 1:4
     p = S.(fn{k}) .* conj(S.(fn{l}));
     % Average over traces first (that is the look direction with the most
     % samples), then smooth in range if asked.
-    if na >= Nx
-      v = mean(p, 2, 'omitnan');
-    else
-      v = movmean(p, na, 2, 'omitnan');
-      v = mean(v, 2, 'omitnan');
-    end
+    v = mean(p, 2, 'omitnan');
     if nr > 1
       v = conv(v, kr, 'same');
     end

@@ -212,6 +212,7 @@ try
   den = sqrt(conv2(abs(ref).^2, kmb, 'same') ...
     .* conv2(abs(sec).^2, kmb, 'same'));
   interferogram_coherence = single(abs(num) ./ den);
+  interferogram_mlook = single(num);
   clear num den;
   fprintf('  coherence median %.3f\n', ...
     median(interferogram_coherence(isfinite(interferogram_coherence))));
@@ -231,20 +232,20 @@ try
   % UNFILTERED one - it is the weight telling SNAPHU where to trust the
   % phase, and recomputing it from the filtered interferogram would report
   % the filter's own smoothing as data quality.
-  interferogram_mlook = single(conv2(real(sec .* conj(ref)), kmb, 'same') ...
-    + 1i*conv2(imag(sec .* conj(ref)), kmb, 'same'));
   snaphu_out_phase = [];
   if snaphu_en
     t2 = tic;
     ifg_filt = ptt.goldsteinFilter(interferogram_mlook, GOLD_ALPHA);
     fprintf('  Goldstein filter (alpha %.2f) %.1f min\n', GOLD_ALPHA, ...
       toc(t2)/60);
+    % The try covers the SOLVE and nothing else. A tiled unwrap of this
+    % grid is the longest step in the repackaging, so letting the catch see
+    % a failure in the reporting below would throw away an hour of work and
+    % - because the reuse test above keys on a non-empty phase - repeat it
+    % on every later run.
     try
       snaphu_out_phase = H_snaphu(ifg_filt, interferogram_coherence, ...
         SNAPHU_BIN, COH_WIN);
-      fprintf('  snaphu unwrapped: %.1f..%.1f rad (%.1f fringes)\n', ...
-        min(snaphu_out_phase(:)), max(snaphu_out_phase(:)), ...
-        range(snaphu_out_phase(:))/(2*pi));
     catch snerr
       % A missing binary or a SNAPHU that will not converge must not cost
       % the repackaging - the product is still usable via delta-k, and the
@@ -253,6 +254,14 @@ try
         '%s frame %d: SNAPHU failed (%s: %s); saving without unwrapped phase', ...
         day_seg, frm, snerr.identifier, snerr.message);
       snaphu_out_phase = [];
+    end
+    if ~isempty(snaphu_out_phase)
+      % max-min rather than range(): this script must run on a MATLAB
+      % without the Statistics Toolbox, and a report is not worth a
+      % dependency.
+      lo_ph = min(snaphu_out_phase(:)); hi_ph = max(snaphu_out_phase(:));
+      fprintf('  snaphu unwrapped: %.1f..%.1f rad (%.1f fringes)\n', ...
+        lo_ph, hi_ph, (hi_ph - lo_ph)/(2*pi));
     end
     clear ifg_filt;
   end
@@ -280,7 +289,7 @@ catch err
   warning('run_negis_fabric:repackageFailed', ...
     '%s frame %d: repackaging failed (%s: %s); skipping this target', ...
     day_seg, frm, err.identifier, err.message);
-  clear H V ref sec interferogram_coherence;
+  clear H V ref sec interferogram_coherence interferogram_mlook;
   if exist(in_fn, 'file'), delete(in_fn); end
   continue;
 end
@@ -372,17 +381,26 @@ fclose(fid);
 % Tiled, unlike polarimetric_task.m. Their Antarctic frames unwrap as a
 % single tile; ours is 13501 x ~2000 after the 22 us crop at 1.667 ns
 % sampling, and a single-tile solve on that 27M-pixel grid ran over an
-% hour without finishing. Tiles are sized to ~2500 x ~1200, which is the
-% regime SNAPHU solves in seconds, and the overlap lets its secondary
-% optimisation stitch them without leaving tile-boundary fringes.
-ntr = max(1, round(size(x,1) / 2500));
-ntc = max(1, round(size(x,2) / 1200));
-ovr = min(200, floor(size(x,1) / max(ntr,1) / 3));
-ovc = min(200, floor(size(x,2) / max(ntc,1) / 3));
+% hour without finishing. Tiles are sized to ~2500 range bins x ~1200
+% traces, which is the regime SNAPHU solves in seconds, and the overlap
+% lets its secondary optimisation stitch them without leaving
+% tile-boundary fringes.
+%
+% SNAPHU's grid is the TRANSPOSE of ours. The file above is written column
+% by column with linelength = size(x,1), so a SNAPHU line is one of our
+% traces and a SNAPHU sample is one of our range bins. `--tile` takes
+% nrow ncol rowovrlp colovrlp in that frame, so the trace axis sets nrow
+% and the range axis sets ncol - deriving them the other way round
+% partitions 2000 traces into 5 and 13501 range bins into 2, and makes the
+% row overlap half a tile rather than the intended third.
+n_tile_row = max(1, round(size(x,2) / 1200));   % over our traces
+n_tile_col = max(1, round(size(x,1) / 2500));   % over our range bins
+ovr = min(200, floor(size(x,2) / n_tile_row / 3));
+ovc = min(200, floor(size(x,1) / n_tile_col / 3));
 tile = '';
-if ntr > 1 || ntc > 1
-  tile = sprintf(' --tile %d %d %d %d --nproc %d', ntr, ntc, ovr, ovc, ...
-    min(8, ntr*ntc));
+if n_tile_row > 1 || n_tile_col > 1
+  tile = sprintf(' --tile %d %d %d %d --nproc %d', n_tile_row, n_tile_col, ...
+    ovr, ovc, min(8, n_tile_row*n_tile_col));
 end
 cmd = sprintf(['%s %s %d -c %s -s -C "NLOOKSRANGE %d" -C "NLOOKSAZ %d" ' ...
   '-C "CORRFILEFORMAT FLOAT_DATA"%s -v -o %s'], bin, fn, size(x,1), ...

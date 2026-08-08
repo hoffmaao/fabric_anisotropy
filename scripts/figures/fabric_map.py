@@ -160,21 +160,37 @@ def seg_azimuth(lat0, lon0, lat1, lon1):
     return np.degrees(np.arctan2(y, x)) % 180.0
 
 
+def az_families(az):
+    """Split a cell's blocks into its two heading families.
+
+    The two most widely separated headings are taken as the poles and every
+    block is assigned to the nearer of them, modulo 180. Returns
+    (separation in degrees, size of each family).
+    """
+    a = np.asarray(az, float) % 180.0
+    d = np.abs(a[:, None] - a[None, :])
+    d = np.minimum(d, 180 - d)
+    i, j = np.unravel_index(int(np.argmax(d)), d.shape)
+    to_i = d[:, i] <= d[:, j]
+    return float(d[i, j]), int(to_i.sum()), int((~to_i).sum())
+
+
 def solve_cell(az, y, w):
     """P and theta from dlam = -P cos 2(alpha - theta) over one cell.
 
     Returns None unless the cell holds two azimuths at least AZ_MIN_SEP
-    apart. Without that the two columns of the design matrix are nearly
-    parallel and the fit trades P against theta freely - the same
-    ill-conditioning that put the EastGRIP free solve past the eigenvalue
-    bound.
+    apart, each carrying at least MIN_PER_AZ blocks. Without the
+    separation the two columns of the design matrix are nearly parallel and
+    the fit trades P against theta freely - the same ill-conditioning that
+    put the EastGRIP free solve past the eigenvalue bound. Without the
+    per-family count the separation can rest on a single stray block, so
+    one leg plus one outlier would solve a two-parameter fit that only one
+    heading actually constrains.
     """
-    if az.size < 3:
+    if az.size < 2 * MIN_PER_AZ:
         return None
-    a = np.sort(np.unique(np.round(az)))
-    spread = np.abs(a[:, None] - a[None, :])
-    spread = np.minimum(spread, 180 - spread)
-    if spread.max() < AZ_MIN_SEP:
+    sep, n0, n1 = az_families(az)
+    if sep < AZ_MIN_SEP or min(n0, n1) < MIN_PER_AZ:
         return None
     r = np.radians(az)
     A = np.c_[-np.cos(2 * r), -np.sin(2 * r)]
@@ -256,7 +272,6 @@ def draw_cross(ax, x, y, P, th, proj, scale, pmax):
     # every cross the same stub. Normalise to the observed spread instead,
     # keeping a floor so a weak cell still shows its axis.
     L = scale * (0.45 + 0.55 * min(P / max(pmax, 1e-6), 1.0))
-    tr = proj._as_mpl_transform(ax)
     for ang, col, lw, frac in ((th + 90, '#f0f0f0', 4.2, 0.60),
                                (th, '#f0f0f0', 5.4, 1.0),
                                (th + 90, '#8a8a8a', 1.6, 0.60),
@@ -266,7 +281,6 @@ def draw_cross(ax, x, y, P, th, proj, scale, pmax):
         ax.plot([x - dx, x + dx], [y - dy, y + dy], '-', color=col, lw=lw,
                 solid_capstyle='round', transform=proj,
                 zorder=8 if col == '#f0f0f0' else 9)
-    del tr
 
 
 def render(site):

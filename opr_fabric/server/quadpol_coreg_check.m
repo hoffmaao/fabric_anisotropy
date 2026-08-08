@@ -22,14 +22,6 @@ z = (Tv - st)*C_ICE/2;
 band = z > 200 & z < 1200;
 NRW = 101; kr = ones(NRW,1)/NRW;
 
-  function c = H_coh(a, b, kr, band)
-    num = conv2(a .* conj(b), kr, 'same');
-    d1 = conv2(abs(a).^2, kr, 'same');
-    d2 = conv2(abs(b).^2, kr, 'same');
-    cc = abs(num) ./ sqrt(max(d1.*d2, realmin));
-    c = [median(cc(band,:), 'all', 'omitnan'), prctile(cc(band,:), 90, 'all')];
-  end
-
 A = P.ref; if isstruct(A), A = A.Data; end
 fprintf('fields present: %s\n', strjoin(w, ', '));
 fprintf('ref size %s\n', mat2str(size(A)));
@@ -54,3 +46,11 @@ if isfield(P, 'col_offset')
   fprintf('col_offset median %.3f traces\n', median(co(isfinite(co))));
 end
 fprintf('\nfor comparison, raw standardphase HH/VV uncoregistered: 0.291\n');
+
+function c = H_coh(a, b, kr, band)
+num = conv2(a .* conj(b), kr, 'same');
+d1 = conv2(abs(a).^2, kr, 'same');
+d2 = conv2(abs(b).^2, kr, 'same');
+cc = abs(num) ./ sqrt(max(d1.*d2, realmin));
+c = [median(cc(band,:), 'all', 'omitnan'), prctile(cc(band,:), 90, 'all')];
+end

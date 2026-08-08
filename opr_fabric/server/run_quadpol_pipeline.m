@@ -229,7 +229,12 @@ res = struct('tag', sprintf('%s_%03d', day_seg, frm), ...
   'lat', median(la), 'lon', median(lo), ...
   'lat0', la(1), 'lon0', lo(1), 'lat1', la(end), 'lon1', lo(end), ...
   't_coreg_min', t_coreg);
-out_fn = fullfile(out_dir, sprintf('quadpol_%s_%03d.mat', day_seg, frm));
+% `quadpol_section_` and not `quadpol_`: run_quadpol_frame.m already writes
+% quadpol_<day_seg>_<frm>.mat with a flat out/z/psi/A layout, and both
+% mirror to the same figure staging directory. Sharing the name would let
+% whichever ran last break the other figure's reader, since this file is a
+% single `res` struct instead.
+out_fn = fullfile(out_dir, sprintf('quadpol_section_%s_%03d.mat', day_seg, frm));
 save(out_fn, '-v7.3', 'res');
 fprintf('\nwrote %s (total %.1f min)\n', out_fn, toc(t_all)/60);
 

@@ -36,6 +36,7 @@ import matplotlib
 import numpy as np
 
 matplotlib.use('Agg')
+import h5py                              # noqa: E402
 import matplotlib.pyplot as plt          # noqa: E402
 from matplotlib.colors import TwoSlopeNorm   # noqa: E402
 from scipy.io import loadmat             # noqa: E402
@@ -45,7 +46,10 @@ from scar_style import DATA, INK, MUTED, cumdist_km  # noqa: E402
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
 TAG = sys.argv[2] if len(sys.argv) > 2 else '20250108_02_009'
-FN = os.path.join(DATA, 'quadpol_%s.mat' % TAG)
+# run_quadpol_pipeline.m writes this one; run_quadpol_frame.m writes
+# quadpol_<tag>.mat, which is a different layout read by
+# quadpol_diagnostic.py. The prefixes are distinct so both can be staged.
+FN = os.path.join(DATA, 'quadpol_section_%s.mat' % TAG)
 CO_FN = os.path.join(DATA, 'fabric_sections.mat')
 
 Z_SHOW = (0.0, 1500.0)
@@ -68,14 +72,23 @@ def main():
         raise SystemExit(
             'missing %s; run opr_fabric/server/run_quadpol_pipeline.m for '
             'this frame and mirror the result there' % FN)
-    m = loadmat(FN, squeeze_me=True, struct_as_record=False)['res']
-    z = np.atleast_1d(m.z).astype(float)
-    dl = np.atleast_2d(m.sec_dlam).astype(float)
-    th = np.atleast_2d(m.sec_theta).astype(float)
-    cm = np.atleast_2d(m.sec_cmag).astype(float)
-    lat = np.atleast_1d(m.sec_lat).astype(float)
-    lon = np.atleast_1d(m.sec_lon).astype(float)
-    track_az = float(np.atleast_1d(m.track_az)[0])
+    # h5py, not loadmat: the pipeline saves -v7.3, which scipy.io cannot
+    # read at all. HDF5 stores MATLAB arrays transposed, so the [Nz x nb]
+    # sections come back [nb x Nz].
+    with h5py.File(FN) as f:
+        res = f['res']
+
+        def a(name):
+            return np.array(res[name])
+
+        z = a('z').ravel().astype(float)
+        dl = np.atleast_2d(a('sec_dlam').T).astype(float)
+        th = np.atleast_2d(a('sec_theta').T).astype(float)
+        cm = np.atleast_2d(a('sec_cmag').T).astype(float)
+        lat = a('sec_lat').ravel().astype(float)
+        lon = a('sec_lon').ravel().astype(float)
+        track_az = float(a('track_az').ravel()[0])
+        nbt = int(a('nblk_tr').ravel()[0])
     dist = cumdist_km(lat, lon)
 
     ok = np.isfinite(dl)
@@ -173,7 +186,6 @@ def main():
     for ax in (axs, axt, axp):
         ax.set_ylim(Z_SHOW[1], Z_SHOW[0])
 
-    nbt = int(np.atleast_1d(m.nblk_tr)[0])
     fig.suptitle('Ridge A %s: quad-pol section (track %.0f$^\\circ$, '
                  '%d blocks of %d traces)'
                  % (TAG, track_az, dl.shape[1], nbt),
