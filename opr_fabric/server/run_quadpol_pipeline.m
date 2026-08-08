@@ -55,6 +55,16 @@ t_all = tic;
 %% 1-2. window, settings and source check, from the product
 pol_fn = fullfile(site_root, 'CSARP_polarimetric', day_seg, name);
 if exist(pol_fn, 'file') ~= 2
+  % The 2022/2023 seasons shipped the polarimetric product only in its
+  % SNAPHU-unwrapped form. It carries the same param_polarimetric (window
+  % and coregistration settings), Surface and ref, so it serves the same
+  % role here.
+  alt = fullfile(site_root, 'CSARP_polarimetric_unwrap', day_seg, name);
+  if exist(alt, 'file') == 2
+    pol_fn = alt;
+  end
+end
+if exist(pol_fn, 'file') ~= 2
   error('run_quadpol_pipeline:noProduct', 'no polarimetric product %s', pol_fn);
 end
 w = {whos('-file', pol_fn).name};
@@ -177,6 +187,17 @@ if CACHE_COREG && ~from_cache
   save(cache_fn, '-v7.3', 'hh', 'vv', 'hv', 'vh', 'z', 'CO', 'r0', 'r1');
   clear hh vv hv vh;
   fprintf('cached coregistered channels -> %s\n', cache_fn);
+end
+
+%% 3c. coreg-only mode, for building the caches in bulk
+% The caches are estimator-independent, so the expensive step can run for
+% the whole survey before the estimator settings are final: with
+% coreg_only=true the script stops here and leaves the inversions to a
+% later rerun, which the cache makes cheap.
+if exist('coreg_only', 'var') && isequal(coreg_only, true)
+  fprintf('coreg_only: stopping after the cache (total %.1f min)\n', ...
+    toc(t_all)/60);
+  return;
 end
 
 %% 4. inversion, on the coregistered channels
