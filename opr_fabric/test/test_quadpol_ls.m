@@ -3,16 +3,24 @@
 % Same synthetic column as test_ershadi (known axis, known contrast, seen
 % from several antenna azimuths), plus the failure mode that motivated the
 % estimator: an antenna-fixed leakage term added to the cross-polarized
-% channels, at the level the real system shows (cross/co ~ -4 dB, flat
-% with depth, reciprocal). ptt.ershadiFabric takes its axis from the
+% channels at the level the real system shows (cross/co ~ -4 dB, flat
+% with depth, reciprocal), built as a MIX of a component correlated with
+% the co-polarized speckle and one decorrelated from it. The decorrelated
+% part matters: it enters the synthesized T_hh and T_vv with opposite
+% signs, so it collapses the measured |C| azimuth-selectively at the
+% birefringent crossings - which is what produced the "regular jumps"
+% (crossing-depth dlam overshoots, gamma ~0.2, resid ~0.6) in the Ridge A
+% validation before the CRB weighting. The spike assertion below guards
+% that failure mode. ptt.ershadiFabric takes its axis from the
 % cross-polarized minimum, which the leakage owns, so it locks; the LS fit
 % never touches cross-polarized power and must not.
 %
 % Cases:
-%   1. clean, dlam 0.30            - parity with test_ershadi
-%   2. leakage, dlam 0.30          - the lock case; ershadi error reported
-%   3. leakage, dlam 0.05          - Ridge A scale
-%   4. leakage, dlam 0 (isotropic) - no folded-noise floor, theta0 abstains
+%   1. clean, dlam 0.30              - parity with test_ershadi
+%   2. leakage, dlam 0.30            - the lock case; ershadi error reported
+%   3. leakage, dlam 0.05            - Ridge A scale, crossing spikes checked
+%   4. leakage+noise, dlam 0.05      - coherence floor near the real ~0.5
+%   5. leakage, dlam 0 (isotropic)   - no folded floor, theta0 abstains
 %
 % Run: matlab -batch "run('opr_fabric/test/test_quadpol_ls.m')"
 clear;
@@ -30,8 +38,9 @@ THETA_TRUE = deg2rad(35);
 Nz = 3000;
 z = (0:Nz-1).' * 0.5;
 Nx = 60;
-NA = 0.02;
-LEAK = 0.45 * exp(0.7i);   % reciprocal antenna-fixed term, cross/co ~ -7 dB
+LEAK_C = 0.30 * exp(0.7i);   % pedestal part correlated with co-pol speckle
+LEAK_D = 0.35;               % pedestal part with its OWN speckle - this is
+                             % the component that collapses |C| at crossings
 
 % lean grids so the whole file runs in a few minutes; the polish restores
 % the precision the coarse grid gives up
@@ -40,14 +49,15 @@ OPTS = struct('fc', fc, 'psi_step_deg', 4, 'win_short_m', 10, ...
   'theta_step_deg', 4);
 
 cases = { ...
-  'clean  dlam 0.30', 0.30, false, [0 20 55], 0.02, 5; ...
-  'leak   dlam 0.30', 0.30, true,  [0 20],    0.02, 5; ...
-  'leak   dlam 0.05', 0.05, true,  20,        0.010, 8; ...
-  'leak   isotropic', 0.00, true,  20,        0.010, NaN};
+  'clean  dlam 0.30', 0.30, false, [0 20 55], 0.02,  5,   0.02; ...
+  'leak   dlam 0.30', 0.30, true,  [0 20],    0.02,  5,   0.02; ...
+  'leak   dlam 0.05', 0.05, true,  20,        0.010, 8,   0.02; ...
+  'noisy  dlam 0.05', 0.05, true,  20,        0.015, 12,  0.50; ...
+  'leak   isotropic', 0.00, true,  20,        0.010, NaN, 0.02};
 
 fails = 0;
 for ci = 1:size(cases, 1)
-  [name, DL, leak, alphas, tol_d, tol_t] = cases{ci, :};
+  [name, DL, leak, alphas, tol_d, tol_t, na] = cases{ci, :};
   delta = gpd * DL * z;
   for alpha_deg = alphas
     d = THETA_TRUE - deg2rad(alpha_deg);
@@ -58,20 +68,35 @@ for ci = 1:size(cases, 1)
     hv = cd_*sd * (ex - ey);
     r = (randn(Nz, Nx) + 1i*randn(Nz, Nx)) / sqrt(2);
     S = struct();
-    S.hh = hh .* r + NA*(randn(Nz,Nx)+1i*randn(Nz,Nx));
-    S.vv = vv .* r + NA*(randn(Nz,Nx)+1i*randn(Nz,Nx));
+    S.hh = hh .* r + na*(randn(Nz,Nx)+1i*randn(Nz,Nx));
+    S.vv = vv .* r + na*(randn(Nz,Nx)+1i*randn(Nz,Nx));
     xc = hv .* r;
     if leak
-      xc = xc + LEAK * ((hh + vv)/2) .* r;
+      g = (randn(Nz, Nx) + 1i*randn(Nz, Nx)) / sqrt(2);
+      xc = xc + LEAK_C * ((hh + vv)/2) .* r + LEAK_D * g;
     end
-    S.hv = xc + NA*(randn(Nz,Nx)+1i*randn(Nz,Nx));
-    S.vh = xc + NA*(randn(Nz,Nx)+1i*randn(Nz,Nx));
+    S.hv = xc + na*(randn(Nz,Nx)+1i*randn(Nz,Nx));
+    S.vh = xc + na*(randn(Nz,Nx)+1i*randn(Nz,Nx));
 
     out = ptt.quadpolFabricLS(S, z, OPTS);
 
     mid = out.zw > 300 & out.zw < 1300;
     dl_got = median(out.dlam(mid), 'omitnan');
     ok_d = abs(dl_got - DL) < tol_d;
+
+    % crossing-spike guard, on the case whose fringes the windows resolve:
+    % no window may sit far above truth, and abstention must not gut the
+    % coverage either. This is the exact regression seen on real Ridge A
+    % (dlam 0.13 windows at the crossings) before the CRB weighting.
+    if abs(DL - 0.05) < 1e-9
+      mm = out.zw > 250 & out.zw < 1350;
+      pk = max(out.dlam(mm), [], 'omitnan');
+      fin = mean(isfinite(out.dlam(mm)));
+      ok_s = pk < DL + 0.04 && fin > 0.6;
+      fails = fails + ~ok_s;
+      fprintf('   [crossing spikes: max window dlam %.3f, finite %2.0f%% %s]\n', ...
+        pk, 100*fin, H_tick(ok_s));
+    end
 
     want = mod(rad2deg(d), 180);
     th = out.theta0(mid);
