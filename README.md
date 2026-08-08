@@ -130,7 +130,25 @@ units).
     run on the same data and scored against each other. Every departure from
     that file is a place the paper differs and is marked (E1)-(E5) in the
     header, including why the birefringence coefficient carries sqrt(eps')
-    rather than the printed eps'.
+    rather than the printed eps'. Note this is the paper's DIRECT stage
+    only; their published profiles additionally pass through a constrained
+    nonlinear fit of the Fujita model (their Sect. 3.5) drawn on a
+    continuous depth parameterization, which is why they show no gaps.
+  - `ptt.quadpolFabricLS` - the least-squares replacement for the direct
+    chain's weak point. ershadiFabric takes the fabric axis from the
+    cross-polarized minimum; on this system that minimum is antenna-locked
+    (89.6 +- 1.9 deg across 1790 Ridge A blocks spanning all headings,
+    because the cross-pol channels sit on a flat ~-3.6 dB instrument
+    pedestal), so Psi gets evaluated ~25 deg off-axis: dlam scales down by
+    cos 2*offset and the odd-pi coherence nulls turn into banded dropouts.
+    This estimator instead fits the measured complex coherence C(psi, z)
+    over ALL azimuths to the exact single-column birefringence model in a
+    sliding depth window (theta0, delta0, ddelta/dz, plus a closed-form
+    coherence scale), so the axis comes from the coherence field the
+    co-pol channels dominate, the nulls are modelled rather than gated,
+    dlam is signed with no folded-noise floor, and theta0 abstains where
+    the birefringence is unresolvable. Two-pass use: frame-level theta0,
+    then per-block dlam with theta0 pinned.
   - `ptt.coregisterChannels` - aligns every channel onto the reference by
     CALLING the OPR toolbox `coregistration`, deliberately with no
     implementation of its own (it errors if the toolbox is absent), so the

@@ -89,6 +89,11 @@ def main():
         lon = a('sec_lon').ravel().astype(float)
         track_az = float(a('track_az').ravel()[0])
         nbt = int(a('nblk_tr').ravel()[0])
+        # the LS-fit section exists once the pipeline has run with
+        # ptt.quadpolFabricLS wired in; older .mat files draw the old layout
+        has_ls = 'sec_dlam_ls' in res
+        dl_ls = np.atleast_2d(a('sec_dlam_ls').T).astype(float) if has_ls \
+            else None
     dist = cumdist_km(lat, lon)
 
     ok = np.isfinite(dl)
@@ -97,10 +102,15 @@ def main():
     print('  dlam %.3f..%.3f (median %.3f)'
           % (np.nanmin(dl), np.nanmax(dl), np.nanmedian(dl)))
     print('  |C_HHVV| median %.3f' % np.nanmedian(cm))
+    if has_ls:
+        print('  LS dlam %.3f..%.3f (median %.3f)'
+              % (np.nanmin(dl_ls), np.nanmax(dl_ls), np.nanmedian(dl_ls)))
 
     sel = (z >= Z_SHOW[0]) & (z <= Z_SHOW[1])
     z = z[sel]
     dl, th, cm = dl[sel], th[sel], cm[sel]
+    if has_ls:
+        dl_ls = dl_ls[sel]
 
     # confidence from the coherence, on the same idea the co-pol section
     # uses for node quality: below CMAG_MIN a cell fades out rather than
@@ -109,8 +119,11 @@ def main():
     w[cm < CMAG_MIN] *= 0.35
 
     trust = np.isfinite(dl) & (w > 0.4)
-    lim = float(np.nanpercentile(np.abs(dl[trust]), 96)) if trust.any() \
-        else 0.1
+    vals = np.abs(dl[trust])
+    if has_ls:
+        vals = np.concatenate(
+            [vals, np.abs(dl_ls[np.isfinite(dl_ls) & (w > 0.4)])])
+    lim = float(np.nanpercentile(vals, 96)) if vals.size else 0.1
     norm = TwoSlopeNorm(vcenter=0, vmin=-lim, vmax=lim)
     cmap = plt.get_cmap('RdBu_r')
 
@@ -118,23 +131,44 @@ def main():
                          (dist[:-1] + dist[1:]) / 2,
                          [dist[-1] + (dist[-1] - dist[-2]) / 2]])
 
-    fig = plt.figure(figsize=(13.0, 6.4), layout='constrained')
-    gs = fig.add_gridspec(2, 2, width_ratios=[2.6, 1.0],
-                          height_ratios=[1.0, 1.0])
-    axs = fig.add_subplot(gs[0, 0])
-    axt = fig.add_subplot(gs[1, 0], sharex=axs)
+    nrow = 3 if has_ls else 2
+    fig = plt.figure(figsize=(13.0, 8.6 if has_ls else 6.4),
+                     layout='constrained')
+    gs = fig.add_gridspec(nrow, 2, width_ratios=[2.6, 1.0])
+    ax_ls = fig.add_subplot(gs[0, 0]) if has_ls else None
+    axs = fig.add_subplot(gs[1 if has_ls else 0, 0],
+                          sharex=ax_ls if has_ls else None)
+    axt = fig.add_subplot(gs[nrow - 1, 0], sharex=axs)
     axp = fig.add_subplot(gs[:, 1], sharey=axs)
+
+    if has_ls:
+        ax_ls.imshow(shade(dl_ls, w, norm, cmap), origin='upper',
+                     aspect='auto', extent=[xe[0], xe[-1], z[-1], z[0]],
+                     interpolation='nearest')
+        ax_ls.set_ylabel('depth (m)', color=INK)
+        ax_ls.set_title('LS coherence-field fit   '
+                        r'$\Delta\lambda$ at the coherence-derived axes '
+                        '(theta0 fixed per frame)', fontsize=11, color=INK)
+        plt.setp(ax_ls.get_xticklabels(), visible=False)
+        cax = ax_ls.inset_axes([0.02, -0.10, 0.30, 0.045])
+        fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cax,
+                     orientation='horizontal', label=r'$\Delta\lambda$')
 
     axs.imshow(shade(dl, w, norm, cmap), origin='upper', aspect='auto',
                extent=[xe[0], xe[-1], z[-1], z[0]], interpolation='nearest')
     axs.set_ylabel('depth (m)', color=INK)
-    axs.set_title('quad-pol inversion, %s   '
-                  r'$\Delta\lambda=\lambda_{max}-\lambda_{min}$ '
-                  '(principal axes)' % TAG, fontsize=11, color=INK)
+    if has_ls:
+        axs.set_title('published direct chain (Ershadi) - evaluated at the '
+                      'cross-pol minimum, antenna-locked; for comparison',
+                      fontsize=10, color=MUTED)
+    else:
+        axs.set_title('quad-pol inversion, %s   '
+                      r'$\Delta\lambda=\lambda_{max}-\lambda_{min}$ '
+                      '(principal axes)' % TAG, fontsize=11, color=INK)
+        cax = axs.inset_axes([0.02, -0.10, 0.30, 0.045])
+        fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cax,
+                     orientation='horizontal', label=r'$\Delta\lambda$')
     plt.setp(axs.get_xticklabels(), visible=False)
-    cax = axs.inset_axes([0.02, -0.10, 0.30, 0.045])
-    fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cax,
-                 orientation='horizontal', label=r'$\Delta\lambda$')
 
     # orientation, drawn as a diagnostic
     tn = TwoSlopeNorm(vcenter=90, vmin=0, vmax=180)
@@ -148,18 +182,31 @@ def main():
                   color=MUTED)
 
     # depth profile, with the co-polarized section's median for comparison
-    med = np.full(z.size, np.nan)
-    lo_p = np.full(z.size, np.nan)
-    hi_p = np.full(z.size, np.nan)
-    for i in range(z.size):
-        v, ww = dl[i], w[i]
-        good = np.isfinite(v) & (ww > 0.15)
-        if good.sum() >= 3:
-            med[i] = np.median(v[good])
-            lo_p[i], hi_p[i] = np.percentile(v[good], [16, 84])
-    axp.fill_betweenx(z, lo_p, hi_p, color='#2a78d6', alpha=0.20, lw=0,
-                      label='block-to-block 16-84%')
-    axp.plot(med, z, '-', color='#2a78d6', lw=2.0, label='quad-pol median')
+    def block_median(sec):
+        m = np.full(z.size, np.nan)
+        lo_b = np.full(z.size, np.nan)
+        hi_b = np.full(z.size, np.nan)
+        for i in range(z.size):
+            v, ww = sec[i], w[i]
+            good = np.isfinite(v) & (ww > 0.15)
+            if good.sum() >= 3:
+                m[i] = np.median(v[good])
+                lo_b[i], hi_b[i] = np.percentile(v[good], [16, 84])
+        return m, lo_b, hi_b
+
+    med, lo_p, hi_p = block_median(dl)
+    if has_ls:
+        med_ls, lo_ls, hi_ls = block_median(dl_ls)
+        axp.fill_betweenx(z, lo_ls, hi_ls, color='#2a78d6', alpha=0.20, lw=0,
+                          label='LS block-to-block 16-84%')
+        axp.plot(med_ls, z, '-', color='#2a78d6', lw=2.0, label='LS fit')
+        axp.plot(med, z, '-', color='#9a9a9a', lw=1.4,
+                 label='published chain (locked)')
+    else:
+        axp.fill_betweenx(z, lo_p, hi_p, color='#2a78d6', alpha=0.20, lw=0,
+                          label='block-to-block 16-84%')
+        axp.plot(med, z, '-', color='#2a78d6', lw=2.0,
+                 label='quad-pol median')
 
     if os.path.exists(CO_FN):
         S = loadmat(CO_FN, squeeze_me=True)['S']
@@ -183,7 +230,7 @@ def main():
     for s in ('top', 'right'):
         axp.spines[s].set_visible(False)
 
-    for ax in (axs, axt, axp):
+    for ax in ((ax_ls, axs, axt, axp) if has_ls else (axs, axt, axp)):
         ax.set_ylim(Z_SHOW[1], Z_SHOW[0])
 
     fig.suptitle('Ridge A %s: quad-pol section (track %.0f$^\\circ$, '
