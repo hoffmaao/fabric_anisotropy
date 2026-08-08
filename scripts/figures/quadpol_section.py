@@ -42,7 +42,7 @@ from matplotlib.colors import TwoSlopeNorm   # noqa: E402
 from scipy.io import loadmat             # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from scar_style import DATA, INK, MUTED, cumdist_km  # noqa: E402
+from scar_style import DATA, INK, MUTED, cumdist_km, field  # noqa: E402
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
 TAG = sys.argv[2] if len(sys.argv) > 2 else '20250108_02_009'
@@ -166,10 +166,10 @@ def main():
         if 'ridge_a' in (S.dtype.names or ()):
             r = S['ridge_a'].item() if S['ridge_a'].dtype == object \
                 else S['ridge_a']
-            nint = int(np.atleast_1d(r['nint'])[0])
-            cdl = np.array(r['dlam']).reshape(nint, -1)
-            ctop = np.array(r['top']).reshape(cdl.shape)
-            cbot = np.array(r['bot']).reshape(cdl.shape)
+            nint = int(field(r, 'nint')[0])
+            cdl = field(r, 'dlam').reshape(nint, -1)
+            ctop = field(r, 'top').reshape(cdl.shape)
+            cbot = field(r, 'bot').reshape(cdl.shape)
             zc = np.nanmedian((ctop + cbot) / 2, axis=1)
             axp.plot(np.nanmedian(cdl, axis=1), zc, '--', color='#eb6834',
                      lw=1.8, label='co-pol, projected on this line')
