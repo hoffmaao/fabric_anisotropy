@@ -223,7 +223,24 @@ t0 = tic;
 lsq = ptt.quadpolFabricLS(T, z, struct('fc', FC, 'deramped', true));
 okt = isfinite(lsq.theta0);
 if nnz(okt) >= 2
-  th_prof = struct('z', lsq.zw(okt), 'theta', lsq.theta0(okt));
+  % Hand the blocks a SMOOTHED axis, built on the doubled-angle phasor
+  % weighted by each window's own theta0 contrast - never an unwrapped
+  % angle. A weak window can fit the conjugate branch (a 90 deg flip);
+  % smoothing the phasor votes it down, where an unwrap would have
+  % propagated it to every window below as a silent axis slip.
+  qw = lsq.q_theta;
+  qw(~isfinite(qw) | qw < 0) = 0;
+  ph = qw .* exp(2i * lsq.theta0);
+  ph(~okt) = 0;
+  ks = ones(5, 1);
+  num_p = conv(ph, ks, 'same');
+  den_p = conv(qw .* double(okt), ks, 'same');
+  oks = den_p > 0.25 & abs(num_p) > 0;
+  if nnz(oks) >= 2
+    th_prof = struct('z', lsq.zw(oks), 'theta', 0.5 * angle(num_p(oks)));
+  else
+    th_prof = struct('z', lsq.zw(okt), 'theta', lsq.theta0(okt));
+  end
 else
   th_prof = [];   % nothing usable; let the blocks estimate their own
 end

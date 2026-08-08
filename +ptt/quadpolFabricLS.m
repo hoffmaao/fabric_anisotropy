@@ -63,7 +63,10 @@ function out = quadpolFabricLS(S, z, opts)
 %         contrast below which theta0 is NaN - a window with no
 %         resolvable birefringence has no axes to report, and leakage
 %         gives the coherence field azimuth structure of its own that the
-%         theta grid would otherwise chase), theta_step_deg (3)
+%         theta grid would otherwise chase), theta_step_deg (3),
+%         weighting ('crb' default: inverse-variance weights from the
+%         measured |C|, which suppress the azimuth-selective coherence
+%         collapse at the birefringent crossings; 'uniform' to disable)
 %
 % Output fields (per window centre zw [Nw x 1])
 %   zw, theta0, dlam, gamma, resid (weighted rms), q_theta (0..1 contrast
@@ -106,6 +109,25 @@ if deramped
   Cm = conj(Cm);
 end
 
+% Inverse-variance weights from the measured coherence itself. The
+% Cramer-Rao variance of a coherence-phase estimate goes as
+% (1 - |C|^2) / (2 N |C|^2), so each (psi, z) sample is weighted by
+% |C|^2 / (1 - |C|^2). This suppresses exactly the samples the
+% instrument corrupts: at odd-pi crossings the OFF-axis co-polarized
+% powers dip into the noise floor, and at even-2pi crossings the
+% cross-pol pedestal (decorrelated from the co-pol speckle) enters the
+% synthesized T_hh and T_vv with opposite signs; both collapse measured
+% |C| azimuth-selectively, and with uniform weights both dragged the fit
+% into the gamma ~0.2, resid ~0.6 overshoots the Ridge A validation
+% showed at the crossing depths ("regular jumps"). The cap keeps one
+% pristine sample from owning a window.
+if strcmpi(H_opt(opts, 'weighting', 'crb'), 'crb')
+  Wc = abs(Cm).^2 ./ max(1 - abs(Cm).^2, 0.02);
+  Wc = min(Wc, 25);
+else
+  Wc = ones(size(Cm));
+end
+
 % --- window centres and in-window sample decimation. ~2 m sampling keeps
 % the fit over-determined without dragging 140 correlated samples through
 % every grid evaluation.
@@ -118,8 +140,13 @@ jdec = max(1, round(2 / max(dz, eps)));
 th_fix = nan(Nw, 1);
 if ~isempty(theta0_in)
   if isstruct(theta0_in)
-    th_fix = interp1(theta0_in.z(:), unwrap(2*theta0_in.theta(:))/2, ...
-      zw, 'linear', 'extrap');
+    % Interpolate the DOUBLED-ANGLE PHASOR, never an unwrapped angle: an
+    % unwrap over gappy, noisy axis samples can slip a branch, which is a
+    % silent 90 deg axis error handed to every block below the slip - the
+    % 0.25-railed windows at 957 m on frame 007 were exactly that.
+    ph = interp1(theta0_in.z(:), exp(2i*theta0_in.theta(:)), zw, ...
+      'linear', 'extrap');
+    th_fix = 0.5 * angle(ph);
   elseif isscalar(theta0_in)
     th_fix(:) = theta0_in;
   else
@@ -147,7 +174,8 @@ for w = 1:Nw
   ok = isfinite(Cw);
   if nnz(ok) < 0.5 * numel(Cw), continue; end
   Cw(~ok) = 0;
-  wgt = double(ok);
+  wgt = Wc(jj, :).';
+  wgt(~ok) = 0;
   C2 = sum(wgt .* abs(Cw).^2, 'all');
   if C2 <= 0, continue; end
 
@@ -209,7 +237,13 @@ for w = 1:Nw
 
   theta0(w) = mod(p(1), pi);
   delta0(w) = mod(p(2), 2*pi);
-  dlam(w) = dd / grad_per_dlam;
+  if dd > 0.98 * dlam_max * grad_per_dlam
+    % Railed at the cap: the window found no interior optimum, so the
+    % value is the bound, not a rate. Abstain rather than report it.
+    dlam(w) = NaN;
+  else
+    dlam(w) = dd / grad_per_dlam;
+  end
   gam(w) = g;
   resid(w) = sqrt(max(cst, 0) / C2);
 end
