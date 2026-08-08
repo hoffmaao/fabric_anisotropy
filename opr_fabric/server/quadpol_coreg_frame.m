@@ -110,11 +110,15 @@ t0 = tic;
 [T, info] = ptt.coregisterChannels(S, 'hh', CO);
 fprintf('\ncoregistration of 3 pairs: %.1f min\n', toc(t0)/60);
 
+% Each H_coh is three full-grid convolutions, so the values printed here
+% are the ones saved below rather than being measured a second time.
+after = zeros(size(pairs,1), 1);
 fprintf('\n%-10s %10s %10s %8s\n', 'pair', 'before', 'after', 'change');
 for p = 1:size(pairs,1)
-  a = H_coh(T.(pairs{p,1}), T.(pairs{p,2}), kr, band);
+  after(p) = H_coh(T.(pairs{p,1}), T.(pairs{p,2}), kr, band);
   fprintf('%-10s %10.3f %10.3f %+8.3f\n', ...
-    [upper(pairs{p,1}) '-' upper(pairs{p,2})], before(p), a, a-before(p));
+    [upper(pairs{p,1}) '-' upper(pairs{p,2})], before(p), after(p), ...
+    after(p)-before(p));
 end
 % The shipped pair, as the target to match
 if isfield(P, 'ref') && isfield(P, 'sec_reg')
@@ -141,10 +145,7 @@ for k = 2:4
   c = info.col_offset.(CHAN{k});
   col_med.(CHAN{k}) = median(c(isfinite(c)));
 end
-coh_before = before; coh_after = zeros(size(before));
-for p = 1:size(pairs,1)
-  coh_after(p) = H_coh(T.(pairs{p,1}), T.(pairs{p,2}), kr, band);
-end
+coh_before = before; coh_after = after;
 pair_names = pairs;
 out_fn = fullfile(out_dir, sprintf('coreg_%s_%03d.mat', day_seg, frm));
 save(out_fn, '-v7.3', 'row_offset', 'col_offset', 'row_med', 'col_med', ...

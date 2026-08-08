@@ -107,8 +107,12 @@ def main():
           % (SITE, len(rows), len(ok), len(bad)))
     print('  theta_geo   circ-sd %.1f deg' % circ_sd(th))
     print('  theta_ant   circ-sd %.1f deg' % circ_sd(ant))
-    print('  dlam        median %.3f  IQR %.3f-%.3f'
-          % (np.median(dl), *np.percentile(dl, [25, 75])))
+    # nan-aware, as ershadi_heading_test.py is: a frame whose coherence
+    # gate leaves no finite sample contributes a NaN, and plain
+    # median/percentile would print "nan" for the whole survey over it.
+    print('  dlam        median %.3f  IQR %.3f-%.3f  (%d of %d finite)'
+          % (np.nanmedian(dl), *np.nanpercentile(dl, [25, 75]),
+             int(np.isfinite(dl).sum()), dl.size))
 
     fig = plt.figure(figsize=(14.0, 4.9), layout='constrained')
     gs = fig.add_gridspec(1, 4, width_ratios=[1.15, 1.0, 1.0, 1.0])
