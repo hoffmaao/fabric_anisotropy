@@ -1,0 +1,133 @@
+%TEST_QUADPOL_LS Round-trip and leakage-immunity test of ptt.quadpolFabricLS.
+%
+% Same synthetic column as test_ershadi (known axis, known contrast, seen
+% from several antenna azimuths), plus the failure mode that motivated the
+% estimator: an antenna-fixed leakage term added to the cross-polarized
+% channels, at the level the real system shows (cross/co ~ -4 dB, flat
+% with depth, reciprocal). ptt.ershadiFabric takes its axis from the
+% cross-polarized minimum, which the leakage owns, so it locks; the LS fit
+% never touches cross-polarized power and must not.
+%
+% Cases:
+%   1. clean, dlam 0.30            - parity with test_ershadi
+%   2. leakage, dlam 0.30          - the lock case; ershadi error reported
+%   3. leakage, dlam 0.05          - Ridge A scale
+%   4. leakage, dlam 0 (isotropic) - no folded-noise floor, theta0 abstains
+%
+% Run: matlab -batch "run('opr_fabric/test/test_quadpol_ls.m')"
+clear;
+rng(11);
+t0 = tic;
+
+thisDir = fileparts(mfilename('fullpath'));
+addpath(fullfile(thisDir, '..', '..'));
+
+C = ptt.constants();
+fc = 750e6;
+gpd = 2*pi*fc*C.deps / (sqrt(C.eps_bar) * C.c*1e9);   % rad/m per unit dlam
+
+THETA_TRUE = deg2rad(35);
+Nz = 3000;
+z = (0:Nz-1).' * 0.5;
+Nx = 60;
+NA = 0.02;
+LEAK = 0.45 * exp(0.7i);   % reciprocal antenna-fixed term, cross/co ~ -7 dB
+
+% lean grids so the whole file runs in a few minutes; the polish restores
+% the precision the coarse grid gives up
+OPTS = struct('fc', fc, 'psi_step_deg', 4, 'win_short_m', 10, ...
+  'win_fit_m', 60, 'step_m', 40, 'dlam_max', 0.35, 'deramped', false, ...
+  'theta_step_deg', 4);
+
+cases = { ...
+  'clean  dlam 0.30', 0.30, false, [0 20 55], 0.02, 5; ...
+  'leak   dlam 0.30', 0.30, true,  [0 20],    0.02, 5; ...
+  'leak   dlam 0.05', 0.05, true,  20,        0.010, 8; ...
+  'leak   isotropic', 0.00, true,  20,        0.010, NaN};
+
+fails = 0;
+for ci = 1:size(cases, 1)
+  [name, DL, leak, alphas, tol_d, tol_t] = cases{ci, :};
+  delta = gpd * DL * z;
+  for alpha_deg = alphas
+    d = THETA_TRUE - deg2rad(alpha_deg);
+    cd_ = cos(d); sd = sin(d);
+    ex = exp(1i * delta); ey = ones(Nz, 1);
+    hh = cd_^2 * ex + sd^2 * ey;
+    vv = sd^2 * ex + cd_^2 * ey;
+    hv = cd_*sd * (ex - ey);
+    r = (randn(Nz, Nx) + 1i*randn(Nz, Nx)) / sqrt(2);
+    S = struct();
+    S.hh = hh .* r + NA*(randn(Nz,Nx)+1i*randn(Nz,Nx));
+    S.vv = vv .* r + NA*(randn(Nz,Nx)+1i*randn(Nz,Nx));
+    xc = hv .* r;
+    if leak
+      xc = xc + LEAK * ((hh + vv)/2) .* r;
+    end
+    S.hv = xc + NA*(randn(Nz,Nx)+1i*randn(Nz,Nx));
+    S.vh = xc + NA*(randn(Nz,Nx)+1i*randn(Nz,Nx));
+
+    out = ptt.quadpolFabricLS(S, z, OPTS);
+
+    mid = out.zw > 300 & out.zw < 1300;
+    dl_got = median(out.dlam(mid), 'omitnan');
+    ok_d = abs(dl_got - DL) < tol_d;
+
+    want = mod(rad2deg(d), 180);
+    th = out.theta0(mid);
+    th = th(isfinite(th));
+    if isfinite(tol_t)
+      got = mod(rad2deg(angle(mean(exp(2i*th))))/2, 180);
+      terr = abs(mod(got - want + 90, 180) - 90);
+      ok_t = terr < tol_t;
+      tmsg = sprintf('theta %6.1f (want %6.1f, err %4.1f) %s', got, want, ...
+        terr, H_tick(ok_t));
+    else
+      % isotropic: theta0 must ABSTAIN (q gate), not report confidently
+      frac = numel(th) / max(1, nnz(mid));
+      ok_t = frac < 0.5;
+      tmsg = sprintf('theta reported on %2.0f%% of windows %s', 100*frac, ...
+        H_tick(ok_t));
+    end
+    fails = fails + ~(ok_t && ok_d);
+    fprintf('%s a=%3d: %s | dlam %.3f (want %.2f) %s\n', name, alpha_deg, ...
+      tmsg, dl_got, DL, H_tick(ok_d));
+
+    % the two-pass path the pipeline section uses: theta0 handed back in,
+    % only (delta0, ddelta) free. Must reproduce the free fit's contrast.
+    if DL > 0 && isfinite(tol_t)
+      okw = isfinite(out.theta0);
+      if nnz(okw) >= 2
+        o2 = ptt.quadpolFabricLS(S, z, setfield(OPTS, 'theta0', ...
+          struct('z', out.zw(okw), 'theta', out.theta0(okw)))); %#ok<SFLD>
+        dl2 = median(o2.dlam(mid), 'omitnan');
+        ok2 = abs(dl2 - DL) < tol_d;
+        fails = fails + ~ok2;
+        fprintf('   [theta0-fixed pass: dlam %.3f %s]\n', dl2, H_tick(ok2));
+      end
+    end
+
+    % the motivating comparison, reported not asserted: where does the
+    % published chain put the axis under the same leakage?
+    if leak && DL > 0 && alpha_deg == alphas(1)
+      oe = ptt.ershadiFabric(S, z, struct('fc', fc, 'psi_step_deg', 2, ...
+        'win_m', 30, 'grad_win_m', 25, 'coh_min', 0.4, 'deramped', false));
+      me = z > 300 & z < 1300;
+      the = rad2deg(oe.theta(me)); the = the(isfinite(the));
+      ge = mod(rad2deg(angle(mean(exp(2i*deg2rad(2*the)))))/2, 90);
+      ee = abs(mod(ge - mod(want,90) + 45, 90) - 45);
+      de = median(oe.dlam(me), 'omitnan');
+      fprintf(['   [ershadiFabric on the same data: theta err %4.1f deg, ' ...
+        'dlam %.3f - the lock this estimator removes]\n'], ee, de);
+    end
+  end
+end
+
+fprintf('\n%s (%.1f s)\n', H_tick(fails == 0), toc(t0));
+if fails > 0
+  error('test_quadpol_ls:failed', '%d case(s) failed', fails);
+end
+
+function s = H_tick(ok)
+if ok, s = 'PASS'; else, s = 'FAIL'; end
+end

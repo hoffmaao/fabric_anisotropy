@@ -213,13 +213,17 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     saved DECIMATED 32x: at full resolution they were 499 MB a frame, larger
     than the images they describe, and carry nothing finer than the tiling
     could resolve.
-  - `run_quadpol_pipeline.m` - coregistration and `ptt.ershadiFabric`
-    inversion for one profile in a single pass. Deliberately one script: the
+  - `run_quadpol_pipeline.m` - coregistration and both inversions
+    (`ptt.ershadiFabric` and `ptt.quadpolFabricLS`, the second as a
+    frame-level theta0 pass and a per-block section with theta0 pinned)
+    for one profile in a single pass. Deliberately one script: the
     coregistered images are ~370 MB a frame, so a split would cost more in
     I/O than the inversion, and would invite the halves disagreeing about
     the window - which is the mistake behind the retracted result in
     03d292e, where the inversion ran on channels coregistration never
-    touched. ~71 min on a 6601 x 4346 frame.
+    touched. ~71 min on a 6601 x 4346 frame the first time; reruns load
+    the coreg_cache (keyed to the product's window and tiling settings)
+    and take minutes.
   - `run_quadpol_survey.m` / `run_ershadi_survey.m` - the same two
     inversions over every frame of a survey, the second in 200-trace blocks
     of near-constant heading because the published method assumes a
@@ -353,6 +357,16 @@ the same way:
   are written out independently, so a transcription slip would rotate the
   survey's geographic average by the wrong angle and surface only as an
   inflated circular spread - the very quantity the heading test keys on.
+- `test_quadpol_ls.m` - `ptt.quadpolFabricLS` on the same truth, PLUS the
+  failure mode that motivated it: an antenna-fixed reciprocal leakage term
+  added to the cross-polarized channels at the level the real system shows.
+  Under that leakage ershadiFabric locks (theta error ~40 deg, dlam
+  collapsed to the cos-projection; reported by the test, not asserted)
+  while the LS fit must stay within a few degrees and a few percent. Also
+  asserts the isotropic case reports dlam ~0 with theta0 ABSTAINING - the
+  folded-noise floor and the leakage-shaped axis are both regressions this
+  estimator exists to avoid - and that the theta0-pinned two-pass path the
+  pipeline section uses reproduces the free fit's contrast.
 
 `test/test_goldstein.m` covers the unwrapping side, `ptt.goldsteinFilter`
 (its header carries the `matlab -batch` line, as the quad-pol tests do). It
