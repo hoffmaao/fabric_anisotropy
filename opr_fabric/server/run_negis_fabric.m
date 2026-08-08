@@ -369,9 +369,24 @@ if fid < 0, error('run_negis_fabric:snaphuIO', 'cannot write %s', fn_corr); end
 fwrite(fid, cc, 'float32');
 fclose(fid);
 
+% Tiled, unlike polarimetric_task.m. Their Antarctic frames unwrap as a
+% single tile; ours is 13501 x ~2000 after the 22 us crop at 1.667 ns
+% sampling, and a single-tile solve on that 27M-pixel grid ran over an
+% hour without finishing. Tiles are sized to ~2500 x ~1200, which is the
+% regime SNAPHU solves in seconds, and the overlap lets its secondary
+% optimisation stitch them without leaving tile-boundary fringes.
+ntr = max(1, round(size(x,1) / 2500));
+ntc = max(1, round(size(x,2) / 1200));
+ovr = min(200, floor(size(x,1) / max(ntr,1) / 3));
+ovc = min(200, floor(size(x,2) / max(ntc,1) / 3));
+tile = '';
+if ntr > 1 || ntc > 1
+  tile = sprintf(' --tile %d %d %d %d --nproc %d', ntr, ntc, ovr, ovc, ...
+    min(8, ntr*ntc));
+end
 cmd = sprintf(['%s %s %d -c %s -s -C "NLOOKSRANGE %d" -C "NLOOKSAZ %d" ' ...
-  '-C "CORRFILEFORMAT FLOAT_DATA" -v -o %s'], bin, fn, size(x,1), ...
-  fn_corr, mlook_window(1), mlook_window(2), fn_out);
+  '-C "CORRFILEFORMAT FLOAT_DATA"%s -v -o %s'], bin, fn, size(x,1), ...
+  fn_corr, mlook_window(1), mlook_window(2), tile, fn_out);
 fprintf('  running: %s\n', cmd);
 [st, out] = system(cmd);
 if st ~= 0
