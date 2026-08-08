@@ -94,10 +94,16 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
   phase estimators, to locate where the Ridge A delta-k amplitude is
   lost; `scripts/figures/deltak_stages.py` plots the result (see both
   headers).
-- The rest of `server/` is single-purpose runners for the SCAR work. Like
-  the batches above they carry absolute mem1 paths by design and are
-  launched by hand with `matlab -batch`; each one's header states its
-  inputs, its launch line and what it concluded.
+- The rest of `server/` is single-purpose runners for the SCAR work, the
+  comparison against published methods, and the quad-pol scattering-matrix
+  work. Like the batches above they carry absolute mem1 paths by design and
+  are launched by hand with `matlab -batch`; each one's header states its
+  inputs, its launch line and what it concluded - including where the
+  conclusion is NEGATIVE, which several of the quad-pol ones are. Runtimes
+  are long by nature - tens of minutes a frame for coregistration, longer
+  again for a tiled SNAPHU unwrap, over 47-frame surveys - so a batch warns
+  and continues per frame rather than letting one bad frame cost the run.
+  Each script's header carries its own measured runtime.
   - `run_sections.m` - the shipped high-resolution 2D sections for all
     four profiles (Ridge A, Thwaites, NEGIS, and the EastGRIP borehole
     line) at the retuned settings.
@@ -139,12 +145,98 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     say only 'missing extract', which cannot tell a failed frame from one
     that was never requested.
   - `run_negis_fabric.m` - repackages each NEGIS qlook HH/VV pair in its
-    `targets` list (the shear-margin line and the EastGRIP borehole line)
-    into `CSARP_polarimetric` layout and runs the ordinary `fabric_task`
-    delta-k chain over it, so the inversion is identical to the one that
-    produced the other sites rather than a reimplementation. A target that
-    fails at any stage - repackaging, the trace cull, or the inversion -
-    warns and is skipped so the rest of the batch still runs.
+    `targets` list (by default the shear-margin line and the EastGRIP
+    borehole line) into `CSARP_polarimetric` layout and runs the ordinary
+    `fabric_task` chain over it, so the inversion is identical to the one
+    that produced the other sites rather than a reimplementation. dtau comes
+    from the SNAPHU phase, writing `CSARP_fabric_snaphu_negis`. This season
+    never went through `polarimetric.m`, so the Goldstein filtering
+    (`ptt.goldsteinFilter`) and the SNAPHU unwrap both happen HERE, in the
+    repackaging, against the same SNAPHU binary and the byte layouts and
+    command line taken verbatim from `polarimetric_task.m`, so this season is
+    unwrapped by the same means as the products it is compared against. It
+    ran on delta-k
+    until the EastGRIP core comparison measured what that cost the joint
+    inversion (RMS 0.411 against SNAPHU's 0.282); the header states the
+    numbers and where they came from. Two things differ from the Antarctic
+    path and both are argued in the header: SNAPHU is run TILED, because a
+    single tile on this season's 13501 x ~2000 grid ran over an hour without
+    finishing, and an existing product is reused only if it carries a
+    NON-EMPTY `snaphu_out_phase`, so a pre-SNAPHU product is rebuilt rather
+    than silently falling back to wrapped phase and reporting a 'phase' run
+    that never saw one. `targets` is overridable by the caller
+    (`matlab -batch "targets = {...}; run_negis_fabric"`) so another frame
+    set runs through the SAME repackaging, cull and surface pick instead of
+    a fork that could drift in any of them. A target that fails at
+    repackaging, the trace cull or the inversion warns and is skipped so the
+    rest of the batch still runs; a SNAPHU failure alone is narrower - the
+    product is still saved and still usable via delta-k, so it warns and
+    stores an empty phase, which the reuse test then treats as unbuilt.
+  - `negis_full_inventory.m` / `negis_full_batch.m` - the inventory measures,
+    per frame, whether the qlook product is complex (written with
+    `inc_dec = 0`, so the HH/VV phase difference survives) and whether its
+    day GPS file covers it. Neither fact is recorded anywhere, and an
+    11-hour batch is the wrong place to discover them. The batch is then
+    just that frame list driven through `run_negis_fabric.m`: 55 distinct
+    frames, the whole season except the 12 real-valued ones of
+    `20240618_01`. Frames the earlier 20 km batch already built are reused
+    rather than re-filtered and re-unwrapped.
+  - `egrip_zeising.m` - the Zeising et al. (2023, TC 17, 1097) phase
+    co-registration estimator, implemented so THE METHOD WE ARE COMPARED
+    AGAINST runs on our own EastGRIP lines rather than on its published
+    numbers from another site. Runs server-side because its lagged product
+    s_hh(j) conj(s_vv(j+l)) needs the separate complex channels at full
+    range resolution, which the staged zero-lag extracts cannot give.
+    Its frame list is the one both sides of the comparison start from.
+  - `egrip_collect_inversion.m` - concatenates our own inversion's dlam over
+    those same nine lines into one small file to mirror back. `in_name` /
+    `out_name` are overridable so the SNAPHU and the superseded delta-k runs
+    can both be collected without editing the file, which is what makes the
+    switch between them measurable side by side.
+  - `run_survey_fabric.m` - the same chain as `run_sections.m` but over
+    every frame of a survey, so the result can be MAPPED rather than
+    sectioned. Settings are `run_sections.m`'s verbatim, because a map drawn
+    at a different block size or gate would disagree with the published
+    section along the leg they share. Its header tabulates the azimuth
+    diversity of each product set, since orientation needs two legs ~20 deg
+    apart over the same ground: Thwaites is listed as ribbons-only rather
+    than left out.
+  - `run_quadpol_frame.m` - the quad-pol chain (`ptt.quadpolMoments` ->
+    `quadpolAzimuth` -> `quadpolFabric`) on one raw four-channel frame.
+    Calibration is checked BEFORE the science and reported either way:
+    HV/VH reciprocity, and whether the cross-pol ratio oscillates with
+    depth or sits at a leakage floor.
+  - `quadpol_coreg_frame.m` - coregisters VV, HV and VH onto HH with the OPR
+    toolbox, on the window and settings the shipped product itself recorded,
+    and first checks the product's own `ref` against the standardphase HH so
+    a renamed source cannot silently be different data. Offset fields are
+    saved DECIMATED 32x: at full resolution they were 499 MB a frame, larger
+    than the images they describe, and carry nothing finer than the tiling
+    could resolve.
+  - `run_quadpol_pipeline.m` - coregistration and `ptt.ershadiFabric`
+    inversion for one profile in a single pass. Deliberately one script: the
+    coregistered images are ~370 MB a frame, so a split would cost more in
+    I/O than the inversion, and would invite the halves disagreeing about
+    the window - which is the mistake behind the retracted result in
+    03d292e, where the inversion ran on channels coregistration never
+    touched. ~71 min on a 6601 x 4346 frame.
+  - `run_quadpol_survey.m` / `run_ershadi_survey.m` - the same two
+    inversions over every frame of a survey, the second in 200-trace blocks
+    of near-constant heading because the published method assumes a
+    stationary sounding and 45 of 47 Ridge A frames wander by more than
+    5 deg. Both exist for the heading test: if orientation really is
+    recoverable from a single line, theta expressed geographically must not
+    depend on which way the vehicle drove. A raster survey supplies that
+    control for free. They also record the calibration diagnostics per frame,
+    which is what separates a fixed antenna-isolation pedestal from
+    depth- and site-varying volume scattering - one frame cannot.
+  - `quadpol_coherence_test.m` / `quadpol_coreg_check.m` - the two
+    single-frame measurements that settled why |C_HHVV| looked too low to
+    pass the Ershadi et al. gate. The first separates genuine along-track
+    decorrelation from destruction by the 200-trace average; the second
+    reads the coherence of the already-coregistered `ref`/`sec_reg` pair
+    straight out of the shipped product, which is the number the raw
+    standardphase estimate has to be compared against.
 
 ## Margin display extracts
 
@@ -242,3 +334,22 @@ docker run --rm --platform linux/amd64 -v "$PWD/../..":/work \
   -w /work/opr_fabric/test gnuoctave/octave:latest \
   octave --no-gui test_fabric_task.m
 ```
+
+The quad-pol side of `+ptt` has its own round-trip tests beside it, each run
+the same way:
+
+- `test_quadpol.m` - synthetic column with a known principal azimuth and a
+  depth-growing contrast through `ptt.quadpolMoments` -> `quadpolAzimuth` ->
+  `quadpolFabric`, asserting the two properties a co-polarized pair does not
+  have: orientation recovered from a SINGLE antenna azimuth, and a contrast
+  that is the true lam_max - lam_min rather than the projection, so it does
+  not vary with the azimuth it was measured from.
+- `test_ershadi.m` - `ptt.ershadiFabric` on that same synthetic and the same
+  truth, so any difference between the two implementations is theirs rather
+  than the test's. Passes `deramped = false` because the synthetic is a model
+  and not radar data, which is the distinction the paper itself draws.
+- `test_rotations.m` - `ptt.rotateMoments` against `ptt.rotatePolarization`.
+  The 4x4 shortcut is only sound if it is the same linear map, and the two
+  are written out independently, so a transcription slip would rotate the
+  survey's geographic average by the wrong angle and surface only as an
+  inflated circular spread - the very quantity the heading test keys on.
