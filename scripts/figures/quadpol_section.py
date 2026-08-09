@@ -1,10 +1,14 @@
 """Quad-pol fabric section along one profile, beside the co-polarized one.
 
 run_quadpol_pipeline.m inverts each 125-trace block of a coregistered
-quad-pol frame with ptt.ershadiFabric, giving dlam and theta as functions
-of BOTH depth and along-track distance. 125 traces is what run_sections.m
-uses for the co-polarized Ridge A section, so the two are sampled the same
-way along track and can be read against each other cell for cell.
+quad-pol frame with ptt.ershadiFabric and ptt.quadpolFabricLS, giving dlam
+and theta as functions of BOTH depth and along-track distance. 125 traces
+is what run_sections.m uses for the co-polarized Ridge A section, so the
+two are sampled the same way along track and can be read against each
+other cell for cell. When the LS fields are present the figure adds a
+third row - the LS coherence-field fit above the published direct chain,
+on a shared color scale; older .mat files without them still draw the
+two-row layout.
 
 WHAT THE TWO SECTIONS ARE NOT. They do not measure the same quantity, and
 drawing them side by side without saying so would invite reading the

@@ -43,15 +43,24 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
        blend corrections at the low-coherence Thwaites margin (the two
        failure modes it eliminates); at high-coherence sites it mainly
        serves as an unwrap-free cross-check.
-   - dtau referenced to zero just below the surface return (removes
-     channel timing/phase biases and the unwrapping constant),
+   - dtau referenced to zero over a coherent BAND just below the surface
+     return (removes channel timing/phase biases and the unwrapping
+     constant; a single-bin reference injects its own error as a constant
+     on every node, and a surface-anchored solve can only absorb a
+     constant into its shallowest interval's dlam - the mechanism behind
+     the spurious near-surface fabric; see `param.fabric.ref_band_twtt`
+     in `fabric.m` and `test/test_copol_surface.m`),
    - coherence-weighted averaging into along-track blocks,
    - inversion through the Maxwell-Garnett firn model for
      piecewise-constant dlam over `num_intervals` depth intervals:
      smoothness-regularized joint solve
      (ptt.invertHorizontalFabricJoint, `inversion = 'joint'`, the module
      default, robust to noisy data) or exact layer stripping
-     (ptt.invertHorizontalFabric, `inversion = 'stripping'`),
+     (ptt.invertHorizontalFabric, `inversion = 'stripping'`); the joint
+     solve differences its forward model against the same reference and
+     carries the residual reference error as an explicit offset nuisance,
+     so the first interval is reference-degenerate and quotable fabric
+     starts at interval 2,
    - output `CSARP_<out_path>/<day_seg>/Data_*.mat` + overview images
      (`out_path` defaults to `fabric`, but the drivers override it to
      `fabric_joint` so joint-solver results sit beside the earlier
@@ -223,7 +232,24 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     03d292e, where the inversion ran on channels coregistration never
     touched. ~71 min on a 6601 x 4346 frame the first time; reruns load
     the coreg_cache (keyed to the product's window and tiling settings)
-    and take minutes.
+    and take minutes. `coreg_only = true` stops after building the cache,
+    and the 2022/2023 seasons - which shipped the polarimetric product
+    only in its SNAPHU-unwrapped form - fall back to
+    `CSARP_polarimetric_unwrap` for the window and coregistration
+    settings.
+  - `coreg_batch.sh` / `coreg_one.sh` and `invert_batch.sh` /
+    `invert_one.sh` - survey-scale drivers for that pipeline on the
+    shared node: the coreg batch builds the caches (the one genuinely
+    expensive pass), and the invert batch FOLLOWS it, picking frames up
+    as their caches appear and ending only when no work remains and the
+    cache builder has exited. Idempotent skip-if-done workers with mkdir
+    locks, nice and 8-thread caps, and a per-frame retry cap; each
+    header states its usage and nohup launch line.
+  - `mech_experiment_009.m` - split-sample tests (interleaved azimuth
+    halves, interleaved trace halves, reflectivity correlation) of the
+    LS profile's residual 50-150 m depth wiggles, run from the frame-009
+    coreg cache; established they are medium structure shared between
+    estimators, not estimator noise.
   - `run_quadpol_survey.m` / `run_ershadi_survey.m` - the same two
     inversions over every frame of a survey, the second in 200-trace blocks
     of near-constant heading because the published method assumes a
@@ -367,6 +393,13 @@ the same way:
   folded-noise floor and the leakage-shaped axis are both regressions this
   estimator exists to avoid - and that the theta0-pinned two-pass path the
   pipeline section uses reproduces the free fit's contrast.
+
+`test/test_copol_surface.m` covers the co-polarized chain's surface
+reference at the solver level: the OLD surface-anchored call must
+REPRODUCE the spurious near-surface dlam ~ 0.06 that 0.3 ns of single-bin
+reference error manufactures, and the call with `obs.zref` must recover
+the offset as the nuisance, honor the isotropic cap from the first
+quotable interval down, and stay unbiased at depth.
 
 `test/test_goldstein.m` covers the unwrapping side, `ptt.goldsteinFilter`
 (its header carries the `matlab -batch` line, as the quad-pol tests do). It
