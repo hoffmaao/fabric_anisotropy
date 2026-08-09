@@ -39,7 +39,10 @@ units).
   reference error as a near-free constant-offset nuisance, flagging the
   shallowest interval reference-degenerate - the fix for the single-bin
   reference error that manufactured a spurious near-surface dlam
-  (`opr_fabric/test/test_copol_surface.m` reproduces both sides).
+  (`opr_fabric/test/test_copol_surface.m` reproduces both sides). The
+  fabric products save the flag as `dlam_ref_degenerate` and the
+  recovered offset as `ref_offset`, so consumers read the flag instead
+  of hard-coding "skip interval 1".
 - Interferometric processing chain (pure numerics, no OPR dependencies;
   options structs use the same field names as the OPR fabric worksheet):
   - `ptt.goldsteinFilter` - Goldstein-Werner adaptive spectral filter of the
