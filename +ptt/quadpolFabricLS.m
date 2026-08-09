@@ -77,7 +77,8 @@ function out = quadpolFabricLS(S, z, opts)
 % Inputs
 %   S     struct of complex [Nt x Nx] channels hh, vv, hv, vh
 %   z     [Nt x 1] depth [m]
-%   opts  fc (750e6), psi_step_deg (2), win_short_m (10, coherence
+%   opts  fc (750e6), psi_step_deg (2), psi_offset_deg (0),
+%         win_short_m (10, coherence
 %         multilook), win_fit_m (60, LS window), step_m (15, window
 %         centres), dlam_max (0.25), deramped (true),
 %         theta0 ([] = estimate; else radians, scalar or [Nw x 1] or a
@@ -98,6 +99,7 @@ function out = quadpolFabricLS(S, z, opts)
 if nargin < 3, opts = struct(); end
 fc = H_opt(opts, 'fc', 750e6);
 psi_step = H_opt(opts, 'psi_step_deg', 2);
+psi_off = H_opt(opts, 'psi_offset_deg', 0);
 win_short = H_opt(opts, 'win_short_m', 10);
 win_fit = H_opt(opts, 'win_fit_m', 60);
 step_m = H_opt(opts, 'step_m', 15);
@@ -124,7 +126,10 @@ grad_per_dlam = 2 * pi * fc * C.deps / (n_ice * C.c * 1e9);   % rad/m
 % already the windowed coherence of Ershadi eq. (7) at every azimuth.
 nr = max(3, round(win_short / max(dz, eps)));
 M = ptt.quadpolMoments(S, [nr size(S.hh, 2)]);
-psi = (0:psi_step:180-psi_step) * pi/180;
+% psi_offset_deg shifts the whole synthesis grid; two runs at half
+% density and complementary offsets give interleaved azimuth halves for
+% split-sample systematics tests.
+psi = (psi_off:psi_step:psi_off+180-psi_step) * pi/180;
 A = ptt.quadpolAzimuth(M, psi);
 Cm = A.chhvv;
 if deramped
