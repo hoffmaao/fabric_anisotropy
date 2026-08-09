@@ -10,6 +10,7 @@ set -u
 FAB=/kucresis/scratch/hoffmana_sta/fabric
 site=${1:?usage: invert_batch.sh <site> [K]}
 K=${2:-2}
+MAX_FAIL=2
 case $site in
   ridge_a)     ROOT=/cresis/nvme/opr_data/accum/2024_Antarctica_Ground2 ;;
   taylor_dome) ROOT=/cresis/dataproducts/opr_data/accum/2025_Antarctica_Ground2 ;;
@@ -32,6 +33,13 @@ while :; do
     tag=$(printf '%s_%03d' "$seg" "$n")
     if [ -s "$FAB/stages/quadpol/coreg_cache/creg_$tag.mat" ] && \
        [ ! -s "$FAB/stages/quadpol/quadpol_section_$tag.mat" ]; then
+      # a frame that keeps failing is dropped after MAX_FAIL attempts
+      # (invert_one.sh appends one line per failure, clears on success);
+      # remove fail_<tag>.count from invert_logs to retry it by hand
+      fails=$FAB/invert_logs/fail_$tag.count
+      if [ -f "$fails" ] && [ "$(wc -l < "$fails")" -ge "$MAX_FAIL" ]; then
+        continue
+      fi
       echo "$ROOT $seg $n"
     fi
   done > "$list"

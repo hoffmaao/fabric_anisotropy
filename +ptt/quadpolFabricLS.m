@@ -165,8 +165,12 @@ if ~isempty(theta0_in)
     % unwrap over gappy, noisy axis samples can slip a branch, which is a
     % silent 90 deg axis error handed to every block below the slip - the
     % 0.25-railed windows at 957 m on frame 007 were exactly that.
-    ph = interp1(theta0_in.z(:), exp(2i*theta0_in.theta(:)), zw, ...
-      'linear', 'extrap');
+    % Windows outside the profile's z-range take the end values: a linear
+    % extrapolation of a phasor can pass near zero, and the arbitrary
+    % angle it lands on would be PINNED by the block fit.
+    zt = theta0_in.z(:);
+    ph = interp1(zt, exp(2i*theta0_in.theta(:)), ...
+      min(max(zw, min(zt)), max(zt)), 'linear');
     th_fix = 0.5 * angle(ph);
   elseif isscalar(theta0_in)
     th_fix(:) = theta0_in;
@@ -225,9 +229,13 @@ if nnz(ok) >= 2
   ph = interp1(zw(ok), exp(2i*theta0(ok)), z, 'linear');
   theta0_z = mod(angle(ph)/2, pi);
 end
+% dlam keeps its abstention NaNs: interpolating over the full window grid
+% fills between measured neighbours but never bridges across an abstained
+% window, so the section (and the figure, which paints NaN white) can tell
+% abstained cells from measured ones
 okd = isfinite(dlam);
 if nnz(okd) >= 2
-  dlam_z = interp1(zw(okd), dlam(okd), z, 'linear');
+  dlam_z = interp1(zw, dlam, z, 'linear');
 end
 
 out = struct('zw', zw, 'theta0', theta0, 'dlam', dlam, 'gamma', gam, ...

@@ -34,6 +34,14 @@ nice -n 10 /opt/sw/matlab/2024b/bin/matlab -batch \
   "maxNumCompThreads(8); site_root='$root'; day_seg='$seg'; frm=$frm; run_quadpol_pipeline" \
   > "$log" 2>&1
 rc=$?
-if [ -s "$outmat" ]; then st=ok; else st=FAILED; fi
+if [ -s "$outmat" ]; then
+  st=ok
+  rm -f "$FAB/invert_logs/fail_$tag.count"
+else
+  st=FAILED
+  # one line per failed attempt; invert_batch.sh stops re-listing the
+  # frame once this reaches its retry cap
+  echo "$(date '+%Y-%m-%d %H:%M') rc=$rc" >> "$FAB/invert_logs/fail_$tag.count"
+fi
 echo "done  $tag rc=$rc $st $(date '+%H:%M')"
 exit 0
