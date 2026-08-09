@@ -163,6 +163,18 @@ if ~isfield(param.fabric,'ref_twtt_offset') || isempty(param.fabric.ref_twtt_off
   param.fabric.ref_twtt_offset = 50e-9;
 end
 
+% ref_band_twtt: width of the band below ref_twtt_offset that the
+% reference is AVERAGED over (ptt.blendTraveltime), and that the inversion
+% nodes must sit below (ptt.invertBlocks). A single-bin reference injects
+% its own error as a constant into every node, and a constant can only
+% land in the shallowest interval's dlam - the mechanism behind the
+% spurious non-zero near-surface fabric. The residual after band
+% averaging is carried by the joint inversion's reference-offset
+% nuisance, and the first interval is flagged ref_degenerate.
+if ~isfield(param.fabric,'ref_band_twtt') || isempty(param.fabric.ref_band_twtt)
+  param.fabric.ref_band_twtt = 100e-9;
+end
+
 % half_offset: half the Tx-Rx antenna separation [m]. 0 for the ground
 % accum radar: switch-gated crossed bowties share one phase center.
 if ~isfield(param.fabric,'half_offset') || isempty(param.fabric.half_offset)
