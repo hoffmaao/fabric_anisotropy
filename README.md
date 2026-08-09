@@ -42,7 +42,9 @@ units).
   (`opr_fabric/test/test_copol_surface.m` reproduces both sides). The
   fabric products save the flag as `dlam_ref_degenerate` and the
   recovered offset as `ref_offset`, so consumers read the flag instead
-  of hard-coding "skip interval 1".
+  of hard-coding "skip interval 1"; the figure scripts consume it
+  through the `dropped_intervals` predicate in
+  `scripts/figures/fabric_qc.py`.
 - Interferometric processing chain (pure numerics, no OPR dependencies;
   options structs use the same field names as the OPR fabric worksheet):
   - `ptt.goldsteinFilter` - Goldstein-Werner adaptive spectral filter of the

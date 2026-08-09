@@ -10,9 +10,9 @@ auto-detected phase sign there was flipped.
 
 Only intervals genuinely measured in both chains are compared: pegged
 intervals (|dlam| at the 2/3 layer-stripping bound) are dropped, and so
-is any interval a dlam_interpolated node contaminates in EITHER chain
-(fabric_qc.interpolated_intervals; the chains' flags legitimately differ
-because the delta-k seam band is wider, so they are OR-ed per interval).
+is any interval fabric_qc.dropped_intervals flags in EITHER chain (the
+chains' flags legitimately differ because the delta-k seam band is
+wider, so they are OR-ed per interval).
 
 Outputs (figs/): deltak_vs_joint_ridge_a.png plus printed stats for
 both seasons.
@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt
 from scipy.io import loadmat
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from fabric_qc import interpolated_intervals
+from fabric_qc import dropped_intervals
 
 BATCH = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser(
     '~/data/opr/fabric_batch')
@@ -72,12 +72,12 @@ def load_pairs(spec):
         depth.append(0.5 * (np.asarray(a['dlam_top_depth'], float) +
                             np.asarray(a['dlam_bot_depth'], float)).ravel())
         # An interval only counts if it was measured in BOTH chains: OR
-        # each chain's fabricated-interval mask (None on outputs written
-        # before dlam_interpolated existed, meaning nothing to drop).
+        # each chain's drop mask (None on outputs written before the QC
+        # flags existed, meaning nothing to drop).
         bad = np.zeros(dk[-1].size, bool)
-        for itp in (interpolated_intervals(a), interpolated_intervals(b)):
-            if itp is not None:
-                bad |= itp.ravel()
+        for drop in (dropped_intervals(a), dropped_intervals(b)):
+            if drop is not None:
+                bad |= drop.ravel()
         filled.append(bad)
         rms_dk.append(np.atleast_1d(a['dtau_rms']).astype(float))
         rms_jt.append(np.atleast_1d(b['dtau_rms']).astype(float))
