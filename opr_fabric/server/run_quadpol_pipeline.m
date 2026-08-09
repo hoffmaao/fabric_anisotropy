@@ -132,19 +132,26 @@ cache_fn = fullfile(out_dir, 'coreg_cache', ...
   sprintf('creg_%s_%03d.mat', day_seg, frm));
 from_cache = false;
 if exist(cache_fn, 'file') == 2
-  cq = load(cache_fn, 'z', 'CO', 'r0', 'r1');
-  if isequal(cq.CO, CO) && cq.r0 == r0 && cq.r1 == r1 ...
-      && numel(cq.z) == numel(z) && max(abs(cq.z(:) - z(:))) < 1e-6
-    cq = load(cache_fn, 'hh', 'vv', 'hv', 'vh');
-    T = struct('hh', double(cq.hh), 'vv', double(cq.vv), ...
-      'hv', double(cq.hv), 'vh', double(cq.vh));
+  try
+    cq = load(cache_fn, 'z', 'CO', 'r0', 'r1');
+    if isequal(cq.CO, CO) && cq.r0 == r0 && cq.r1 == r1 ...
+        && numel(cq.z) == numel(z) && max(abs(cq.z(:) - z(:))) < 1e-6
+      cq = load(cache_fn, 'hh', 'vv', 'hv', 'vh');
+      T = struct('hh', double(cq.hh), 'vv', double(cq.vv), ...
+        'hv', double(cq.hv), 'vh', double(cq.vh));
+      clear cq;
+      from_cache = true;
+      fprintf('\ncoregistered channels loaded from %s\n', cache_fn);
+    else
+      fprintf('\ncache %s does not match the settings; re-coregistering\n', ...
+        cache_fn);
+      clear cq;
+    end
+  catch err
+    fprintf('\ncache %s is unreadable (%s); re-coregistering\n', ...
+      cache_fn, err.message);
     clear cq;
-    from_cache = true;
-    fprintf('\ncoregistered channels loaded from %s\n', cache_fn);
-  else
-    fprintf('\ncache %s does not match the settings; re-coregistering\n', ...
-      cache_fn);
-    clear cq;
+    from_cache = false;
   end
 end
 if from_cache
@@ -184,7 +191,11 @@ if CACHE_COREG && ~from_cache
   cdir = fullfile(out_dir, 'coreg_cache');
   if exist(cdir, 'dir') ~= 7, mkdir(cdir); end
   hh = single(T.hh); vv = single(T.vv); hv = single(T.hv); vh = single(T.vh);
-  save(cache_fn, '-v7.3', 'hh', 'vv', 'hv', 'vh', 'z', 'CO', 'r0', 'r1');
+  % write to a temp name in the same directory and rename into place, so a
+  % worker killed mid-write can never leave a truncated cache behind
+  tmp_fn = [cache_fn '.tmp'];
+  save(tmp_fn, '-v7.3', 'hh', 'vv', 'hv', 'vh', 'z', 'CO', 'r0', 'r1');
+  movefile(tmp_fn, cache_fn);
   clear hh vv hv vh;
   fprintf('cached coregistered channels -> %s\n', cache_fn);
 end

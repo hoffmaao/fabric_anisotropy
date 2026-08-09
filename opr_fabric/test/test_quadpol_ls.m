@@ -146,7 +146,7 @@ for ci = 1:size(cases, 1)
         'win_m', 30, 'grad_win_m', 25, 'coh_min', 0.4, 'deramped', false));
       me = z > 300 & z < 1300;
       the = rad2deg(oe.theta(me)); the = the(isfinite(the));
-      ge = mod(rad2deg(angle(mean(exp(2i*deg2rad(2*the)))))/2, 90);
+      ge = mod(rad2deg(angle(mean(exp(2i*deg2rad(2*the)))))/4, 90);
       ee = abs(mod(ge - mod(want,90) + 45, 90) - 45);
       de = median(oe.dlam(me), 'omitnan');
       fprintf(['   [ershadiFabric on the same data: theta err %4.1f deg, ' ...
