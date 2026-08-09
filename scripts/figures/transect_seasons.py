@@ -13,7 +13,7 @@ from scipy.io import loadmat
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from fabric_qc import interpolated_intervals
+from fabric_qc import dropped_intervals
 
 ROOT = sys.argv[2] if len(sys.argv) > 2 else os.path.expanduser('~/data/opr/fabric_batch')
 OUT = sys.argv[3] if len(sys.argv) > 3 else os.path.join(os.path.dirname(__file__), '..', '..', 'figs')
@@ -37,7 +37,7 @@ def load_season(season, product):
         d = loadmat(fn)
         dlam, top, bot, qual = d['dlam'], d['dlam_top_depth'], d['dlam_bot_depth'], d['dlam_quality']
         clip = d.get('dlam_clipped')
-        itp = interpolated_intervals(d)
+        drop = dropped_intervals(d)
         for b in range(dlam.shape[1]):
             if not np.any(np.isfinite(dlam[:, b])):
                 continue
@@ -46,8 +46,8 @@ def load_season(season, product):
             if clip is not None and clip.size:
                 pegged |= clip[:, b] == 1
             n_peg += int(np.any(pegged))
-            if itp is not None:
-                pegged |= itp[:, b]
+            if drop is not None:
+                pegged |= drop[:, b]
             col = np.full(depth_grid.size, np.nan)
             for k in range(dlam.shape[0]):
                 ok = np.isfinite(dlam[k, b]) and not pegged[k] \

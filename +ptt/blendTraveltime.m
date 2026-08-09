@@ -45,6 +45,9 @@ end
 if ~isfield(opts,'dtau_source') || isempty(opts.dtau_source)
   opts.dtau_source = 'phase';
 end
+if ~isfield(opts,'ref_band_twtt') || isempty(opts.ref_band_twtt)
+  opts.ref_band_twtt = 100e-9;
+end
 
 Nt = numel(map.Time);
 Nx = numel(map.Surface);
@@ -60,10 +63,28 @@ else
 end
 
 % Surface referencing (must precede the sign regression, which the channel
-% biases would otherwise contaminate)
+% biases would otherwise contaminate). The reference is a ROBUST BAND MEAN
+% over [ref_twtt_offset, ref_twtt_offset + ref_band_twtt] below the
+% surface rather than the single bin at ref_twtt_offset: any error in a
+% single-bin reference (surface sidelobes, speckle, a coregistration
+% step) shifts every node below by a constant, and the joint inversion
+% can only absorb a constant into its shallowest interval's dlam - 0.3 ns
+% there manufactures dlam ~ 0.06, which is the spurious near-surface
+% fabric the fringe check caught. Averaging over the coherent band shrinks
+% that error by ~1/sqrt(bins); the residual is carried explicitly by the
+% inversion's reference-offset nuisance. Falls back to the single bin
+% where the band holds fewer than 3 coherent samples.
 ref_idx = ref_bin + (0:Nx-1)*Nt;
+t_rel_mat = map.Time(:) - map.Surface(:).';
+band = t_rel_mat >= opts.ref_twtt_offset & ...
+  t_rel_mat <= opts.ref_twtt_offset + opts.ref_band_twtt & coh_mask;
 if has_coreg
-  dtau_coreg = dtau_coreg - repmat(dtau_coreg(ref_idx),[Nt 1]);
+  nbc = sum(band & isfinite(dtau_coreg), 1);
+  rv = sum(dtau_coreg .* band, 1, 'omitnan') ./ max(nbc, 1);
+  rv1 = dtau_coreg(ref_idx);
+  bad = nbc < 3 | ~isfinite(rv);
+  rv(bad) = rv1(bad);
+  dtau_coreg = dtau_coreg - repmat(rv, [Nt 1]);
 end
 
 % Coregistration-only mode: dtau is the referenced row offsets; no phase
@@ -81,7 +102,20 @@ if strcmp(opts.dtau_source,'coreg')
 end
 
 dtau_phase = map.phase / (2*pi*map.fc);
-dtau_phase = dtau_phase - repmat(dtau_phase(ref_idx),[Nt 1]);
+nbp = sum(band & isfinite(map.phase), 1);
+if map.phase_is_unwrapped
+  % arithmetic band mean on the unwrapped field
+  pv = sum(dtau_phase .* band, 1, 'omitnan') ./ max(nbp, 1);
+else
+  % circular band mean on the wrapped field: the band is shallow, so the
+  % true phase is nearly constant across it and the phasor mean is safe
+  % where a plain mean would shred across a wrap
+  pv = angle(sum(exp(1i*map.phase) .* band, 1, 'omitnan')) / (2*pi*map.fc);
+end
+pv1 = dtau_phase(ref_idx);
+badp = nbp < 3 | ~isfinite(pv);
+pv(badp) = pv1(badp);
+dtau_phase = dtau_phase - repmat(pv, [Nt 1]);
 
 % Phase sign: dtau = s*phase/(2*pi*fc)
 if opts.phase_sign ~= 0

@@ -86,11 +86,21 @@ for si = 1:size(product_tbl, 1)
       pf.use_snaphu_phase = true;
       pf.blend_coreg_en = true;
       pf.phase_sign = 0;
-      pf.coherence_threshold = 0.5;
+      % Retuned resolution settings (ridge_a_resolution.m sweep): the
+      % shipped 0.5/1000/10 were the limit, not the data - the 0.5 gate
+      % cut through the middle of the coherence distribution and 1000
+      % traces bound the result before the depth intervals did. 0.2/125/25
+      % gave 7x the cells at adjacent-block agreement 0.98 on Ridge A.
+      pf.coherence_threshold = 0.2;
       pf.min_coverage = 0.3;
-      pf.block_size = 1000;
-      pf.num_intervals = 10;
+      pf.block_size = 125;
+      pf.num_intervals = 25;
+      % Surface reference: band-averaged, with the reference-consistent
+      % forward and the offset nuisance downstream (see fabric.m and
+      % test_copol_surface.m); the first interval arrives flagged
+      % ref_degenerate and quotable fabric starts at interval 2.
       pf.ref_twtt_offset = 50e-9;
+      pf.ref_band_twtt = 100e-9;
       pf.half_offset = 0;
       pf.ptt = struct('H', 2000, 'bco_depth', 60, 'lam_z_sfc', 1/3, 'lam_z_bed', 1/3);
       param.fabric = pf;

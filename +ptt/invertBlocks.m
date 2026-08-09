@@ -11,7 +11,10 @@ function inv = invertBlocks(blk, map, par, opts)
 %   contiguous coherent span below the surface reference depth.
 %
 %   opts fields (optional): num_intervals (10), half_offset (0 m),
-%   min_coverage (0.3), ref_twtt_offset (50e-9 s), inversion ('stripping'
+%   min_coverage (0.3), ref_twtt_offset (50e-9 s), ref_band_twtt
+%   (100e-9 s; width of the reference band the dtau field was zeroed
+%   over - nodes start strictly below it, and its centre is handed to
+%   the joint solve as obs.zref), inversion ('stripping'
 %   for the exact per-interval layer stripping, or 'joint' for the
 %   smoothness-regularized joint solve of ptt.invertHorizontalFabricJoint,
 %   recommended for noisy data), reg (0.05; joint mode only).
@@ -28,10 +31,15 @@ function inv = invertBlocks(blk, map, par, opts)
 %   where the block was skipped or the stripping path runs). The joint
 %   solve still fits the interpolated nodes - it wants a continuous chain -
 %   so the flag is how a consumer tells fabricated nodes from measured
-%   ones. Per-block fields (1 x Nblk):
+%   ones. ref_degenerate (Nint x Nblk logical): true for the interval
+%   whose dlam shares its information with the reference-offset nuisance
+%   (see ptt.invertHorizontalFabricJoint) - quotable fabric starts below
+%   it; all false where the block was skipped or the reference was not in
+%   play. Per-block fields (1 x Nblk):
 %   rms [ns] (coherence-weighted misfit rms) and alpha (regularization
 %   weight), both NaN where the block was skipped or the stripping path
-%   runs.
+%   runs, and ref_offset [ns], the recovered reference error, NaN
+%   likewise.
 
 if ~isfield(opts,'num_intervals') || isempty(opts.num_intervals)
   opts.num_intervals = 10;
@@ -44,6 +52,9 @@ if ~isfield(opts,'min_coverage') || isempty(opts.min_coverage)
 end
 if ~isfield(opts,'ref_twtt_offset') || isempty(opts.ref_twtt_offset)
   opts.ref_twtt_offset = 50e-9;
+end
+if ~isfield(opts,'ref_band_twtt') || isempty(opts.ref_band_twtt)
+  opts.ref_band_twtt = 100e-9;
 end
 if ~isfield(opts,'inversion') || isempty(opts.inversion)
   opts.inversion = 'stripping';
@@ -75,6 +86,8 @@ inv.interpolated = nan(Nint,Nblk);
 inv.clipped = nan(Nint,Nblk);
 inv.rms = nan(1,Nblk);
 inv.alpha = nan(1,Nblk);
+inv.ref_offset = nan(1,Nblk);
+inv.ref_degenerate = false(Nint,Nblk);
 
 for b = 1:Nblk
   % Coherent twtt span below the surface reference depth. Real coherence
@@ -85,7 +98,9 @@ for b = 1:Nblk
   good = blk.coverage(:,b) >= opts.min_coverage & isfinite(blk.dtau(:,b));
   smooth_n = max(3, round(Nt/100));
   good_frac = conv(double(good), ones(smooth_n,1)/smooth_n, 'same');
-  usable = good_frac >= 0.5 & t_rel > opts.ref_twtt_offset;
+  % Nodes start strictly below the whole reference band, so the first
+  % interval's span matches what its observation actually measured.
+  usable = good_frac >= 0.5 & t_rel > opts.ref_twtt_offset + opts.ref_band_twtt;
   if nnz(usable) < 4*Nint
     continue;
   end
@@ -106,6 +121,14 @@ for b = 1:Nblk
   obs = [];
   obs.L = opts.half_offset;
   obs.z = par.H - node_depth;
+  % Height of the reference the dtau field was zeroed at (band centre):
+  % the joint solve differences its forward model against it and carries
+  % the residual reference error as an offset nuisance.
+  ref_depth = interp1(twtt_fine, depth_fine, ...
+    opts.ref_twtt_offset + opts.ref_band_twtt/2);
+  if isfinite(ref_depth) && par.H - ref_depth > obs.z(1)
+    obs.zref = par.H - ref_depth;
+  end
   % Interpolate over masked/incoherent bins using the finite samples only
   fin = isfinite(blk.dtau(:,b));
   obs.dtau = 1e9*interp1(map.Time(fin), blk.dtau(fin,b), node_twtt); % [ns]
@@ -142,6 +165,10 @@ for b = 1:Nblk
   inv.dtau_fit(:,b) = inv_out.dtau_fit;
   inv.quality(:,b) = node_coh;
   inv.interpolated(:,b) = node_filled;
+  if isfield(inv_out, 'ref_offset')
+    inv.ref_offset(b) = inv_out.ref_offset;
+    inv.ref_degenerate(:,b) = inv_out.ref_degenerate;
+  end
   if strcmp(opts.inversion, 'joint')
     inv.clipped(:,b) = double(inv_out.clipped);
     inv.rms(b) = inv_out.rms;
