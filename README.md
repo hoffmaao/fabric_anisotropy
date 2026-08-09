@@ -33,7 +33,13 @@ units).
   of the common-offset inversion: solves all depth intervals
   simultaneously (Gauss-Newton with a first-difference Tikhonov penalty,
   coherence-weighted misfit), robust where per-interval dtau increments
-  are below the noise level, at the cost of some depth resolution.
+  are below the noise level, at the cost of some depth resolution. Given
+  `obs.zref` (the height the dtau field was zeroed at) it differences the
+  forward model against that reference and estimates the residual
+  reference error as a near-free constant-offset nuisance, flagging the
+  shallowest interval reference-degenerate - the fix for the single-bin
+  reference error that manufactured a spurious near-surface dlam
+  (`opr_fabric/test/test_copol_surface.m` reproduces both sides).
 - Interferometric processing chain (pure numerics, no OPR dependencies;
   options structs use the same field names as the OPR fabric worksheet):
   - `ptt.goldsteinFilter` - Goldstein-Werner adaptive spectral filter of the
@@ -295,7 +301,11 @@ Scripts (each validates or applies the above end to end):
     (projected onto this line's axes vs at the principal axes) rather than
     both with "dlam". Its theta panel is drawn as a DIAGNOSTIC and says so:
     on Ridge A the recovered orientation tracks the antenna frame, at 2.0 deg
-    circular spread there against 41.7 geographic.
+    circular spread there against 41.7 geographic. When the pipeline output
+    carries the `ptt.quadpolFabricLS` fields it adds a third row - the LS
+    coherence-field fit above the published direct chain - on a shared
+    color scale; older .mat files without them still draw the two-row
+    layout.
   - `quadpol_heading_test.py` and `ershadi_heading_test.py` - the decisive
     ice-or-antennas test, run on an existing raster survey at no extra
     acquisition cost: theta expressed geographically must be independent of
