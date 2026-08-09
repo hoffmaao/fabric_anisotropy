@@ -45,6 +45,9 @@ end
 if ~isfield(opts,'ref_twtt_offset') || isempty(opts.ref_twtt_offset)
   opts.ref_twtt_offset = 50e-9;
 end
+if ~isfield(opts,'ref_band_twtt') || isempty(opts.ref_band_twtt)
+  opts.ref_band_twtt = 100e-9;
+end
 if ~isfield(opts,'inversion') || isempty(opts.inversion)
   opts.inversion = 'stripping';
 end
@@ -75,6 +78,8 @@ inv.interpolated = nan(Nint,Nblk);
 inv.clipped = nan(Nint,Nblk);
 inv.rms = nan(1,Nblk);
 inv.alpha = nan(1,Nblk);
+inv.ref_offset = nan(1,Nblk);
+inv.ref_degenerate = false(Nint,Nblk);
 
 for b = 1:Nblk
   % Coherent twtt span below the surface reference depth. Real coherence
@@ -85,7 +90,9 @@ for b = 1:Nblk
   good = blk.coverage(:,b) >= opts.min_coverage & isfinite(blk.dtau(:,b));
   smooth_n = max(3, round(Nt/100));
   good_frac = conv(double(good), ones(smooth_n,1)/smooth_n, 'same');
-  usable = good_frac >= 0.5 & t_rel > opts.ref_twtt_offset;
+  % Nodes start strictly below the whole reference band, so the first
+  % interval's span matches what its observation actually measured.
+  usable = good_frac >= 0.5 & t_rel > opts.ref_twtt_offset + opts.ref_band_twtt;
   if nnz(usable) < 4*Nint
     continue;
   end
@@ -106,6 +113,14 @@ for b = 1:Nblk
   obs = [];
   obs.L = opts.half_offset;
   obs.z = par.H - node_depth;
+  % Height of the reference the dtau field was zeroed at (band centre):
+  % the joint solve differences its forward model against it and carries
+  % the residual reference error as an offset nuisance.
+  ref_depth = interp1(twtt_fine, depth_fine, ...
+    opts.ref_twtt_offset + opts.ref_band_twtt/2);
+  if isfinite(ref_depth) && par.H - ref_depth > obs.z(1)
+    obs.zref = par.H - ref_depth;
+  end
   % Interpolate over masked/incoherent bins using the finite samples only
   fin = isfinite(blk.dtau(:,b));
   obs.dtau = 1e9*interp1(map.Time(fin), blk.dtau(fin,b), node_twtt); % [ns]
@@ -142,6 +157,10 @@ for b = 1:Nblk
   inv.dtau_fit(:,b) = inv_out.dtau_fit;
   inv.quality(:,b) = node_coh;
   inv.interpolated(:,b) = node_filled;
+  if isfield(inv_out, 'ref_offset')
+    inv.ref_offset(b) = inv_out.ref_offset;
+    inv.ref_degenerate(:,b) = inv_out.ref_degenerate;
+  end
   if strcmp(opts.inversion, 'joint')
     inv.clipped(:,b) = double(inv_out.clipped);
     inv.rms(b) = inv_out.rms;
