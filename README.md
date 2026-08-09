@@ -36,6 +36,14 @@ units).
   are below the noise level, at the cost of some depth resolution.
 - Interferometric processing chain (pure numerics, no OPR dependencies;
   options structs use the same field names as the OPR fabric worksheet):
+  - `ptt.goldsteinFilter` - Goldstein-Werner adaptive spectral filter of the
+    COMPLEX interferogram, run before unwrapping. Not cosmetic: SNAPHU's
+    cost is set by residues, which noise-driven excursions between adjacent
+    pixels create, so filtering first is what keeps the solution from being
+    dominated by branch cuts. Never applied to the wrapped phase, which
+    would average across the +-pi branch cut and invent fringes. Defaults
+    match `scripts/prototypes/branch_cuts.py`, where the alpha/window/stride
+    choice was measured against residue counts.
   - `ptt.blendTraveltime` - dtau map from interferogram phase blended with
     coregistration offsets (surface referencing, sign detection, fringe
     ambiguity resolution)
@@ -87,6 +95,48 @@ units).
     them apart from measured nodes (`deltak_vs_joint.py` compares two
     chains, so it drops an interval flagged in either one).
   - `ptt.twttDepthMap` - vertical twtt vs depth from the column model
+- Quad-polarimetric chain (the full 2x2 scattering matrix, where a
+  co-polarized HH/VV pair measures one azimuth and cannot be rotated at
+  all - so orientation is in principle recoverable along a single line
+  instead of only at survey crossings):
+  - `ptt.rotatePolarization` - the response at a synthetic antenna azimuth,
+    T = R' S R. Reciprocity (S_hv == S_vh) is NOT assumed, so finite antenna
+    isolation stays visible downstream as a calibration diagnostic instead of
+    being averaged away here.
+  - `ptt.quadpolMoments` - the [Nt x 4 x 4] Hermitian moment matrix over
+    (hh, vv, hv, vh). Every observable used here is quadratic in S and
+    rotation is linear, so a whole azimuth sweep is a fixed trig combination
+    of those 16 numbers per range bin rather than a re-synthesis of the grid.
+  - `ptt.rotateMoments` - the same rotation applied to a moment matrix,
+    Mr = W M W', for a 4x4 multiply per block instead of another pass over
+    the images. Needed because trace averaging is only valid in a frame the
+    signal is stationary in: a vehicle-fixed antenna frame turns with the
+    heading, so averaging there biases the answer toward an antenna-fixed
+    one by itself. Rotating each block into a common GEOGRAPHIC frame first
+    inverts that preference, and running both is what separates real
+    leakage from an artifact of the averaging.
+  - `ptt.quadpolAzimuth` - the synthetic sweep of co-pol power, cross-pol
+    power and the HH-VV coherence from that moment matrix. For a
+    birefringent column the cross-pol power factors exactly as
+    sin^2(2(psi - theta)) sin^2(delta(z)/2), so azimuth fixes orientation
+    and depth fixes birefringence independently.
+  - `ptt.quadpolFabric` - inverts the sweep for the horizontal principal
+    azimuth (projected onto the cos/sin 4psi harmonic, not an argmin, so a
+    near-isotropic layer reports a flat sweep instead of a confident angle)
+    plus two deliberately independent contrast estimates: the coherence
+    phase gradient, and the cross-polarized node spacing.
+  - `ptt.ershadiFabric` - Ershadi et al. (2022, TC 16, 1719) implemented
+    faithfully and kept SEPARATE from `ptt.quadpolFabric`, so the two can be
+    run on the same data and scored against each other. Every departure from
+    that file is a place the paper differs and is marked (E1)-(E5) in the
+    header, including why the birefringence coefficient carries sqrt(eps')
+    rather than the printed eps'.
+  - `ptt.coregisterChannels` - aligns every channel onto the reference by
+    CALLING the OPR toolbox `coregistration`, deliberately with no
+    implementation of its own (it errors if the toolbox is absent), so the
+    quad-pol path is aligned by the same code and defaults that built the
+    shipped `CSARP_polarimetric` products. A hand-rolled global-delay fit
+    was tried first and was worse on both pairs; the header has the numbers.
 
 Scripts (each validates or applies the above end to end):
 
@@ -199,6 +249,44 @@ Scripts (each validates or applies the above end to end):
     two horizontal eigenvalues on each profile's own axis and its
     perpendicular, and those azimuths differ per site, which is why both
     figures name them.
+- The published-method comparison and quad-pol figures share those same
+  conventions (input staged under `SCAR_DATA`, output to the `<out_dir>`
+  argument rather than `figs/`) and import `scar_style.py` for them:
+  - `egrip_method_compare.py` - our joint inversion against Zeising et al.
+    (2023) and against our own bare fringe rate, all three on the SAME nine
+    borehole-proximal EastGRIP lines, aperture, surface pick, depth bands and
+    azimuthal solve, so the remaining difference is the estimator and not the
+    staging or the constants. RMS against the core: 0.282 joint, 0.280 fringe
+    rate, 0.356 Zeising. The docstring records that the same joint inversion
+    scored 0.411 on delta-k, why the per-frame dtau misfit ROSE when SNAPHU
+    replaced it (so misfit alone would have preferred the worse answer), and
+    which core eigenvalue pair is horizontal at which depth.
+  - `fabric_map.py` - depth-averaged horizontal fabric in map view for every
+    survey (Ridge A, Taylor Dome, NEGIS, Eastwind, Thwaites), after Nymand et
+    al. (2025) fig. 3: ribbons coloured by each leg's own PROJECTION
+    dlam_obs = -P cos 2(alpha - theta), and orientation crosses drawn only in
+    grid cells holding two legs far enough apart in azimuth to separate P
+    from theta. Thwaites is a single-azimuth transect, so it gets one panel
+    rather than an empty second one that would read as a weak fabric.
+  - `quadpol_diagnostic.py` - the azimuth sweep itself for one frame, because
+    the method's validity is visible there and not in the numbers it returns:
+    vertical nulls fix orientation, horizontal nulls fix birefringence, and a
+    flat panel means the cross-pol is antenna leakage rather than ice.
+  - `quadpol_section.py` - the quad-pol dlam/theta section beside the
+    co-polarized one, each panel labelled with what it actually measures
+    (projected onto this line's axes vs at the principal axes) rather than
+    both with "dlam". Its theta panel is drawn as a DIAGNOSTIC and says so:
+    on Ridge A the recovered orientation tracks the antenna frame, at 2.0 deg
+    circular spread there against 41.7 geographic.
+  - `quadpol_heading_test.py` and `ershadi_heading_test.py` - the decisive
+    ice-or-antennas test, run on an existing raster survey at no extra
+    acquisition cost: theta expressed geographically must be independent of
+    the driving heading, and the diagonal of panel (a) is the failure mode.
+    The first works per frame, the second per 200-trace heading block, which
+    puts the test WITHIN frames as well as between them - same ice, same
+    calibration, only the heading differing. Both screen frames on HV/VH
+    reciprocity first, since the test means nothing where the
+    cross-polarized channels are measuring the system.
 - `scripts/prototypes/deltak_remedy.py` - a PARKED investigation into the
   delta-k stage-A suppression at Ridge A (deramped coherent multilook
   before the cross products). It runs and reports, but it does not resolve
