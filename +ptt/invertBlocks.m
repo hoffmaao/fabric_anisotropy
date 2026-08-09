@@ -11,7 +11,10 @@ function inv = invertBlocks(blk, map, par, opts)
 %   contiguous coherent span below the surface reference depth.
 %
 %   opts fields (optional): num_intervals (10), half_offset (0 m),
-%   min_coverage (0.3), ref_twtt_offset (50e-9 s), inversion ('stripping'
+%   min_coverage (0.3), ref_twtt_offset (50e-9 s), ref_band_twtt
+%   (100e-9 s; width of the reference band the dtau field was zeroed
+%   over - nodes start strictly below it, and its centre is handed to
+%   the joint solve as obs.zref), inversion ('stripping'
 %   for the exact per-interval layer stripping, or 'joint' for the
 %   smoothness-regularized joint solve of ptt.invertHorizontalFabricJoint,
 %   recommended for noisy data), reg (0.05; joint mode only).
@@ -28,10 +31,15 @@ function inv = invertBlocks(blk, map, par, opts)
 %   where the block was skipped or the stripping path runs). The joint
 %   solve still fits the interpolated nodes - it wants a continuous chain -
 %   so the flag is how a consumer tells fabricated nodes from measured
-%   ones. Per-block fields (1 x Nblk):
+%   ones. ref_degenerate (Nint x Nblk logical): true for the interval
+%   whose dlam shares its information with the reference-offset nuisance
+%   (see ptt.invertHorizontalFabricJoint) - quotable fabric starts below
+%   it; all false where the block was skipped or the reference was not in
+%   play. Per-block fields (1 x Nblk):
 %   rms [ns] (coherence-weighted misfit rms) and alpha (regularization
 %   weight), both NaN where the block was skipped or the stripping path
-%   runs.
+%   runs, and ref_offset [ns], the recovered reference error, NaN
+%   likewise.
 
 if ~isfield(opts,'num_intervals') || isempty(opts.num_intervals)
   opts.num_intervals = 10;

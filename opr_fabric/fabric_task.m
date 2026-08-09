@@ -187,6 +187,11 @@ dlam_quality = inv.quality;
 % dlam_quality cannot show this, it is the unmasked coherence
 dlam_interpolated = inv.interpolated;
 dlam_clipped = inv.clipped;
+% 1 where the interval's dlam shares its information with the reference
+% offset (the shallowest interval when obs.zref is in play): quotable
+% fabric starts below it. ref_offset is the recovered reference error [ns].
+dlam_ref_degenerate = inv.ref_degenerate;
+ref_offset = inv.ref_offset;
 dtau_rms = inv.rms;
 reg_alpha = inv.alpha;
 dtau_blk = blk.dtau;
@@ -253,7 +258,8 @@ file_type = 'fabric';
 
 fprintf('Saving output file:\n  %s\n', out_fn);
 opr_save(out_fn,'dlam','dlam_top_depth','dlam_bot_depth','dlam_quality', ...
-  'dlam_interpolated','dlam_clipped','dtau_rms','reg_alpha', ...
+  'dlam_interpolated','dlam_clipped','dlam_ref_degenerate','ref_offset', ...
+  'dtau_rms','reg_alpha', ...
   'dtau_obs','dtau_fit','dtau_blk','coh_blk','coverage_blk','blend_fringes', ...
   'phase_sign','Time','GPS_time','Latitude','Longitude','Elevation','Surface', ...
   'param_fabric','param_polarimetric','param_records','file_type','file_version');
