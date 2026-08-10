@@ -243,6 +243,13 @@ Scripts (each validates or applies the above end to end):
     right edges, no legends, plain black scale bars. Thwaites is framed on
     the WHOLE staged ITS_LIVE window rather than on a box padded round its
     tracks, so the glacier trunk the survey sits beside stays in frame.
+    Each site also gets a FABRIC COMPANION slide on the wrapped-phase
+    panel's exact geometry - the quad-pol LS dlam section placed on the
+    same distance axis by nearest trace, on the same absolute-TWTT axis
+    and limits, with the same end markers and colorbar placement, cells
+    fading toward grey by their own coherence - so the two slides overlay;
+    it prefers a staged deep `_z*` section variant (the overridable-`z_max`
+    reruns) so the fabric panel can span the wrapped-phase record.
   - `negis_two_panel.py` - the same slide for the NEGIS onset at EGRIP,
     on a Greenland polar stereographic projection, from the
     `negis_interferogram.m` extract; it can raise the look count locally
@@ -327,6 +334,15 @@ Scripts (each validates or applies the above end to end):
     coherence-field fit above the published direct chain - on a shared
     color scale; older .mat files without them still draw the two-row
     layout.
+  - `quadpol_fabric_map.py` - the quad-pol LS result in map view over a
+    survey grid, from the `run_quadpol_pipeline.m` section files staged
+    under `SCAR_DATA`: deep principal contrast coloured along each track,
+    orientation as one fixed-length ink bar per frame from the
+    geographic-frame theta0. Bars are built geodetically (endpoints
+    offset along the azimuth in lat/lon, then projected), and the on-map
+    key is itself such a bar at the survey's median axis with no azimuth
+    number attached, because meridian convergence rotates azimuths on
+    the page.
   - `quadpol_heading_test.py` and `ershadi_heading_test.py` - the decisive
     ice-or-antennas test, run on an existing raster survey at no extra
     acquisition cost: theta expressed geographically must be independent of

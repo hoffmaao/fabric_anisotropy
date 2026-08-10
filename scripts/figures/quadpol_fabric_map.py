@@ -7,8 +7,8 @@ sequential, with abstained blocks left as gaps over the grey track.
 ORIENTATION is one fixed-length ink bar per frame: the LS fabric axis
 theta0 expressed geographically (circular median of ls_theta0_geo over
 the 200-1200 m windows; older section files without it fall back to
-antenna-frame theta0 plus the frame's track azimuth). Strength lives in colour and
-orientation in the bars, so neither is double-encoded. SCAR style
+antenna-frame theta0 plus the frame's track azimuth). Strength lives in
+colour and orientation in the bars, so neither is double-encoded. SCAR style
 otherwise: no legend box, a plain black scale bar, a projected north
 arrow, and a small horizontal colorbar as the sections use.
 
