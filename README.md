@@ -160,6 +160,22 @@ units).
     dlam is signed with no folded-noise floor, and theta0 abstains where
     the birefringence is unresolvable. Two-pass use: frame-level theta0,
     then per-block dlam with theta0 pinned.
+    KNOWN SYSTEMATIC (measured 10 Aug 2026, unresolved): dlam carries a
+    heading-family bias of order 0.01 (~15-20%) - 67 same-ice crossing
+    pairs between the N-S lines and the rows at Ridge A differ by +0.009
+    median with 94% sign consistency, consistent with residual
+    pedestal-fabric coupling that grows with the axis-to-antenna angle
+    (N-S lines hold the axis ~6.5 deg from an antenna, rows ~18.5, the
+    NW-SE connectors ~36.5 - nearest the 45-deg degenerate geometry, so
+    their end-of-row stubs read visibly different strength). Orientation
+    is unaffected. Until fixed, quote deep dlam with a +-0.005-0.01
+    family systematic; near-aligned lines are least coupled and read
+    high (0.067-0.074 deep at Ridge A). THE PLANNED FIX is raw-channel
+    calibration (chan_equal): fit the complex HV/VH leakage once per
+    system at the channel level and correct BEFORE synthesis, removing
+    the pedestal at its source; the per-frame ls_pedestal record and the
+    crossing-pair test (paired same-ice difference -> 0) are its inputs
+    and acceptance criterion.
   - `ptt.coregisterChannels` - aligns every channel onto the reference by
     CALLING the OPR toolbox `coregistration`, deliberately with no
     implementation of its own (it errors if the toolbox is absent), so the
@@ -227,6 +243,13 @@ Scripts (each validates or applies the above end to end):
     right edges, no legends, plain black scale bars. Thwaites is framed on
     the WHOLE staged ITS_LIVE window rather than on a box padded round its
     tracks, so the glacier trunk the survey sits beside stays in frame.
+    Each site also gets a FABRIC COMPANION slide on the wrapped-phase
+    panel's exact geometry - the quad-pol LS dlam section placed on the
+    same distance axis by nearest trace, on the same absolute-TWTT axis
+    and limits, with the same end markers and colorbar placement, cells
+    fading toward grey by their own coherence - so the two slides overlay;
+    it prefers a staged deep `_z*` section variant (the overridable-`z_max`
+    reruns) so the fabric panel can span the wrapped-phase record.
   - `negis_two_panel.py` - the same slide for the NEGIS onset at EGRIP,
     on a Greenland polar stereographic projection, from the
     `negis_interferogram.m` extract; it can raise the look count locally
@@ -311,6 +334,15 @@ Scripts (each validates or applies the above end to end):
     coherence-field fit above the published direct chain - on a shared
     color scale; older .mat files without them still draw the two-row
     layout.
+  - `quadpol_fabric_map.py` - the quad-pol LS result in map view over a
+    survey grid, from the `run_quadpol_pipeline.m` section files staged
+    under `SCAR_DATA`: deep principal contrast coloured along each track,
+    orientation as one fixed-length ink bar per frame from the
+    geographic-frame theta0. Bars are built geodetically (endpoints
+    offset along the azimuth in lat/lon, then projected), and the on-map
+    key is itself such a bar at the survey's median axis with no azimuth
+    number attached, because meridian convergence rotates azimuths on
+    the page.
   - `quadpol_heading_test.py` and `ershadi_heading_test.py` - the decisive
     ice-or-antennas test, run on an existing raster survey at no extra
     acquisition cost: theta expressed geographically must be independent of

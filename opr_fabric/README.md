@@ -236,7 +236,23 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     and the 2022/2023 seasons - which shipped the polarimetric product
     only in its SNAPHU-unwrapped form - fall back to
     `CSARP_polarimetric_unwrap` for the window and coregistration
-    settings.
+    settings. On a CURVING frame the fabric rotates through the antennas,
+    so antenna-frame moment averaging smears it (dlam collapses, theta0
+    and track_az stop meaning anything): when the per-trace heading's p95
+    deviation exceeds 5 deg, the LS theta0/dlam fit runs instead in the
+    GEOGRAPHIC frame, from 200-trace sub-block moments rotated
+    north-referenced via `ptt.rotateMoments`, while the antenna-fixed
+    pedestal is still calibrated from the antenna-frame pass (a curve
+    smears fabric but adds the instrument coherently) and enters the
+    geographic fit as a precomputed field mixed over the measured heading
+    distribution; each section block then converts theta0 through its OWN
+    heading. The threshold trips on GPS heading jitter by design, so most
+    frames take the geographic path - a validated superset of the straight
+    case, not a bug; `test/test_quadpol_curved.m` is its regression.
+    `z_max` (default 1500 m) is overridable like `day_seg`/`frm` for
+    special runs that need the full record; any non-default depth gets a
+    `_z<depth>` suffix on both the coreg cache and the section output
+    name, so such runs can never clobber the standard batch products.
   - `coreg_batch.sh` / `coreg_one.sh` and `invert_batch.sh` /
     `invert_one.sh` - survey-scale drivers for that pipeline on the
     shared node: the coreg batch builds the caches (the one genuinely
@@ -245,6 +261,10 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     cache builder has exited. Idempotent skip-if-done workers with mkdir
     locks, nice and 8-thread caps, and a per-frame retry cap; each
     header states its usage and nohup launch line.
+  - `site_chain.sh` - queues additional survey sites through that
+    coreg-batch/invert-follower pair end to end, one site at a time,
+    starting only after every currently running batch has gone fully
+    quiet; its header carries the launch line.
   - `mech_experiment_009.m` - split-sample tests (interleaved azimuth
     halves, interleaved trace halves, reflectivity correlation) of the
     LS profile's residual 50-150 m depth wiggles, run from the frame-009
@@ -393,6 +413,15 @@ the same way:
   folded-noise floor and the leakage-shaped axis are both regressions this
   estimator exists to avoid - and that the theta0-pinned two-pass path the
   pipeline section uses reproduces the free fit's contrast.
+- `test_quadpol_curved.m` - the curving-line adaptation
+  `run_quadpol_pipeline.m` dispatches to. A synthetic 90-deg arc with the
+  fabric fixed geographically: the standard antenna-frame path must
+  REPRODUCE the smearing collapse of dlam (asserted - the observed symptom
+  on turning profiles), while the geographic-frame path - sub-block
+  moments rotated north-referenced, the survey-calibrated antenna-fixed
+  pedestal pinned as a precomputed field over the measured heading
+  distribution - must recover axis and contrast, with and without that
+  pedestal.
 
 `test/test_copol_surface.m` covers the co-polarized chain's surface
 reference at the solver level: the OLD surface-anchored call must
