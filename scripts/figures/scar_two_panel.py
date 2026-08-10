@@ -28,6 +28,7 @@ import os
 import sys
 import warnings
 
+import h5py
 import matplotlib
 import numpy as np
 
@@ -62,6 +63,55 @@ def scale_bar_br(ax, extent, frac=0.25):
                      nice_length=ab._nice_length)
 
 
+C_ICE = 299792458.0 / np.sqrt(3.171)
+GREY = np.array([0.74, 0.74, 0.74])
+
+
+def fabric_panel(ax, fig, tag, dist, lats, lons, t_us, surf_t_s, vmax,
+                 cb_label=r'$\Delta\lambda$ (LS, principal axes)'):
+    """The depth-resolved fabric product on the interferogram panel's
+    exact geometry: same distance axis, same absolute-TWTT vertical axis
+    and limits, same colorbar placement - so the wrapped-phase figure and
+    this one overlay slide-for-slide. Cells fade toward grey by their own
+    coherence (the fabric grammar of the section figures) and abstained
+    cells are white; the fabric occupies the constrained upper record and
+    the canvas below stays empty exactly where the phase panel shows the
+    incoherent deep record."""
+    with h5py.File(os.path.join(DATA, 'quadpol_section_%s.mat' % tag)) as f:
+        r = f['res']
+        z = np.array(r['z']).ravel().astype(float)
+        dl = np.atleast_2d(np.array(r['sec_dlam_ls']).T).astype(float)
+        cm = np.atleast_2d(np.array(r['sec_cmag']).T).astype(float)
+        blat = np.array(r['sec_lat']).ravel()
+        blon = np.array(r['sec_lon']).ravel()
+    # place each block on the interferogram's own distance axis by
+    # nearest trace, so the two panels use one x definition
+    bdist = np.empty(blat.size)
+    for b in range(blat.size):
+        j = np.nanargmin((lats - blat[b])**2 +
+                         (np.cos(np.deg2rad(blat[b]))*(lons - blon[b]))**2)
+        bdist[b] = dist[j]
+    o = np.argsort(bdist)
+    dl, cm, bdist = dl[:, o], cm[:, o], bdist[o]
+    t_z = (surf_t_s + 2.0*z/C_ICE) * 1e6
+    w = np.clip((cm - 0.10)/(0.45 - 0.10), 0, 1)**0.7
+    w[cm < 0.25] *= 0.35
+    cmap = plt.get_cmap('Blues')
+    rgb = cmap(np.clip(dl, 0, vmax)/vmax)[..., :3]
+    ww = np.clip(w, 0, 1)[..., None]
+    rgb = rgb*ww + GREY[None, None, :]*(1 - ww)
+    rgb[~np.isfinite(dl)] = 1.0
+    ax.imshow(rgb, aspect='auto', interpolation='nearest',
+              extent=[bdist[0], bdist[-1], t_z[-1], t_z[0]])
+    ax.set_xlim(dist[0], dist[-1])
+    ax.set_ylim(t_us[-1], t_us[0])
+    ax.set_xlabel('distance along profile (km)')
+    ax.set_ylabel('TWTT (\u03bcs)')
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(0, vmax))
+    cb = fig.colorbar(sm, ax=ax, pad=0.035)
+    cb.set_label(cb_label)
+
+
 def two_panel(map_fn, ifg_fn, out):
     fig, axm, axi = sty.two_panel_figure(ab.proj3031())
     map_fn(fig, axm)
@@ -76,7 +126,7 @@ def thwaites():
     seg = '20240108_01_001'
     d = loadmat(os.path.join(MARGIN, f'margin_{seg}.mat'),
                 variable_names=['phase_wrapped', 'coherence', 'Time',
-                                'Latitude', 'Longitude'])
+                                'Latitude', 'Longitude', 'Surface'])
     lats, lons = d['Latitude'].ravel(), d['Longitude'].ravel()
     dist = sty.cumdist_km(lats, lons)
 
@@ -169,6 +219,15 @@ def thwaites():
 
     two_panel(map_panel, ifg, 'scar_thwaites_2panel.png')
 
+    def fab(fig, ax):
+        fabric_panel(ax, fig, seg, dist, lats, lons, d['Time'].ravel()*1e6,
+                     float(np.nanmedian(d['Surface'])), vmax=0.15)
+        sty.draw_ifg_ends(ax, dist)
+        ax.set_title(f'eastern shear margin crossing, segment {seg} - '
+                     'depth-resolved fabric', fontsize=12, pad=26)
+
+    two_panel(map_panel, fab, 'scar_thwaites_2panel_fabric.png')
+
 
 # ---------------------------------------------------------------- Ridge A
 def ridge_a():
@@ -177,7 +236,7 @@ def ridge_a():
     d = loadmat(f'{ACCUM}/CSARP_polarimetric_unwrap/{seg}/Data_{frame}.mat',
                 variable_names=['interferogram_mlook',
                                 'interferogram_coherence', 'Time',
-                                'Latitude', 'Longitude'])
+                                'Latitude', 'Longitude', 'Surface'])
     lats, lons = d['Latitude'].ravel(), d['Longitude'].ravel()
     dist = sty.cumdist_km(lats, lons)
 
@@ -257,6 +316,15 @@ def ridge_a():
         ax.set_title(f'divide setting, frame {frame}', fontsize=12, pad=26)
 
     two_panel(map_panel, ifg, 'scar_ridge_a_2panel.png')
+
+    def fab(fig, ax):
+        fabric_panel(ax, fig, frame, dist, lats, lons, d['Time'].ravel()*1e6,
+                     float(np.nanmedian(d['Surface'])), vmax=0.08)
+        sty.draw_ifg_ends(ax, dist)
+        ax.set_title(f'divide setting, frame {frame} - depth-resolved fabric',
+                     fontsize=12, pad=26)
+
+    two_panel(map_panel, fab, 'scar_ridge_a_2panel_fabric.png')
 
 
 if __name__ == '__main__':
