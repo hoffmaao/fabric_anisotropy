@@ -55,51 +55,6 @@ psi = (0:OPTS.psi_step_deg:180-OPTS.psi_step_deg) * pi/180;
 delta = gpd * DL * z;
 ex = exp(1i * delta); ey = ones(Nz, 1);
 
-function S = H_synth(h_deg, th_geo, ex, ey, Nz, Ntr, NA, LEAK_C, LEAK_D)
-% Antenna-frame channels for per-trace headings h_deg (1 x Ntr): the
-% fabric angle in the antenna frame is th_geo - h at each trace, while
-% the pedestal is constant in the antenna frame by construction.
-S = struct('hh', zeros(Nz, Ntr), 'vv', zeros(Nz, Ntr), ...
-  'hv', zeros(Nz, Ntr), 'vh', zeros(Nz, Ntr));
-r = (randn(Nz, Ntr) + 1i*randn(Nz, Ntr)) / sqrt(2);
-g = (randn(Nz, Ntr) + 1i*randn(Nz, Ntr)) / sqrt(2);
-for j = 1:Ntr
-  d = deg2rad(th_geo - h_deg(j));
-  cd_ = cos(d); sd = sin(d);
-  hh = cd_^2*ex + sd^2*ey;
-  vv = sd^2*ex + cd_^2*ey;
-  hv = cd_*sd*(ex - ey);
-  xc = hv.*r(:,j) + LEAK_C*((hh + vv)/2).*r(:,j) + LEAK_D*g(:,j);
-  S.hh(:,j) = hh.*r(:,j);
-  S.vv(:,j) = vv.*r(:,j);
-  S.hv(:,j) = xc;
-  S.vh(:,j) = xc;
-end
-S.hh = S.hh + NA*(randn(Nz,Ntr)+1i*randn(Nz,Ntr));
-S.vv = S.vv + NA*(randn(Nz,Ntr)+1i*randn(Nz,Ntr));
-S.hv = S.hv + NA*(randn(Nz,Ntr)+1i*randn(Nz,Ntr));
-S.vh = S.vh + NA*(randn(Nz,Ntr)+1i*randn(Nz,Ntr));
-end
-
-function Mg = H_geo_moments(S, h_deg, NSUB)
-% Sub-block moments rotated into the common north-referenced frame.
-Ntr = size(S.hh, 2);
-Mg = [];
-wsum = 0;
-for j0 = 1:NSUB:Ntr
-  j1 = min(j0 + NSUB - 1, Ntr);
-  Sb = struct('hh', S.hh(:,j0:j1), 'vv', S.vv(:,j0:j1), ...
-    'hv', S.hv(:,j0:j1), 'vh', S.vh(:,j0:j1));
-  Mb = ptt.quadpolMoments(Sb, [1 (j1-j0+1)]);
-  hb = mod(rad2deg(angle(mean(exp(2i*deg2rad(h_deg(j0:j1))))))/2, 180);
-  Mr = ptt.rotateMoments(Mb, -deg2rad(hb));
-  if isempty(Mg), Mg = zeros(size(Mr)); end
-  Mg = Mg + Mr * (j1-j0+1);
-  wsum = wsum + (j1-j0+1);
-end
-Mg = Mg / wsum;
-end
-
 fails = 0;
 mid = @(o) o.zw > 300 & o.zw < 1300;
 axerr = @(got, want) abs(mod(got - want + 90, 180) - 90);
@@ -169,6 +124,51 @@ fprintf('curveB (geo moments + pinned pedestal field): theta_geo %5.1f dlam %.3f
 fprintf('\n%s (%.1f s)\n', H_tick(fails == 0), toc(t0));
 if fails > 0
   error('test_quadpol_curved:failed', '%d case(s) failed', fails);
+end
+
+function S = H_synth(h_deg, th_geo, ex, ey, Nz, Ntr, NA, LEAK_C, LEAK_D)
+% Antenna-frame channels for per-trace headings h_deg (1 x Ntr): the
+% fabric angle in the antenna frame is th_geo - h at each trace, while
+% the pedestal is constant in the antenna frame by construction.
+S = struct('hh', zeros(Nz, Ntr), 'vv', zeros(Nz, Ntr), ...
+  'hv', zeros(Nz, Ntr), 'vh', zeros(Nz, Ntr));
+r = (randn(Nz, Ntr) + 1i*randn(Nz, Ntr)) / sqrt(2);
+g = (randn(Nz, Ntr) + 1i*randn(Nz, Ntr)) / sqrt(2);
+for j = 1:Ntr
+  d = deg2rad(th_geo - h_deg(j));
+  cd_ = cos(d); sd = sin(d);
+  hh = cd_^2*ex + sd^2*ey;
+  vv = sd^2*ex + cd_^2*ey;
+  hv = cd_*sd*(ex - ey);
+  xc = hv.*r(:,j) + LEAK_C*((hh + vv)/2).*r(:,j) + LEAK_D*g(:,j);
+  S.hh(:,j) = hh.*r(:,j);
+  S.vv(:,j) = vv.*r(:,j);
+  S.hv(:,j) = xc;
+  S.vh(:,j) = xc;
+end
+S.hh = S.hh + NA*(randn(Nz,Ntr)+1i*randn(Nz,Ntr));
+S.vv = S.vv + NA*(randn(Nz,Ntr)+1i*randn(Nz,Ntr));
+S.hv = S.hv + NA*(randn(Nz,Ntr)+1i*randn(Nz,Ntr));
+S.vh = S.vh + NA*(randn(Nz,Ntr)+1i*randn(Nz,Ntr));
+end
+
+function Mg = H_geo_moments(S, h_deg, NSUB)
+% Sub-block moments rotated into the common north-referenced frame.
+Ntr = size(S.hh, 2);
+Mg = [];
+wsum = 0;
+for j0 = 1:NSUB:Ntr
+  j1 = min(j0 + NSUB - 1, Ntr);
+  Sb = struct('hh', S.hh(:,j0:j1), 'vv', S.vv(:,j0:j1), ...
+    'hv', S.hv(:,j0:j1), 'vh', S.vh(:,j0:j1));
+  Mb = ptt.quadpolMoments(Sb, [1 (j1-j0+1)]);
+  hb = mod(rad2deg(angle(mean(exp(2i*deg2rad(h_deg(j0:j1))))))/2, 180);
+  Mr = ptt.rotateMoments(Mb, -deg2rad(hb));
+  if isempty(Mg), Mg = zeros(size(Mr)); end
+  Mg = Mg + Mr * (j1-j0+1);
+  wsum = wsum + (j1-j0+1);
+end
+Mg = Mg / wsum;
 end
 
 function s = H_tick(ok)

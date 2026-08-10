@@ -6,7 +6,7 @@
 #   nohup bash site_chain.sh taylor_dome eastwind > site_chain.log 2>&1 &
 set -u
 FAB=/kucresis/scratch/hoffmana_sta/fabric
-cd "$FAB"
+cd "$FAB" || { echo "cannot cd to $FAB" >&2; exit 1; }
 echo "waiting for current batches to finish, $(date)"
 while pgrep -f "[c]oreg_batch.sh" > /dev/null || \
       pgrep -f "[i]nvert_one.sh" > /dev/null || \
