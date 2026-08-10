@@ -160,10 +160,12 @@ units).
     dlam is signed with no folded-noise floor, and theta0 abstains where
     the birefringence is unresolvable. Two-pass use: frame-level theta0,
     then per-block dlam with theta0 pinned.
-    KNOWN SYSTEMATIC (measured 10 Aug 2026, unresolved): dlam carries a
-    heading-family bias of order 0.01 (~15-20%) - 67 same-ice crossing
-    pairs between the N-S lines and the rows at Ridge A differ by +0.009
-    median with 94% sign consistency, consistent with residual
+    KNOWN SYSTEMATIC (measured 10 Aug 2026, unresolved, and CONFIRMED not
+    to be the heading-wrap bug - see below): dlam carries a
+    heading-family bias of order 0.01 (~15-20%) - same-ice crossing
+    pairs between the N-S lines and the rows at Ridge A differ by +0.007
+    median with 91% sign consistency (n = 45 frame-pair crossings,
+    `scripts/figures/crossing_pairs.py`), consistent with residual
     pedestal-fabric coupling that grows with the axis-to-antenna angle
     (N-S lines hold the axis ~6.5 deg from an antenna, rows ~18.5, the
     NW-SE connectors ~36.5 - nearest the 45-deg degenerate geometry, so
@@ -176,6 +178,16 @@ units).
     the pedestal at its source; the per-frame ls_pedestal record and the
     crossing-pair test (paired same-ice difference -> 0) are its inputs
     and acceptance criterion.
+    RULED OUT as the cause: the 0/180 heading-wrap interpolation bug
+    fixed in 0e793d5 lived exactly on the N-S family, so the 17 N-S and
+    curved Ridge A frames were reswept with the fixed code and compared
+    block for block against their pre-fix products. The deep dlam moved
+    by a median of 0.00000 over 660 blocks (99.8% under 0.001, largest
+    single block 0.005) and frame theta0 was unchanged to 0.1 deg: the
+    bug was real but the per-block circular mean over 125-200 traces
+    absorbed the handful of mis-interpolated headings it produced. The
+    family systematic is therefore instrument physics, not that defect,
+    and chan_equal is the right thing to build against it.
   - `ptt.coregisterChannels` - aligns every channel onto the reference by
     CALLING the OPR toolbox `coregistration`, deliberately with no
     implementation of its own (it errors if the toolbox is absent), so the
