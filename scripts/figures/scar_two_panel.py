@@ -77,7 +77,12 @@ def fabric_panel(ax, fig, tag, dist, lats, lons, t_us, surf_t_s, vmax,
     cells are white; the fabric occupies the constrained upper record and
     the canvas below stays empty exactly where the phase panel shows the
     incoherent deep record."""
-    with h5py.File(os.path.join(DATA, 'quadpol_section_%s.mat' % tag)) as f:
+    # prefer a deep variant (full-record z_max rerun) when one is staged
+    cand = sorted(glob.glob(os.path.join(DATA,
+                                         'quadpol_section_%s_z*.mat' % tag)))
+    sec_fn = cand[-1] if cand else os.path.join(
+        DATA, 'quadpol_section_%s.mat' % tag)
+    with h5py.File(sec_fn) as f:
         r = f['res']
         z = np.array(r['z']).ravel().astype(float)
         dl = np.atleast_2d(np.array(r['sec_dlam_ls']).T).astype(float)
