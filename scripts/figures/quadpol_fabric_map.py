@@ -5,8 +5,9 @@ Two layers per survey line. STRENGTH runs along the track: consecutive
 principal contrast (median LS sec_dlam_ls over 1150-1500 m), single-hue
 sequential, with abstained blocks left as gaps over the grey track.
 ORIENTATION is one fixed-length ink bar per frame: the LS fabric axis
-theta0 expressed geographically (circular median over the 200-1200 m
-windows plus the frame's track azimuth). Strength lives in colour and
+theta0 expressed geographically (circular median of ls_theta0_geo over
+the 200-1200 m windows; older section files without it fall back to
+antenna-frame theta0 plus the frame's track azimuth). Strength lives in colour and
 orientation in the bars, so neither is double-encoded. SCAR style
 otherwise: no legend box, a plain black scale bar, a projected north
 arrow, and a small horizontal colorbar as the sections use.
@@ -67,18 +68,25 @@ def main():
                 return float(np.array(r[k]).ravel()[0])
 
             zw = np.array(r['ls_zw']).ravel()
-            th0 = np.array(r['ls_theta0']).ravel()
-            track = g('track_az')
+            # ls_theta0_geo is already geographic on straight AND curved
+            # frames; older section files lack it, and on those (all
+            # straight) antenna-frame ls_theta0 plus track_az is the
+            # same quantity. Never add track_az to a curved frame's
+            # theta0: on a curve track_az means nothing.
+            if 'ls_theta0_geo' in r:
+                th_geo = np.array(r['ls_theta0_geo']).ravel()
+            else:
+                th_geo = np.array(r['ls_theta0']).ravel() + g('track_az')
             z = np.array(r['z']).ravel()
             secl = np.array(r['sec_dlam_ls']).T
             blat = np.array(r['sec_lat']).ravel()
             blon = np.array(r['sec_lon']).ravel()
-            m = (zw > Z_BAND[0]) & (zw < Z_BAND[1]) & np.isfinite(th0)
+            m = (zw > Z_BAND[0]) & (zw < Z_BAND[1]) & np.isfinite(th_geo)
             mz = (z > Z_DEEP[0]) & (z < Z_DEEP[1])
             if m.sum() < 5:
                 continue
             frames.append(dict(
-                th=circmedian_axis(th0[m] + track),
+                th=circmedian_axis(th_geo[m]),
                 blk_dl=np.nanmedian(secl[mz], axis=0),
                 blat=blat, blon=blon,
                 lat=g('lat'), lon=g('lon'), lat0=g('lat0'), lon0=g('lon0'),

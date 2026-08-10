@@ -265,14 +265,24 @@ ph0h = deg2rad(la(ih0)); ph1h = deg2rad(la(ih1));
 dlhh = deg2rad(lo(ih1) - lo(ih0));
 az_tr = mod(rad2deg(atan2(sin(dlhh).*cos(ph1h), ...
   cos(ph0h).*sin(ph1h) - sin(ph0h).*cos(ph1h).*cos(dlhh))), 180);
-az_tr = interp1((1:numel(az_tr)).' + SMH/2, az_tr, (1:Nx).', ...
-  'linear', 'extrap');
+% Interpolate the DOUBLED-ANGLE PHASOR, never the mod-180 angle: linear
+% interpolation across the 0/180 wrap sweeps through ~90 deg on lines
+% heading near north. Query points are clamped to the sample range (the
+% same rule the theta0 handoff follows) because a linear extrapolation
+% of a phasor can pass near zero.
+xi = (1:numel(az_tr)).' + SMH/2;
+ph2h = interp1(xi, exp(2i*deg2rad(az_tr)), ...
+  min(max((1:Nx).', xi(1)), xi(end)), 'linear');
+az_tr = mod(rad2deg(angle(ph2h))/2, 180);
 az0 = mod(rad2deg(angle(mean(exp(2i*deg2rad(az_tr)))))/2, 180);
 hdev = abs(mod(az_tr - az0 + 90, 180) - 90);
 hspread = prctile(hdev, 95);
 curved = hspread > 5;
 NBLK_ROT = 200;
-PSI_FIT = (0:2:178) * pi/180;   % the estimator's default sweep
+% The curved-path fit runs on this sweep; the step is passed to the
+% estimator in that call so the field and the fit grid cannot drift.
+PSI_STEP_FIT = 2;
+PSI_FIT = (0:PSI_STEP_FIT:180-PSI_STEP_FIT) * pi/180;
 
 if ~curved
   lsq = ptt.quadpolFabricLS(T, z, struct('fc', FC, 'deramped', true));
@@ -302,13 +312,15 @@ else
     clear Sb Mb Mr;
   end
   Mg = Mg / wsum;
-  c2h = mean(cosd(2*az_tr)); s2h = mean(sind(2*az_tr));
-  c4h = mean(cosd(4*az_tr)); s4h = mean(sind(4*az_tr));
+  mh2 = mean(exp(2i*deg2rad(az_tr)));
+  mh4 = mean(exp(4i*deg2rad(az_tr)));
+  c2h = real(mh2); s2h = imag(mh2);
+  c4h = real(mh4); s4h = imag(mh4);
   pfld = (ped_ant(1) + 1i*ped_ant(2)) ...
     * (c2h*sin(2*PSI_FIT(:)) - s2h*cos(2*PSI_FIT(:))) ...
     + ped_ant(3) * (0.5 - 0.5*(c4h*cos(4*PSI_FIT(:)) + s4h*sin(4*PSI_FIT(:))));
   lsq = ptt.quadpolFabricLS(struct('M', Mg), z, struct('fc', FC, ...
-    'deramped', true, 'pedestal', pfld));
+    'deramped', true, 'psi_step_deg', PSI_STEP_FIT, 'pedestal', pfld));
   th_geo_raw = lsq.theta0;   % the geographic fit reports geographically
 end
 
@@ -437,7 +449,7 @@ res = struct('tag', sprintf('%s_%03d', day_seg, frm), ...
   'ls_curved', curved, 'ls_hspread', hspread, ...
   'ls_dlam', single(lsq.dlam), 'ls_q_theta', single(lsq.q_theta), ...
   'ls_resid', single(lsq.resid), 'ls_gamma', single(lsq.gamma), ...
-  'ls_leak', single(lsq.leak), 'ls_pedestal', lsq.pedestal, ...
+  'ls_leak', single(lsq.leak), 'ls_pedestal', ped_ant, ...
   'theta0_ls', single(rad2deg(lsq.theta0_z(s))), ...
   'dlam_ls', single(lsq.dlam_z(s)), ...
   'sec_dlam_ls', single(sec_dlam_ls(s,:)), ...

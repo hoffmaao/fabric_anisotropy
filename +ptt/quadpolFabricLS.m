@@ -213,22 +213,34 @@ P = struct('z', z, 'zw', zw, 'half', half, 'jdec', jdec, 'psi', psi, ...
   'dd_max', dlam_max * grad_per_dlam, 'th_fix', th_fix);
 
 pedestal = nan(1, 3);
-if isnumeric(ped_in) && numel(ped_in) == numel(psi) && ~isreal(ped_in)
-  % precomputed complex pedestal field over the sweep azimuths
-  R = H_fit_windows(Cm, Wc, P, ped_in(:));
-  leak_diag = repmat(max(abs(ped_in(:))), Nw, 1);
-elseif isnumeric(ped_in) && numel(ped_in) == 3
-  pedestal = ped_in(:).';
-  R = H_fit_windows(Cm, Wc, P, pedestal);
-  leak_diag = repmat(norm(pedestal), Nw, 1);
-elseif strcmpi(ped_in, 'window')
+if isnumeric(ped_in)
+  % A caller-supplied pedestal must match one of the two documented
+  % shapes exactly; anything else is a bug at the call site (most likely
+  % a psi-grid mismatch with a precomputed field) and silently falling
+  % back to the two-pass frame estimate would hide it.
+  if numel(ped_in) == 3
+    pedestal = ped_in(:).';
+    R = H_fit_windows(Cm, Wc, P, pedestal);
+    leak_diag = repmat(norm(pedestal), Nw, 1);
+  elseif numel(ped_in) == numel(psi)
+    % precomputed pedestal field over the sweep azimuths
+    R = H_fit_windows(Cm, Wc, P, ped_in(:));
+    leak_diag = repmat(max(abs(ped_in(:))), Nw, 1);
+  else
+    error('ptt:quadpolFabricLS:pedestal', ...
+      ['numeric opts.pedestal must be [1 x 3] coefficients or a field ' ...
+      'over the %d sweep azimuths; got %d entries'], ...
+      numel(psi), numel(ped_in));
+  end
+elseif (ischar(ped_in) || isstring(ped_in)) && strcmpi(ped_in, 'window')
   R = H_fit_windows(Cm, Wc, P, []);
   leak_diag = R.leak;
   okp = all(isfinite(R.ped_coef), 2);
   if nnz(okp) >= 3
     pedestal = median(R.ped_coef(okp, :), 1);
   end
-else   % 'frame': the default two-pass
+elseif (ischar(ped_in) || isstring(ped_in)) && strcmpi(ped_in, 'frame')
+  % the default two-pass
   Ra = H_fit_windows(Cm, Wc, P, []);
   leak_diag = Ra.leak;
   okp = all(isfinite(Ra.ped_coef), 2);
@@ -238,6 +250,9 @@ else   % 'frame': the default two-pass
   else
     R = Ra;   % too few windows to trust a frame estimate
   end
+else
+  error('ptt:quadpolFabricLS:pedestal', ...
+    'opts.pedestal must be ''frame'', ''window'', [1 x 3], or a field');
 end
 
 theta0 = R.theta0; dlam = R.dlam / grad_per_dlam; gam = R.gam;
