@@ -160,6 +160,22 @@ units).
     dlam is signed with no folded-noise floor, and theta0 abstains where
     the birefringence is unresolvable. Two-pass use: frame-level theta0,
     then per-block dlam with theta0 pinned.
+    KNOWN SYSTEMATIC (measured 10 Aug 2026, unresolved): dlam carries a
+    heading-family bias of order 0.01 (~15-20%) - 67 same-ice crossing
+    pairs between the N-S lines and the rows at Ridge A differ by +0.009
+    median with 94% sign consistency, consistent with residual
+    pedestal-fabric coupling that grows with the axis-to-antenna angle
+    (N-S lines hold the axis ~6.5 deg from an antenna, rows ~18.5, the
+    NW-SE connectors ~36.5 - nearest the 45-deg degenerate geometry, so
+    their end-of-row stubs read visibly different strength). Orientation
+    is unaffected. Until fixed, quote deep dlam with a +-0.005-0.01
+    family systematic; near-aligned lines are least coupled and read
+    high (0.067-0.074 deep at Ridge A). THE PLANNED FIX is raw-channel
+    calibration (chan_equal): fit the complex HV/VH leakage once per
+    system at the channel level and correct BEFORE synthesis, removing
+    the pedestal at its source; the per-frame ls_pedestal record and the
+    crossing-pair test (paired same-ice difference -> 0) are its inputs
+    and acceptance criterion.
   - `ptt.coregisterChannels` - aligns every channel onto the reference by
     CALLING the OPR toolbox `coregistration`, deliberately with no
     implementation of its own (it errors if the toolbox is absent), so the
