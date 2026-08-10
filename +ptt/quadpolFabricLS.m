@@ -75,7 +75,11 @@ function out = quadpolFabricLS(S, z, opts)
 % block-to-block axis jitter, and a consistent calibration.
 %
 % Inputs
-%   S     struct of complex [Nt x Nx] channels hh, vv, hv, vh
+%   S     struct of complex [Nt x Nx] channels hh, vv, hv, vh; OR a
+%         struct with field M ([Nt x 4 x 4] moments from
+%         ptt.quadpolMoments / ptt.rotateMoments) when the caller has
+%         already built - and possibly heading-compensated - the moment
+%         matrix, as the curved-line path does
 %   z     [Nt x 1] depth [m]
 %   opts  fc (750e6), psi_step_deg (2), psi_offset_deg (0),
 %         win_short_m (10, coherence
@@ -84,8 +88,13 @@ function out = quadpolFabricLS(S, z, opts)
 %         theta0 ([] = estimate; else radians, scalar or [Nw x 1] or a
 %         struct('z', 'theta') interpolated as a DOUBLED-ANGLE PHASOR),
 %         pedestal ('frame' default: two-pass, frame-level estimate;
-%         'window': free per window; or a [1 x 3] vector [a1 a2 a3] to
-%         pin, e.g. the frame estimate handed to per-block fits),
+%         'window': free per window; a [1 x 3] vector [a1 a2 a3] to
+%         anchor, e.g. the frame estimate handed to per-block fits; or a
+%         complex [Npsi x 1] pedestal FIELD to subtract - the curved-line
+%         path builds that field from the survey-calibrated antenna-frame
+%         pedestal mixed over the measured heading distribution, since
+%         rotating a sub-block's moments by -h maps the antenna bases
+%         sin2(phi) to sin2(psi - h)),
 %         q_min (0.05), dlam_min_theta (0.01), theta_step_deg (3),
 %         weighting ('crb' default | 'uniform')
 %
@@ -124,8 +133,21 @@ grad_per_dlam = 2 * pi * fc * C.deps / (n_ice * C.c * 1e9);   % rad/m
 % --- multilooked coherence over the full sweep. quadpolMoments averages
 % the traces; the range term supplies the short window, so A.chhvv is
 % already the windowed coherence of Ershadi eq. (7) at every azimuth.
-nr = max(3, round(win_short / max(dz, eps)));
-M = ptt.quadpolMoments(S, [nr size(S.hh, 2)]);
+if isfield(S, 'M') && ~isfield(S, 'hh')
+  % caller-supplied (possibly geographic-frame) moments; the short-window
+  % multilook then happens on the moment rows
+  M = S.M;
+  nr = max(3, round(win_short / max(dz, eps)));
+  kr = ones(nr, 1) / nr;
+  for k = 1:4
+    for l = 1:4
+      M(:, k, l) = conv(M(:, k, l), kr, 'same');
+    end
+  end
+else
+  nr = max(3, round(win_short / max(dz, eps)));
+  M = ptt.quadpolMoments(S, [nr size(S.hh, 2)]);
+end
 % psi_offset_deg shifts the whole synthesis grid; two runs at half
 % density and complementary offsets give interleaved azimuth halves for
 % split-sample systematics tests.
@@ -191,18 +213,34 @@ P = struct('z', z, 'zw', zw, 'half', half, 'jdec', jdec, 'psi', psi, ...
   'dd_max', dlam_max * grad_per_dlam, 'th_fix', th_fix);
 
 pedestal = nan(1, 3);
-if isnumeric(ped_in) && numel(ped_in) == 3
-  pedestal = ped_in(:).';
-  R = H_fit_windows(Cm, Wc, P, pedestal);
-  leak_diag = repmat(norm(pedestal), Nw, 1);
-elseif strcmpi(ped_in, 'window')
+if isnumeric(ped_in)
+  % A caller-supplied pedestal must match one of the two documented
+  % shapes exactly; anything else is a bug at the call site (most likely
+  % a psi-grid mismatch with a precomputed field) and silently falling
+  % back to the two-pass frame estimate would hide it.
+  if numel(ped_in) == 3
+    pedestal = ped_in(:).';
+    R = H_fit_windows(Cm, Wc, P, pedestal);
+    leak_diag = repmat(norm(pedestal), Nw, 1);
+  elseif numel(ped_in) == numel(psi)
+    % precomputed pedestal field over the sweep azimuths
+    R = H_fit_windows(Cm, Wc, P, ped_in(:));
+    leak_diag = repmat(max(abs(ped_in(:))), Nw, 1);
+  else
+    error('ptt:quadpolFabricLS:pedestal', ...
+      ['numeric opts.pedestal must be [1 x 3] coefficients or a field ' ...
+      'over the %d sweep azimuths; got %d entries'], ...
+      numel(psi), numel(ped_in));
+  end
+elseif (ischar(ped_in) || isstring(ped_in)) && strcmpi(ped_in, 'window')
   R = H_fit_windows(Cm, Wc, P, []);
   leak_diag = R.leak;
   okp = all(isfinite(R.ped_coef), 2);
   if nnz(okp) >= 3
     pedestal = median(R.ped_coef(okp, :), 1);
   end
-else   % 'frame': the default two-pass
+elseif (ischar(ped_in) || isstring(ped_in)) && strcmpi(ped_in, 'frame')
+  % the default two-pass
   Ra = H_fit_windows(Cm, Wc, P, []);
   leak_diag = Ra.leak;
   okp = all(isfinite(Ra.ped_coef), 2);
@@ -212,6 +250,9 @@ else   % 'frame': the default two-pass
   else
     R = Ra;   % too few windows to trust a frame estimate
   end
+else
+  error('ptt:quadpolFabricLS:pedestal', ...
+    'opts.pedestal must be ''frame'', ''window'', [1 x 3], or a field');
 end
 
 theta0 = R.theta0; dlam = R.dlam / grad_per_dlam; gam = R.gam;
@@ -276,7 +317,11 @@ s2b = sb.^2;
 free_ped = isempty(ped);
 tau_rel = 0.02;          % light ridge while the pedestal is being found
 if ~free_ped
-  pf = (ped(1) + 1i*ped(2)) * sb + ped(3) * s2b;   % [Nk x 1]
+  if numel(ped) == 3
+    pf = (ped(1) + 1i*ped(2)) * sb + ped(3) * s2b;   % [Nk x 1]
+  else
+    pf = ped(:);          % precomputed field over the sweep azimuths
+  end
   tau_rel = 0.15;        % strong anchor on the per-window deviation
 end
 os = optimset('Display', 'off', 'MaxFunEvals', 400, 'MaxIter', 400, ...

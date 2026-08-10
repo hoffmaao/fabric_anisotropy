@@ -40,7 +40,18 @@ addpath('/kucresis/scratch/hoffmana_sta/fabric/code');
 CHAN = {'hh','vv','hv','vh'};
 NRW = 101;
 Z_BAND = [200 1200];
-Z_MAX = 1500;
+% z_max is overridable (like day_seg/frm) for special runs that need the
+% full record - e.g. the SCAR figures whose fabric panel must span the
+% same depth range as the wrapped-phase panel. Non-default depths get
+% their own cache and output names so they can NEVER clobber the
+% standard 1500 m products the batches build and consume.
+if ~exist('z_max', 'var') || isempty(z_max), z_max = 1500; end
+Z_MAX = z_max;
+if z_max ~= 1500
+  ZTAG = sprintf('_z%d', round(z_max));
+else
+  ZTAG = '';
+end
 FC = 750e6;
 PSI_STEP_DEG = 1;
 % Traces per along-track block for the SECTION. 125 is what run_sections.m
@@ -129,7 +140,7 @@ fprintf('depth window %.0f..%.0f m (%d samples)\n', z(1), z(end), numel(z));
 % fresh coregistration.
 pairs = {'hh','vv'; 'hh','hv'; 'hh','vh'; 'hv','vh'};
 cache_fn = fullfile(out_dir, 'coreg_cache', ...
-  sprintf('creg_%s_%03d.mat', day_seg, frm));
+  sprintf('creg_%s_%03d%s.mat', day_seg, frm, ZTAG));
 from_cache = false;
 if exist(cache_fn, 'file') == 2
   try
@@ -231,42 +242,121 @@ fprintf('\nershadi inversion %.1f min\n', toc(t0)/60);
 % takes the axis from the coherence field itself and models the nulls
 % instead of gating on them; see ptt.quadpolFabricLS and test_quadpol_ls.
 t0 = tic;
-lsq = ptt.quadpolFabricLS(T, z, struct('fc', FC, 'deramped', true));
-okt = isfinite(lsq.theta0);
+p0 = deg2rad(la(1)); p1 = deg2rad(la(end));
+dl = deg2rad(lo(end) - lo(1));
+track_az = mod(rad2deg(atan2(sin(dl)*cos(p1), ...
+  cos(p0)*sin(p1) - sin(p0)*cos(p1)*cos(dl))), 180);
+
+% Per-trace heading, for the curving-line path and the per-block theta0
+% handoff. On a CURVE the fabric rotates through the antennas along the
+% drive: antenna-frame moment averaging smears it away (dlam collapses,
+% theta0 is meaningless, and track_az itself stops meaning anything),
+% while the antenna-fixed pedestal adds coherently. So: pedestal is
+% calibrated from the antenna-frame pass either way; theta0/dlam on a
+% curved frame are fitted in the GEOGRAPHIC frame from per-sub-block
+% moments rotated north-referenced, with the pedestal entering as a
+% precomputed field mixed over the measured heading distribution
+% (rotation carries sin2(phi) to sin2(psi - h)); and every block inherits
+% theta0 converted through its OWN heading rather than the frame's.
+% test_quadpol_curved.m validates the geographic path on a 90-deg arc.
+SMH = 51;
+ih0 = 1:(Nx-SMH); ih1 = (1+SMH):Nx;
+ph0h = deg2rad(la(ih0)); ph1h = deg2rad(la(ih1));
+dlhh = deg2rad(lo(ih1) - lo(ih0));
+az_tr = mod(rad2deg(atan2(sin(dlhh).*cos(ph1h), ...
+  cos(ph0h).*sin(ph1h) - sin(ph0h).*cos(ph1h).*cos(dlhh))), 180);
+% Interpolate the DOUBLED-ANGLE PHASOR, never the mod-180 angle: linear
+% interpolation across the 0/180 wrap sweeps through ~90 deg on lines
+% heading near north. Query points are clamped to the sample range (the
+% same rule the theta0 handoff follows) because a linear extrapolation
+% of a phasor can pass near zero.
+xi = (1:numel(az_tr)).' + SMH/2;
+ph2h = interp1(xi, exp(2i*deg2rad(az_tr)), ...
+  min(max((1:Nx).', xi(1)), xi(end)), 'linear');
+az_tr = mod(rad2deg(angle(ph2h))/2, 180);
+az0 = mod(rad2deg(angle(mean(exp(2i*deg2rad(az_tr)))))/2, 180);
+hdev = abs(mod(az_tr - az0 + 90, 180) - 90);
+hspread = prctile(hdev, 95);
+curved = hspread > 5;
+NBLK_ROT = 200;
+% The curved-path fit runs on this sweep; the step is passed to the
+% estimator in that call so the field and the fit grid cannot drift.
+PSI_STEP_FIT = 2;
+PSI_FIT = (0:PSI_STEP_FIT:180-PSI_STEP_FIT) * pi/180;
+
+if ~curved
+  lsq = ptt.quadpolFabricLS(T, z, struct('fc', FC, 'deramped', true));
+  ped_ant = lsq.pedestal;
+  th_geo_raw = lsq.theta0 + deg2rad(track_az);
+else
+  % antenna-frame single pass: theta/dlam are junk on a curve, but the
+  % pedestal estimate is CLEANER than on a straight line (fabric smears,
+  % instrument adds coherently)
+  lsa = ptt.quadpolFabricLS(T, z, struct('fc', FC, 'deramped', true, ...
+    'pedestal', 'window'));
+  ped_ant = lsa.pedestal;
+  if ~all(isfinite(ped_ant)), ped_ant = [0 0 0]; end
+  Mg = [];
+  wsum = 0;
+  for jr = 1:NBLK_ROT:Nx
+    jr1 = min(jr + NBLK_ROT - 1, Nx);
+    if jr1 - jr < 16, continue; end
+    Sb = struct();
+    for k = 1:4, Sb.(CHAN{k}) = T.(CHAN{k})(:, jr:jr1); end
+    Mb = ptt.quadpolMoments(Sb, [1 (jr1-jr+1)]);
+    hb = mod(rad2deg(angle(mean(exp(2i*deg2rad(az_tr(jr:jr1))))))/2, 180);
+    Mr = ptt.rotateMoments(Mb, -deg2rad(hb));
+    if isempty(Mg), Mg = zeros(size(Mr)); end
+    Mg = Mg + Mr * (jr1-jr+1);
+    wsum = wsum + (jr1-jr+1);
+    clear Sb Mb Mr;
+  end
+  Mg = Mg / wsum;
+  mh2 = mean(exp(2i*deg2rad(az_tr)));
+  mh4 = mean(exp(4i*deg2rad(az_tr)));
+  c2h = real(mh2); s2h = imag(mh2);
+  c4h = real(mh4); s4h = imag(mh4);
+  pfld = (ped_ant(1) + 1i*ped_ant(2)) ...
+    * (c2h*sin(2*PSI_FIT(:)) - s2h*cos(2*PSI_FIT(:))) ...
+    + ped_ant(3) * (0.5 - 0.5*(c4h*cos(4*PSI_FIT(:)) + s4h*sin(4*PSI_FIT(:))));
+  lsq = ptt.quadpolFabricLS(struct('M', Mg), z, struct('fc', FC, ...
+    'deramped', true, 'psi_step_deg', PSI_STEP_FIT, 'pedestal', pfld));
+  th_geo_raw = lsq.theta0;   % the geographic fit reports geographically
+end
+
+okt = isfinite(th_geo_raw);
 if nnz(okt) >= 2
-  % Hand the blocks a SMOOTHED axis, built on the doubled-angle phasor
-  % weighted by each window's own theta0 contrast - never an unwrapped
-  % angle. A weak window can fit the conjugate branch (a 90 deg flip);
-  % smoothing the phasor votes it down, where an unwrap would have
-  % propagated it to every window below as a silent axis slip.
+  % Hand the blocks a SMOOTHED GEOGRAPHIC axis, built on the doubled-angle
+  % phasor weighted by each window's own theta0 contrast - never an
+  % unwrapped angle. Each block converts it into its own antenna frame
+  % through its own heading below.
   qw = lsq.q_theta;
   qw(~isfinite(qw) | qw < 0) = 0;
-  ph = qw .* exp(2i * lsq.theta0);
+  ph = qw .* exp(2i * th_geo_raw);
   ph(~okt) = 0;
   ks = ones(5, 1);
   num_p = conv(ph, ks, 'same');
   den_p = conv(qw .* double(okt), ks, 'same');
   oks = den_p > 0.25 & abs(num_p) > 0;
   if nnz(oks) >= 2
-    th_prof = struct('z', lsq.zw(oks), 'theta', 0.5 * angle(num_p(oks)));
+    th_geo_prof = struct('z', lsq.zw(oks), 'theta', 0.5 * angle(num_p(oks)));
   else
-    th_prof = struct('z', lsq.zw(okt), 'theta', lsq.theta0(okt));
+    th_geo_prof = struct('z', lsq.zw(okt), 'theta', th_geo_raw(okt));
   end
 else
-  th_prof = [];   % nothing usable; let the blocks estimate their own
+  th_geo_prof = [];   % nothing usable; let the blocks estimate their own
 end
-% The blocks inherit the frame-level pedestal along with theta0: both are
-% instrument-or-site constants at block scale, and pinning them keeps the
-% per-block problem two-parameter and immune to the per-window
-% pedestal/fabric confusion at axes near 45 deg to the antennas.
-if all(isfinite(lsq.pedestal))
-  blk_ped = lsq.pedestal;
+% Blocks inherit the ANTENNA-frame pedestal (an instrument constant, so it
+% is the same in every block's own frame) and the geographic axis.
+if all(isfinite(ped_ant))
+  blk_ped = ped_ant;
 else
   blk_ped = 'frame';
 end
-fprintf(['LS frame pass %.1f min: theta0 constrained on %d of %d windows, ' ...
-  'pedestal [%.3f %+.3fi %.3f]\n'], toc(t0)/60, nnz(okt), ...
-  numel(lsq.theta0), lsq.pedestal(1), lsq.pedestal(2), lsq.pedestal(3));
+fprintf(['LS frame pass %.1f min (%s, heading p95 spread %.1f deg): ' ...
+  'theta0 constrained on %d of %d windows, pedestal [%.3f %+.3fi %.3f]\n'], ...
+  toc(t0)/60, H_tag(curved, 'GEOGRAPHIC frame', 'antenna frame'), hspread, ...
+  nnz(okt), numel(th_geo_raw), ped_ant(1), ped_ant(2), ped_ant(3));
 
 %% 4b. the SECTION: both estimators, per along-track block
 % The frame-average profile above answers "what is the fabric here"; this
@@ -295,8 +385,15 @@ for b = 1:nb
   sec_dlam(:, b) = ob.dlam;
   sec_theta(:, b) = rad2deg(ob.theta);
   sec_cmag(:, b) = ob.Cmag(:, 1);
+  hb_blk = mod(rad2deg(angle(mean(exp(2i*deg2rad(az_tr(j0:j1))))))/2, 180);
+  if isstruct(th_geo_prof)
+    th_b = struct('z', th_geo_prof.z, ...
+      'theta', th_geo_prof.theta - deg2rad(hb_blk));
+  else
+    th_b = [];
+  end
   ob_ls = ptt.quadpolFabricLS(Tb, z, struct('fc', FC, 'deramped', true, ...
-    'theta0', th_prof, 'pedestal', blk_ped));
+    'theta0', th_b, 'pedestal', blk_ped));
   sec_dlam_ls(:, b) = ob_ls.dlam_z;
   sec_resid_ls(:, b) = interp1(ob_ls.zw, ob_ls.resid, z, 'linear');
   sec_lat(b) = mean(la(j0:j1));
@@ -313,11 +410,6 @@ fprintf('section dlam %.3f..%.3f (median %.3f) | LS median %.3f\n', ...
   min(sec_dlam(:)), max(sec_dlam(:)), median(sec_dlam(:), 'omitnan'), ...
   median(sec_dlam_ls(:), 'omitnan'));
 
-p0 = deg2rad(la(1)); p1 = deg2rad(la(end));
-dl = deg2rad(lo(end) - lo(1));
-track_az = mod(rad2deg(atan2(sin(dl)*cos(p1), ...
-  cos(p0)*sin(p1) - sin(p0)*cos(p1)*cos(dl))), 180);
-
 zb = band;
 fprintf('\n%-14s %10s %10s\n', '', 'coreg', 'raw');
 fprintf('%-14s %10.1f %10.1f\n', 'theta_ant', ...
@@ -331,9 +423,8 @@ fprintf('%-14s %10.3f %10.3f\n', '|C_hhvv|', ...
   median(out.Cmag(zb,1), 'omitnan'), median(out_raw.Cmag(zb,1), 'omitnan'));
 fprintf('%-14s %10.1f\n', 'track_az', track_az);
 zw_band = lsq.zw > Z_BAND(1) & lsq.zw < Z_BAND(2);
-fprintf('\nLS fit (frame): theta0_ant %.1f  theta0_geo %.1f  dlam %.3f  ' ...
-  , H_cmed(rad2deg(lsq.theta0(zw_band))), ...
-  mod(H_cmed(rad2deg(lsq.theta0(zw_band))) + track_az, 180), ...
+fprintf('\nLS fit (frame): theta0_geo %.1f  dlam %.3f  ' ...
+  , H_cmed(rad2deg(th_geo_raw(zw_band))), ...
   median(lsq.dlam(zw_band), 'omitnan'));
 fprintf('resid %.3f  q_theta %.2f\n', ...
   median(lsq.resid(zw_band), 'omitnan'), ...
@@ -354,9 +445,11 @@ res = struct('tag', sprintf('%s_%03d', day_seg, frm), ...
   'theta_raw', single(rad2deg(out_raw.theta(s))), ...
   'dlam_raw', single(out_raw.dlam(s)), ...
   'ls_zw', single(lsq.zw), 'ls_theta0', single(rad2deg(lsq.theta0)), ...
+  'ls_theta0_geo', single(rad2deg(th_geo_raw)), ...
+  'ls_curved', curved, 'ls_hspread', hspread, ...
   'ls_dlam', single(lsq.dlam), 'ls_q_theta', single(lsq.q_theta), ...
   'ls_resid', single(lsq.resid), 'ls_gamma', single(lsq.gamma), ...
-  'ls_leak', single(lsq.leak), 'ls_pedestal', lsq.pedestal, ...
+  'ls_leak', single(lsq.leak), 'ls_pedestal', ped_ant, ...
   'theta0_ls', single(rad2deg(lsq.theta0_z(s))), ...
   'dlam_ls', single(lsq.dlam_z(s)), ...
   'sec_dlam_ls', single(sec_dlam_ls(s,:)), ...
@@ -374,7 +467,8 @@ res = struct('tag', sprintf('%s_%03d', day_seg, frm), ...
 % mirror to the same figure staging directory. Sharing the name would let
 % whichever ran last break the other figure's reader, since this file is a
 % single `res` struct instead.
-out_fn = fullfile(out_dir, sprintf('quadpol_section_%s_%03d.mat', day_seg, frm));
+out_fn = fullfile(out_dir, ...
+  sprintf('quadpol_section_%s_%03d%s.mat', day_seg, frm, ZTAG));
 save(out_fn, '-v7.3', 'res');
 fprintf('\nwrote %s (total %.1f min)\n', out_fn, toc(t_all)/60);
 
