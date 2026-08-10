@@ -42,7 +42,14 @@ FN = os.path.join(DATA, 'ershadi_%s.mat' % SITE)
 RECIP_MIN = 0.5     # HV/VH coherence a block must clear
 SPREAD_MAX = 3.0    # deg of heading wander allowed inside one block
 QUAL_MIN = 1.0      # dB of cross-pol azimuthal modulation
-REF_P = 0.05        # the independent two-azimuth solve, for scale only
+# Scale bar for panel (d): the quad-pol LS contrast over the SAME 200-1200 m
+# band run_ershadi_survey.m summarises each block over, so the two numbers are
+# directly comparable. Per site, because drawing one site's contrast across
+# another's blocks would be a comparison to nothing. Ridge A: median of
+# sec_dlam_ls over the 36-frame survey (1.9e6 cells, p25/p75 0.029/0.067).
+# This replaces the earlier two-azimuth solve reference, which the LS
+# estimator superseded - its correlated (theta, P) errors biased it high.
+REF_DLAM = {'ridge_a': 0.052}
 # Ershadi et al. gate on |C_HHVV| > 0.4. This survey never reaches it - the
 # maximum over 1790 blocks is 0.359 and the median 0.221 - so the number is
 # carried here to be drawn as the bar the data does not clear, rather than
@@ -129,9 +136,21 @@ def main():
     gs = fig.add_gridspec(1, 4, width_ratios=[1.15, 1.0, 1.0, 1.0])
     axa, axb, axc, axd = [fig.add_subplot(gs[0, i]) for i in range(4)]
 
-    gr = np.linspace(0, 180, 2)
-    axa.plot(gr, gr, '-', color='#c0392b', lw=1.6, zorder=2,
-             label='fixed in ANTENNA frame')
+    # The antenna-frame hypothesis is theta_geo = theta_ant + heading (mod
+    # 180) - that is exactly how run_ershadi_survey.m forms theta_geo - so the
+    # line to draw is offset by the measured theta_ant, NOT the 1:1 diagonal.
+    # Drawn at the 1:1 line the reference sat a whole theta_ant below the data
+    # and the blocks appeared to support neither hypothesis, which is the
+    # opposite of what the panel exists to show.
+    th_ant0 = circ_mean(ta)
+    gr = np.linspace(0, 180, 361)
+    pred = (gr + th_ant0) % 180
+    # split at the mod-180 wrap so no vertical stroke is drawn across the panel
+    cut = np.flatnonzero(np.abs(np.diff(pred)) > 90) + 1
+    lab = (r'fixed in ANTENNA frame ($\theta_{\rm ant}$ = %.0f$^\circ$)'
+           % th_ant0)
+    axa.plot(np.insert(gr, cut, np.nan), np.insert(pred, cut, np.nan),
+             '-', color='#c0392b', lw=1.6, zorder=2, label=lab)
     axa.axhline(circ_mean(tg), color='#1baf7a', lw=1.6, ls='--', zorder=2,
                 label='fixed in GEOGRAPHIC frame')
     axa.plot(az, tg, 'o', color=C_OK, ms=4, alpha=0.55,
@@ -145,7 +164,9 @@ def main():
     axa.set_ylabel(r'recovered $\theta$ (deg E of N)', color=INK)
     axa.set_title('(a) heading test, %d blocks' % keep.sum(), fontsize=10,
                   color=INK)
-    axa.legend(loc='upper left', fontsize=7, frameon=False)
+    # lower left: the only corner neither branch of the wrapped antenna line
+    # nor the geographic line runs through
+    axa.legend(loc='lower left', fontsize=7, frameon=False)
 
     axb.plot(az, ta, 'o', color=C_OK, ms=4, alpha=0.55,
              markeredgecolor='none')
@@ -171,15 +192,17 @@ def main():
 
     axd.plot(az, dl, 'o', color=C_OK, ms=4, alpha=0.55,
              markeredgecolor='none')
-    axd.axhline(REF_P, color='black', lw=1.4, ls='--',
-                label='two-azimuth solve')
+    if SITE in REF_DLAM:
+        axd.axhline(REF_DLAM[SITE], color='black', lw=1.4, ls='--',
+                    label='quad-pol LS, same band')
     axd.set_xlim(0, 180)
     axd.set_xticks([0, 45, 90, 135, 180])
     axd.set_ylim(0, max(0.12, float(np.nanpercentile(dl, 97))))
     axd.set_xlabel('block heading (deg E of N)', color=INK)
     axd.set_ylabel(r'$\Delta\lambda$', color=INK)
     axd.set_title('(d) contrast vs heading', fontsize=10, color=INK)
-    axd.legend(loc='upper right', fontsize=7.5, frameon=False)
+    if SITE in REF_DLAM:
+        axd.legend(loc='upper right', fontsize=7.5, frameon=False)
 
     for ax in (axa, axb, axc, axd):
         ax.grid(alpha=0.25, lw=0.6)
