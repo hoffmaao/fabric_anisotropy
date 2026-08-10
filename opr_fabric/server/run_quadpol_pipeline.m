@@ -40,7 +40,18 @@ addpath('/kucresis/scratch/hoffmana_sta/fabric/code');
 CHAN = {'hh','vv','hv','vh'};
 NRW = 101;
 Z_BAND = [200 1200];
-Z_MAX = 1500;
+% z_max is overridable (like day_seg/frm) for special runs that need the
+% full record - e.g. the SCAR figures whose fabric panel must span the
+% same depth range as the wrapped-phase panel. Non-default depths get
+% their own cache and output names so they can NEVER clobber the
+% standard 1500 m products the batches build and consume.
+if ~exist('z_max', 'var') || isempty(z_max), z_max = 1500; end
+Z_MAX = z_max;
+if z_max ~= 1500
+  ZTAG = sprintf('_z%d', round(z_max));
+else
+  ZTAG = '';
+end
 FC = 750e6;
 PSI_STEP_DEG = 1;
 % Traces per along-track block for the SECTION. 125 is what run_sections.m
@@ -129,7 +140,7 @@ fprintf('depth window %.0f..%.0f m (%d samples)\n', z(1), z(end), numel(z));
 % fresh coregistration.
 pairs = {'hh','vv'; 'hh','hv'; 'hh','vh'; 'hv','vh'};
 cache_fn = fullfile(out_dir, 'coreg_cache', ...
-  sprintf('creg_%s_%03d.mat', day_seg, frm));
+  sprintf('creg_%s_%03d%s.mat', day_seg, frm, ZTAG));
 from_cache = false;
 if exist(cache_fn, 'file') == 2
   try
@@ -444,7 +455,8 @@ res = struct('tag', sprintf('%s_%03d', day_seg, frm), ...
 % mirror to the same figure staging directory. Sharing the name would let
 % whichever ran last break the other figure's reader, since this file is a
 % single `res` struct instead.
-out_fn = fullfile(out_dir, sprintf('quadpol_section_%s_%03d.mat', day_seg, frm));
+out_fn = fullfile(out_dir, ...
+  sprintf('quadpol_section_%s_%03d%s.mat', day_seg, frm, ZTAG));
 save(out_fn, '-v7.3', 'res');
 fprintf('\nwrote %s (total %.1f min)\n', out_fn, toc(t_all)/60);
 
