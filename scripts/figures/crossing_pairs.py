@@ -6,7 +6,7 @@ the real NW-SE spatial gradient at Ridge A, but where two survey lines
 from different families CROSS, their nearest along-track blocks see the
 same ice, so the paired difference isolates whatever the acquisition
 geometry adds. On the Ridge A sections as of 11 Aug 2026: N-S minus row
-= +0.0068 median over 49 crossings, 90% positive - a ~15-20%
+= +0.0068 median over 45 crossings, 91% positive - a ~15-20%
 family-dependent bias on identical ice, consistent with residual
 pedestal-fabric coupling growing with the axis-to-antenna angle. The
 NW-SE minus row combination (-0.0271, n = 16) comes from one cluster of
@@ -26,9 +26,11 @@ finite cells); position = the block centre; family from the block's OWN
 sec_az (curved connectors change family mid-frame), by nearest family
 axis: N-S ~ 0/180, rows ~ 79, NW-SE ~ 148. A pair = the closest
 cross-frame, cross-family block pair within max_sep, deduped to one per
-CROSSING (frame pair plus a CROSS_BIN cell), so a cluster of blocks
-meeting at one crossing votes once while two frames that cross twice
-count twice. The sign test treats pairs as independent when they are not
+CROSSING by clustering a frame pair's candidates on midpoint proximity
+(CROSS_RADIUS), so a cluster of blocks meeting at one crossing votes once
+while two frames that cross twice count twice. No frame pair crosses
+twice in this survey, so every one of the 45 contributes a single pair.
+The sign test treats pairs as independent when they are not
 - one block can be the closest match at several crossings - so its p is
 optimistic. z_max special runs (_z<N> tags) are excluded: they duplicate
 batch frames.
@@ -57,7 +59,11 @@ MAX_SEP = float(sys.argv[2]) if len(sys.argv) > 2 else 300.0
 PREFIX = sys.argv[3] if len(sys.argv) > 3 else '2025'
 Z_DEEP = (1150.0, 1500.0)     # same contrast band the map figure encodes
 MIN_CELLS = 5                 # finite section cells required in the band
-CROSS_BIN = 1000.0            # crossings this far apart are separate events
+# Two candidate pairs of the same frame pair are the same crossing when
+# their midpoints are closer than this. It has to exceed the ~125 m block
+# spacing, so every block meeting at one crossing groups together, and stay
+# well under the several km between distinct crossings of two frames.
+CROSS_RADIUS = 500.0
 BLUE = '#2a78d6'
 
 # Family axes [deg, mod 180] measured from the survey itself; a block
@@ -122,26 +128,38 @@ def pair_families(tags, x, y, fam, dl, fa, fb):
 
     The crossing, not the frame pair, is the unit: two frames that cross
     twice are two independent samples of the ice, while the cluster of
-    blocks meeting at one crossing is a single sample, so the key is the
-    frame pair plus the CROSS_BIN cell the pair midpoint falls in. Blocks
-    of the SAME frame never pair: a curved connector changes family at its
-    turn, and its two sides are one continuous track, not a crossing.
+    blocks meeting at one crossing is a single sample. Candidates of one
+    frame pair are therefore CLUSTERED by midpoint proximity rather than
+    snapped to a fixed grid, which is not translation invariant: a cluster
+    straddling a cell boundary would split and vote twice, the exact
+    double-count this exists to prevent. Closest candidate first, so each
+    cluster is represented by its own tightest pair.
     """
     ia = np.flatnonzero(fam == fa)
     ib = np.flatnonzero(fam == fb)
-    best = {}
+    cand = {}
     for i in ia:
         d = np.hypot(x[ib] - x[i], y[ib] - y[i])
         for k in np.flatnonzero(d < MAX_SEP):
             j = ib[k]
+            # One continuous track at its turn is not a crossing. On the
+            # current Ridge A sections this removes nothing: a connector's
+            # turn blocks fall in the gaps between the family tolerances
+            # and go unclassified, so it is an invariant, not a filter.
             if tags[i] == tags[j]:
                 continue
-            key = (tags[i], tags[j],
-                   int(round(0.5 * (x[i] + x[j]) / CROSS_BIN)),
-                   int(round(0.5 * (y[i] + y[j]) / CROSS_BIN)))
-            if key not in best or d[k] < best[key][0]:
-                best[key] = (d[k], i, j)
-    pairs = [(i, j, s) for s, i, j in best.values()]
+            cand.setdefault((str(tags[i]), str(tags[j])), []).append(
+                (float(d[k]), int(i), int(j)))
+    pairs = []
+    for key in sorted(cand):
+        seen = []
+        for s, i, j in sorted(cand[key]):
+            mx, my = 0.5 * (x[i] + x[j]), 0.5 * (y[i] + y[j])
+            if any(np.hypot(mx - px, my - py) <= CROSS_RADIUS
+                   for px, py in seen):
+                continue
+            seen.append((mx, my))
+            pairs.append((i, j, s))
     diffs = np.array([dl[i] - dl[j] for i, j, _ in pairs])
     return pairs, diffs
 

@@ -13,7 +13,7 @@ them.
                                                 nothing about the fabric
 
 Panel (a) is that test. The failure mode is the diagonal OFFSET by the
-measured theta_ant, because run_quadpol_frame.m forms theta_geo as
+measured theta_ant, because run_quadpol_survey.m forms theta_geo as
 theta_ant + track azimuth (mod 180): any point on that line has theta
 fixed in the ANTENNA frame. The horizontal is the success mode.
 
@@ -123,7 +123,7 @@ def main():
     axc = fig.add_subplot(gs[0, 2])
     axd = fig.add_subplot(gs[0, 3])
 
-    # (a) the test. run_quadpol_frame.m forms theta_geo = theta_ant +
+    # (a) the test. run_quadpol_survey.m forms theta_geo = theta_ant +
     # track_az (mod 180), so the antenna-frame hypothesis is the diagonal
     # offset by the measured theta_ant, not the 1:1 line: drawn at 1:1 the
     # frames sit a whole theta_ant above their own reference.
