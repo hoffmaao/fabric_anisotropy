@@ -162,15 +162,18 @@ units).
     then per-block dlam with theta0 pinned.
     KNOWN SYSTEMATIC (measured 10 Aug 2026, unresolved, and CONFIRMED not
     to be the heading-wrap bug - see below): dlam carries a
-    heading-family bias of order 0.01 (~15-20%) - same-ice crossing
-    pairs between the N-S lines and the rows at Ridge A differ by +0.007
-    median with 91% sign consistency (n = 45 line crossings, one pair
-    each, `scripts/figures/crossing_pairs.py`), consistent with residual
-    pedestal-fabric coupling that grows with the axis-to-antenna angle
-    (N-S lines hold the axis ~6.5 deg from an antenna, rows ~18.5, the
-    NW-SE connectors ~36.5 - nearest the 45-deg degenerate geometry, so
-    their end-of-row stubs read visibly different strength). Orientation
-    is unaffected. Until fixed, quote deep dlam with a +-0.005-0.01
+    heading-family bias of order 0.01 (~17%) - same-ice crossing
+    pairs between the N-S lines and the rows at Ridge A differ by +0.009
+    median with 93% sign consistency (26 of n = 28 line crossings, one
+    pair each, `scripts/figures/crossing_pairs.py`), consistent with
+    residual pedestal-fabric coupling that grows with the axis-to-antenna
+    angle (N-S lines hold the axis ~6.5 deg from an antenna, rows ~18.5,
+    the NW-SE connectors ~36.5 - nearest the 45-deg degenerate geometry).
+    The combinations involving the NW-SE connectors are not quotable in
+    either direction: their crossings are one cluster of end-of-row stubs
+    and survive deduplication as n = 2 (NW-SE minus row) and n = 3 (N-S
+    minus NW-SE). Orientation is unaffected.
+    Until fixed, quote deep dlam with a +-0.005-0.01
     family systematic; near-aligned lines are least coupled and read
     high (0.067-0.074 deep at Ridge A). THE PLANNED FIX is raw-channel
     calibration (chan_equal): fit the complex HV/VH leakage once per
@@ -186,7 +189,9 @@ units).
     +0.00000 and a mean of +0.00000 across 1574 blocks (p10/p90
     -0.00003/+0.00004, 99.9% under 0.001, two blocks over it, none over
     0.005, largest single block 0.0048), and frame theta0 was unchanged
-    to 0.12 deg. The bug was real but the per-block circular mean over
+    to 0.12 deg. No block's usability flipped either way across the whole
+    2025 series (gain 0, lost 0), so nothing sits outside that n: the
+    null is not hiding a block that gained or lost a usable contrast. The bug was real but the per-block circular mean over
     125-200 traces absorbed the handful of mis-interpolated headings it
     produced. The family systematic is therefore instrument physics, not
     that defect, and chan_equal is the right thing to build against it.
@@ -226,7 +231,11 @@ Scripts (each validates or applies the above end to end):
   `quadpol_section_*.mat` for the same frames: per-block deep dlam
   change over 1150-1500 m (same >= 5 finite cells rule as
   `crossing_pairs.py`) and the frame theta0 change as a doubled-angle
-  phasor difference, per frame and pooled. This is what measured the
+  phasor difference, per frame and pooled. Only blocks usable in BOTH
+  generations have a delta, so the blocks whose usability flipped are
+  counted beside n in the `gain` and `lost` columns rather than dropped
+  silently - a null result must not be able to hide a block that gained
+  or lost a usable deep contrast. This is what measured the
   heading-wrap resweep above; it needs both product generations staged
   locally, so it re-makes that measurement only where they are.
 - `scripts/figures/` - Python (matplotlib + scipy; cartopy required by
@@ -396,7 +405,15 @@ Scripts (each validates or applies the above end to end):
     acquisition geometry adds and not the survey's real NW-SE gradient.
     Blocks are classified by their OWN sec_az, since curved connectors
     change family mid-frame, and pairs are deduped to one per crossing so
-    a cluster meeting at a single crossing cannot vote repeatedly.
+    a cluster meeting at a single crossing cannot vote repeatedly. That
+    dedup clusters midpoints across the whole family combo rather than
+    within a frame pair, because a crossing is a PLACE: scoped per frame
+    pair it let one crossing vote once per frame covering it, which on
+    this grid inflated the N-S/row count from 28 to 45.
+    `test_crossing_pairs.py` beside it pins that invariant on synthetic
+    geometry (a line split across consecutive frames, a curved connector
+    contributing to both families, and two crossings that must stay
+    apart); it reads no data files.
 - `scripts/prototypes/deltak_remedy.py` - a PARKED investigation into the
   delta-k stage-A suppression at Ridge A (deramped coherent multilook
   before the cross products). It runs and reports, but it does not resolve
