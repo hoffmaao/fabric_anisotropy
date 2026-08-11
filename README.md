@@ -409,11 +409,22 @@ Scripts (each validates or applies the above end to end):
     dedup clusters midpoints across the whole family combo rather than
     within a frame pair, because a crossing is a PLACE: scoped per frame
     pair it let one crossing vote once per frame covering it, which on
-    this grid inflated the N-S/row count from 28 to 45.
-    `test_crossing_pairs.py` beside it pins that invariant on synthetic
+    this grid inflated the N-S/row count from 28 to 45. All 17 of those
+    removals are one physical line re-flown under a second frame tag, not
+    a lost independent sample - `merge_audit` establishes that on the
+    CANDIDATE set rather than on the survivors (whose separations exceed
+    the cluster radius by construction, so they could never have shown
+    over-merging): no cluster is more than 101 m wide across track where
+    two distinct parallel lines are ~1.5 km apart, and the closest
+    candidate midpoint in another cluster is 1487 m against a 458 m
+    radius. It re-derives both on every run and names any cluster
+    that fuses two lines, so a survey with tighter line spacing fails
+    loudly instead of quietly reporting too few crossings.
+    `test_crossing_pairs.py` beside it pins the invariant on synthetic
     geometry (a line split across consecutive frames, a curved connector
-    contributing to both families, and two crossings that must stay
-    apart); it reads no data files.
+    contributing to both families, a repeat pass, two crossings that must
+    stay apart, and a deliberately fused pair the audit must catch); it
+    reads no data files and runs under pytest or directly.
 - `scripts/prototypes/deltak_remedy.py` - a PARKED investigation into the
   delta-k stage-A suppression at Ridge A (deramped coherent multilook
   before the cross products). It runs and reports, but it does not resolve

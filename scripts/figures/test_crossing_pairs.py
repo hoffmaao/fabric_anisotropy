@@ -13,17 +13,22 @@ two without changing the median:
   curved    frames C and D each contribute blocks to BOTH families near
             one crossing, as a curved connector does; the old dedup put
             those candidates under the distinct keys (C, D) and (D, C)
+  repeat    one line re-flown on another day under a second tag, which is
+            what actually accounts for the 45 -> 28 drop on the real
+            sections and which no frame-keyed dedup can collapse
 
-and the case the fix must NOT break, since global clustering is only safe
-while the radius stays well under the line spacing:
+and the two cases the fix must NOT break, since global clustering is only
+safe while the radius stays well under the line spacing:
 
   distinct  two genuinely separate crossings 3 km apart stay two pairs
+  audit     a cluster that DOES fuse two parallel lines is reported by
+            merge_audit rather than passing silently
 
 Synthetic geometry in EPSG:3031 metres, built from the module's own
-MAX_SEP and FAMS so it tracks the defaults rather than hard-coding them.
-No data files are read.
+defaults and FAMS so it tracks them rather than hard-coding them. No data
+files are read, so this runs anywhere the imports resolve.
 
-Run: python scripts/figures/test_crossing_pairs.py
+Run: python scripts/figures/test_crossing_pairs.py   (or under pytest)
 """
 import os
 import sys
@@ -31,9 +36,10 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from crossing_pairs import FAMS, MAX_SEP, pair_families  # noqa: E402
+from crossing_pairs import (DEFAULT_MAX_SEP, FAMS,  # noqa: E402
+                            merge_audit, pair_families)
 
-STEP = 0.25 * MAX_SEP         # block spacing well inside the pairing radius
+STEP = 0.25 * DEFAULT_MAX_SEP   # block spacing well inside the radius
 ROW_AZ = np.radians(FAMS['row'][0])
 ROW_DIR = (np.sin(ROW_AZ), np.cos(ROW_AZ))
 
@@ -49,47 +55,115 @@ def row_blocks(tag, cx, cy, ts):
             for t in ts]
 
 
-def npairs(blocks):
+def arrays(blocks):
+    """Blocks are given in along-track order, so bidx is that order."""
     tags = np.array([b[0] for b in blocks])
+    seen = {}
+    bidx = []
+    for t in tags:
+        seen[t] = seen.get(t, -1) + 1
+        bidx.append(seen[t])
     x = np.array([b[1] for b in blocks], float)
     y = np.array([b[2] for b in blocks], float)
     fam = np.array([b[3] for b in blocks], dtype=object)
     dl = np.arange(len(blocks), dtype=float) / 100.0
+    return tags, np.array(bidx), x, y, fam, dl
+
+
+def npairs(blocks):
+    tags, _, x, y, fam, dl = arrays(blocks)
     pairs, diffs = pair_families(tags, x, y, fam, dl, 'ns', 'row')
     assert len(pairs) == diffs.size, 'pairs and diffs disagree'
     return len(pairs)
 
 
-def check(name, blocks, want):
-    got = npairs(blocks)
-    print('%-9s %d pair(s), expected %d   %s'
-          % (name, got, want, 'ok' if got == want else 'FAIL'))
-    return got == want
+def test_split_frames_are_one_crossing():
+    blocks = (ns_blocks('A1', 0.0, 0.0, [-3 * STEP, -2 * STEP, -STEP])
+              + ns_blocks('A2', 0.0, 0.0, [0.0, STEP, 2 * STEP])
+              + row_blocks('B', 0.0, 0.0, [-STEP, 0.0, STEP]))
+    assert npairs(blocks) == 1
 
 
-def main():
-    split = (ns_blocks('A1', 0.0, 0.0, [-3 * STEP, -2 * STEP, -STEP])
-             + ns_blocks('A2', 0.0, 0.0, [0.0, STEP, 2 * STEP])
-             + row_blocks('B', 0.0, 0.0, [-STEP, 0.0, STEP]))
-
+def test_curved_connector_is_one_crossing():
     # C and D both turn through the crossing, so each holds blocks of both
     # families near it - the geometry that produced keys (C, D) and (D, C).
-    curved = [('C', 0.0, 0.0, 'ns'),
+    blocks = [('C', 0.0, 0.0, 'ns'),
               ('C', 0.6 * STEP, 0.1 * STEP, 'row'),
               ('D', 0.0, 0.8 * STEP, 'row'),
               ('D', 0.4 * STEP, 0.4 * STEP, 'ns')]
+    assert npairs(blocks) == 1
 
-    distinct = (ns_blocks('A', 0.0, 0.0, [0.0])
-                + row_blocks('B1', 0.0, 0.0, [0.0])
-                + ns_blocks('A', 0.0, 3000.0, [0.0])
-                + row_blocks('B2', 0.0, 3000.0, [0.0]))
 
-    ok = [check('split', split, 1),
-          check('curved', curved, 1),
-          check('distinct', distinct, 2)]
-    if not all(ok):
-        raise SystemExit('crossing_pairs dedup invariant violated')
-    print('all ok')
+def test_repeat_pass_is_one_crossing():
+    # The same two lines flown again on another day, 30 m off the first
+    # pass. Four frame tags, four ordered keys, one place.
+    blocks = (ns_blocks('A', 0.0, 0.0, [-STEP, 0.0, STEP])
+              + row_blocks('B', 0.0, 0.0, [-STEP, 0.0, STEP])
+              + ns_blocks('A2', 30.0, 0.0, [-STEP, 0.0, STEP])
+              + row_blocks('B2', 0.0, 30.0, [-STEP, 0.0, STEP]))
+    assert npairs(blocks) == 1
+
+
+def test_distinct_crossings_stay_apart():
+    blocks = (ns_blocks('A', 0.0, 0.0, [0.0])
+              + row_blocks('B1', 0.0, 0.0, [0.0])
+              + ns_blocks('A', 0.0, 3000.0, [0.0])
+              + row_blocks('B2', 0.0, 3000.0, [0.0]))
+    assert npairs(blocks) == 2
+
+
+def test_audit_passes_a_clean_repeat():
+    blocks = (ns_blocks('A', 0.0, 0.0, [-STEP, 0.0, STEP])
+              + row_blocks('B', 0.0, 0.0, [-STEP, 0.0, STEP])
+              + ns_blocks('A2', 30.0, 0.0, [-STEP, 0.0, STEP]))
+    tags, bidx, x, y, fam, _ = arrays(blocks)
+    radius, on_line, gap, bad = merge_audit(tags, bidx, x, y, fam,
+                                            'ns', 'row')
+    assert not bad, bad
+    assert on_line < 150.0, on_line
+    assert radius > 0
+
+
+def test_audit_catches_two_parallel_lines_fused():
+    # Two N-S lines 400 m apart, both crossing one row line: two DISTINCT
+    # crossings 407 m apart, inside the 458 m radius. One cluster swallows
+    # both, which is the loss the audit exists to name - and note the
+    # count alone would not reveal it, since greedy clustering leaves a
+    # straggler behind that keeps the reported n at 2.
+    ts = [t * STEP for t in (-3, -2, -1, 0, 1, 2, 3)]
+    blocks = (ns_blocks('A', -200.0, 0.0, ts)
+              + ns_blocks('C', 200.0, 0.0, ts)
+              + row_blocks('B', 0.0, 0.0, [t * STEP for t in range(-4, 5)]))
+    tags, bidx, x, y, fam, _ = arrays(blocks)
+    _, on_line, gap, bad = merge_audit(tags, bidx, x, y, fam, 'ns', 'row')
+    assert bad, 'audit missed two parallel lines fused into one cluster'
+    assert ['A', 'C'] in [b[0] for b in bad], bad
+    assert on_line > 150.0, on_line
+    # and the candidate-set margin collapses too, unlike a separation
+    # measured among survivors, which the radius would still bound below
+    assert gap < 150.0, gap
+
+
+CHECKS = [test_split_frames_are_one_crossing,
+          test_curved_connector_is_one_crossing,
+          test_repeat_pass_is_one_crossing,
+          test_distinct_crossings_stay_apart,
+          test_audit_passes_a_clean_repeat,
+          test_audit_catches_two_parallel_lines_fused]
+
+
+def main():
+    bad = 0
+    for fn in CHECKS:
+        try:
+            fn()
+            print('%-42s ok' % fn.__name__)
+        except AssertionError as e:
+            bad += 1
+            print('%-42s FAIL  %s' % (fn.__name__, e))
+    if bad:
+        raise SystemExit('%d of %d checks failed' % (bad, len(CHECKS)))
+    print('all %d ok' % len(CHECKS))
 
 
 if __name__ == '__main__':
