@@ -44,11 +44,20 @@ re-flown under a second frame tag, and the closest candidate midpoint
 landing in a different cluster is 1487 m, 3.2x the 458 m ns-row radius.
 merge_audit() re-derives both numbers on every run, on the same
 clustering the pairs came from, and a combo whose audit names a fused
-cluster is NOT reported: no median, no n, left out of the npz, and the
-run exits non-zero. What the audit cannot certify, since it works by
-projecting across track, is two same-family lines that CONVERGE or one
-line curving back over itself; it rules out fused parallel lines, which
-is the geometry a grid survey presents, and no more.
+cluster is NOT reported: no median, no n, no diffs in the npz, and the
+run exits non-zero. A cluster no side of which could be measured reads
+unverified rather than clean, but a side that WAS measured over the
+tolerance fails its cluster whatever the other sides did, since evidence
+of a fusion outranks the absence of evidence. What the audit cannot
+certify, since it works by projecting across track, is two same-family
+lines that CONVERGE or one line curving back over itself; it rules out
+fused parallel lines, which is the geometry a grid survey presents, and
+no more. crossing_pairs.npz carries that verdict beside the numbers, so
+a chan_equal comparison reading it months later can tell a fully audited
+run from one it should not lean on: per combo <fa>_<fb>_clusters =
+(verified, failed, unverified) with _on_line_m, _gap_m and _radius_m,
+_diffs only where the combo passed, and audit_pass for the run, which is
+what the exit code follows.
 The sign test treats pairs as independent when they are not
 - one block can be the closest match at several crossings - so its p is
 optimistic. z_max special runs (_z<N> tags) are excluded: they duplicate
@@ -309,28 +318,35 @@ def merge_audit(tags, bidx, x, y, groups, radius):
     lines, which is the geometry a grid survey actually presents, and no
     more than that.
 
-    `checked` and `unverified` partition the multi-candidate clusters:
-    unverified ones had no index-adjacent sibling to take a direction
-    from and were measured by nothing, so they are counted, never
-    silently passed.
+    `verified`, `failed` and `unverified` partition the multi-candidate
+    clusters, and the verdict is taken in that precedence: FAILED, then
+    UNVERIFIED, then VERIFIED. A side measured over LINE_TOL condemns its
+    cluster however many of the other sides came back NaN, because a
+    measured fusion is evidence while missing coverage is only the
+    absence of evidence and must never outrank it. Coverage decides only
+    where no measurable side fails: every side measured and clean is
+    verified, any side NaN is unverified, counted and never silently
+    passed.
     """
     on_line = -np.inf
     bad = []
-    checked = 0
+    verified = 0
     unverified = 0
     for g in groups:
         if len(g) < 2:
             continue
-        sa = line_spread(tags, bidx, x, y, [e[1] for e in g])
-        sb = line_spread(tags, bidx, x, y, [e[2] for e in g])
-        if not (np.isfinite(sa) and np.isfinite(sb)):
-            unverified += 1
-            continue
-        checked += 1
-        on_line = max(on_line, sa, sb)
-        if max(sa, sb) > LINE_TOL:
+        s = [line_spread(tags, bidx, x, y, [e[k] for e in g])
+             for k in (1, 2)]
+        meas = [v for v in s if np.isfinite(v)]
+        if meas:
+            on_line = max([on_line] + meas)
+        if meas and max(meas) > LINE_TOL:
             bad.append((sorted({str(tags[e[1]]) for e in g}),
-                        sorted({str(tags[e[2]]) for e in g}), sa, sb))
+                        sorted({str(tags[e[2]]) for e in g}), s[0], s[1]))
+        elif len(meas) < len(s):
+            unverified += 1
+        else:
+            verified += 1
     gap = np.inf
     if len(groups) > 1:
         m = np.array([[0.5 * (x[i] + x[j]), 0.5 * (y[i] + y[j])]
@@ -340,8 +356,8 @@ def merge_audit(tags, bidx, x, y, groups, radius):
                      m[:, None, 1] - m[None, :, 1])
         d[lab[:, None] == lab[None, :]] = np.inf
         gap = float(d.min())
-    return {'radius': radius, 'gap': gap, 'bad': bad, 'checked': checked,
-            'unverified': unverified,
+    return {'radius': radius, 'gap': gap, 'bad': bad, 'verified': verified,
+            'failed': len(bad), 'unverified': unverified,
             'on_line': np.nan if not np.isfinite(on_line) else on_line}
 
 
@@ -355,21 +371,14 @@ def pairs_from_groups(groups, dl):
 def analyse(tags, bidx, x, y, fam, dl, fa, fb, max_sep=DEFAULT_MAX_SEP):
     """Cluster this combo ONCE, then pair and audit that same clustering.
 
-    The single place clustering happens for a combo, so the audit and the
-    reported pairs cannot describe different groupings.
+    The ONLY route from blocks to pairs, so no caller can obtain pairs
+    that were never audited or an audit of some other grouping.
     """
     radius = cluster_radius(fa, fb, max_sep)
     groups, _ = cluster(candidates(tags, x, y, fam, fa, fb, max_sep),
                         x, y, radius)
     pairs, diffs = pairs_from_groups(groups, dl)
     return pairs, diffs, merge_audit(tags, bidx, x, y, groups, radius)
-
-
-def pair_families(tags, x, y, fam, dl, fa, fb, max_sep=DEFAULT_MAX_SEP):
-    """Closest block pair per crossing, families fa vs fb."""
-    groups, _ = cluster(candidates(tags, x, y, fam, fa, fb, max_sep),
-                        x, y, cluster_radius(fa, fb, max_sep))
-    return pairs_from_groups(groups, dl)
 
 
 def fmt_m(v):
@@ -412,14 +421,17 @@ def main(argv=None):
 
     print('per combo: merge audit first, since it gates the result')
     results = {}
+    audits = {}
     failed = []
     for fa, fb in combos:
         name = '%s - %s' % (fa, fb)
         pairs, diffs, au = analyse(tags, bidx, x, y, fam, dl, fa, fb,
                                    max_sep)
-        print('  %-12s radius %4.0f m  clusters %d checked / %d unverified'
-              '  widest %s' % (name, au['radius'], au['checked'],
-                               au['unverified'], fmt_m(au['on_line'])))
+        audits[(fa, fb)] = au
+        print('  %-12s radius %4.0f m  clusters %d verified / %d failed'
+              ' / %d unverified  widest %s'
+              % (name, au['radius'], au['verified'], au['failed'],
+                 au['unverified'], fmt_m(au['on_line'])))
         print('  %-12s nearest candidate in another cluster %s'
               % ('', 'n/a' if not np.isfinite(au['gap'])
                  else '%s (%.1fx radius)' % (fmt_m(au['gap']),
@@ -430,10 +442,11 @@ def main(argv=None):
                   'so nothing measured them either way.'
                   % ('', au['unverified'], ''))
         for ta, tb, sa, sb in au['bad']:
-            print('  FAILED: a cluster spans %s x %s and is %.0f/%.0f m wide '
+            print('  FAILED: a cluster spans %s x %s and is %s / %s wide '
                   'across\n  track (> %.0f m), so the radius is fusing '
                   'DISTINCT crossings and n is too low.'
-                  % ('+'.join(ta), '+'.join(tb), sa, sb, LINE_TOL))
+                  % ('+'.join(ta), '+'.join(tb), fmt_m(sa), fmt_m(sb),
+                     LINE_TOL))
         if au['bad']:
             failed.append(name)
             print('  %-12s NOT REPORTED: median and n would misstate fused '
@@ -491,9 +504,18 @@ def main(argv=None):
     fig_fn = os.path.join(out_dir, 'crossing_pairs.png')
     fig.savefig(fig_fn, dpi=200)
     npz_fn = os.path.join(out_dir, 'crossing_pairs.npz')
-    np.savez(npz_fn, **{
-        '%s_%s_diffs' % (fa, fb): results[(fa, fb)][1]
-        for fa, fb in combos if (fa, fb) in results})
+    out = {'audit_pass': np.array(not failed)}
+    for fa, fb in combos:
+        au = audits[(fa, fb)]
+        k = '%s_%s_' % (fa, fb)
+        out[k + 'clusters'] = np.array([au['verified'], au['failed'],
+                                        au['unverified']])
+        out[k + 'on_line_m'] = np.array(au['on_line'])
+        out[k + 'gap_m'] = np.array(au['gap'])
+        out[k + 'radius_m'] = np.array(au['radius'])
+        if (fa, fb) in results:
+            out[k + 'diffs'] = results[(fa, fb)][1]
+    np.savez(npz_fn, **out)
     print('wrote %s and %s' % (fig_fn, npz_fn))
     if failed:
         raise SystemExit('%s failed the merge audit and %s omitted from the '

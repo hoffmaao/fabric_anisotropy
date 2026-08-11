@@ -1,4 +1,4 @@
-"""The one-pair-per-crossing invariant of crossing_pairs.pair_families.
+"""The one-pair-per-crossing invariant of crossing_pairs.analyse.
 
 A crossing is a PLACE, so the dedup has to hold no matter how the frame
 boundaries fall across it. The two cases that broke when the dedup was
@@ -25,6 +25,9 @@ safe while the radius stays well under the line spacing:
             merge_audit rather than passing silently
   abstain   a cluster nothing could measure reads UNVERIFIED, not clean,
             since those two must never share a value
+  outrank   a cluster with one side unmeasurable and the other measured
+            over LINE_TOL reads FAILED, not UNVERIFIED: evidence of a
+            fusion outranks the absence of evidence
 
 Synthetic geometry in EPSG:3031 metres, built from the module's own
 defaults and FAMS so it tracks them rather than hard-coding them. No data
@@ -39,7 +42,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from crossing_pairs import (DEFAULT_MAX_SEP, FAMS,  # noqa: E402
-                            analyse, line_spread, pair_families)
+                            LINE_TOL, analyse, line_spread)
 
 STEP = 0.25 * DEFAULT_MAX_SEP   # block spacing well inside the radius
 ROW_AZ = np.radians(FAMS['row'][0])
@@ -72,9 +75,14 @@ def arrays(blocks):
     return tags, np.array(bidx), x, y, fam, dl
 
 
+def audit(blocks, fa='ns', fb='row'):
+    """The one route from blocks to pairs, pairs and audit together."""
+    tags, bidx, x, y, fam, dl = arrays(blocks)
+    return analyse(tags, bidx, x, y, fam, dl, fa, fb)
+
+
 def npairs(blocks):
-    tags, _, x, y, fam, dl = arrays(blocks)
-    pairs, diffs = pair_families(tags, x, y, fam, dl, 'ns', 'row')
+    pairs, diffs, _ = audit(blocks)
     assert len(pairs) == diffs.size, 'pairs and diffs disagree'
     return len(pairs)
 
@@ -114,19 +122,15 @@ def test_distinct_crossings_stay_apart():
     assert npairs(blocks) == 2
 
 
-def audit(blocks, fa='ns', fb='row'):
-    tags, bidx, x, y, fam, dl = arrays(blocks)
-    return analyse(tags, bidx, x, y, fam, dl, fa, fb)
-
-
 def test_audit_passes_a_clean_repeat():
     blocks = (ns_blocks('A', 0.0, 0.0, [-STEP, 0.0, STEP])
               + row_blocks('B', 0.0, 0.0, [-STEP, 0.0, STEP])
               + ns_blocks('A2', 30.0, 0.0, [-STEP, 0.0, STEP]))
     _, _, au = audit(blocks)
     assert not au['bad'], au['bad']
-    assert au['on_line'] < 150.0, au['on_line']
-    assert au['checked'] >= 1 and au['unverified'] == 0, au
+    assert au['on_line'] < LINE_TOL, au['on_line']
+    assert au['verified'] >= 1, au
+    assert au['failed'] == 0 and au['unverified'] == 0, au
     assert au['radius'] > 0
 
 
@@ -143,10 +147,11 @@ def test_audit_catches_two_parallel_lines_fused():
     _, _, au = audit(blocks)
     assert au['bad'], 'audit missed two parallel lines fused into a cluster'
     assert ['A', 'C'] in [b[0] for b in au['bad']], au['bad']
-    assert au['on_line'] > 150.0, au['on_line']
+    assert au['on_line'] > LINE_TOL, au['on_line']
+    assert au['failed'] == len(au['bad']), au
     # and the candidate-set margin collapses too, unlike a separation
     # measured among survivors, which the radius would still bound below
-    assert au['gap'] < 150.0, au['gap']
+    assert au['gap'] < LINE_TOL, au['gap']
 
 
 def test_unmeasurable_cluster_abstains_not_passes():
@@ -162,9 +167,28 @@ def test_unmeasurable_cluster_abstains_not_passes():
     assert np.isnan(line_spread(tags, bidx, x, y, [0, 1, 2])), 'not NaN'
     _, _, au = audit(blocks)
     assert au['unverified'] >= 1, au
-    assert au['checked'] == 0, au
+    assert au['verified'] == 0 and au['failed'] == 0, au
     assert np.isnan(au['on_line']), au['on_line']
     assert not au['bad'], au['bad']
+
+
+def test_measured_fusion_outranks_an_unmeasurable_side():
+    # One crossing per row line, the two row lines SPREAD m apart across
+    # track and so fused into one cluster, while every N-S block sits
+    # alone in its own frame and can be given no direction. The measured
+    # side is a fusion; the other side is merely unmeasured. FAILED has
+    # to win, or the combo is reported as usable off the back of a
+    # cluster that was checked and found bad.
+    spread = 400.0
+    y2 = -spread / np.sin(ROW_AZ)   # where the offset row line meets x=0
+    blocks = ([('A0', 0.0, 0.0, 'ns'), ('A1', 0.0, y2, 'ns')]
+              + row_blocks('B1', 0.0, 0.0, [-STEP, 0.0, STEP])
+              + row_blocks('B2', 0.0, y2, [-STEP, 0.0, STEP]))
+    _, _, au = audit(blocks)
+    assert au['bad'], 'a measured fusion was filed as unverified'
+    assert au['failed'] == 1 and au['unverified'] == 0, au
+    assert np.isnan(au['bad'][0][2]), au['bad']
+    assert abs(au['on_line'] - spread) < 1.0, au['on_line']
 
 
 CHECKS = [test_split_frames_are_one_crossing,
@@ -173,7 +197,8 @@ CHECKS = [test_split_frames_are_one_crossing,
           test_distinct_crossings_stay_apart,
           test_audit_passes_a_clean_repeat,
           test_audit_catches_two_parallel_lines_fused,
-          test_unmeasurable_cluster_abstains_not_passes]
+          test_unmeasurable_cluster_abstains_not_passes,
+          test_measured_fusion_outranks_an_unmeasurable_side]
 
 
 def main():

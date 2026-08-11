@@ -424,7 +424,14 @@ Scripts (each validates or applies the above end to end):
     non-zero, so a survey with tighter line spacing cannot quietly
     report too few crossings. Clusters it could not measure, because
     MIN_CELLS holes left their blocks with no index-adjacent sibling to
-    take a direction from, are counted as unverified rather than passed.
+    take a direction from, are counted as unverified rather than passed,
+    while a side that was measured over the tolerance fails its cluster
+    whatever the other side did - evidence of a fusion outranks the
+    absence of evidence. The npz records that verdict per combo
+    (verified/failed/unverified cluster counts, the across-track width,
+    the candidate gap, the radius) with a run-level `audit_pass`, so a
+    later comparison can tell a fully audited run from one it should not
+    lean on.
     Its reach is bounded: projecting across track separates two lines
     only insofar as they are near-parallel, so two converging
     same-family lines or one line curving back over itself are outside
@@ -432,9 +439,11 @@ Scripts (each validates or applies the above end to end):
     `test_crossing_pairs.py` beside it pins the invariant on synthetic
     geometry (a line split across consecutive frames, a curved connector
     contributing to both families, a repeat pass, two crossings that must
-    stay apart, a deliberately fused pair the audit must catch, and a
-    cluster nothing could measure that must read unverified rather than
-    clean); it reads no data files and runs under pytest or directly.
+    stay apart, a deliberately fused pair the audit must catch, a cluster
+    nothing could measure that must read unverified rather than clean,
+    and a cluster with one unmeasurable side and one measured fusion that
+    must read failed); it reads no data files and runs under pytest or
+    directly.
 - `scripts/prototypes/deltak_remedy.py` - a PARKED investigation into the
   delta-k stage-A suppression at Ridge A (deramped coherent multilook
   before the cross products). It runs and reports, but it does not resolve
