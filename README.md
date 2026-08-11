@@ -164,7 +164,7 @@ units).
     to be the heading-wrap bug - see below): dlam carries a
     heading-family bias of order 0.01 (~15-20%) - same-ice crossing
     pairs between the N-S lines and the rows at Ridge A differ by +0.007
-    median with 90% sign consistency (n = 49 line crossings, one pair
+    median with 91% sign consistency (n = 45 line crossings, one pair
     each, `scripts/figures/crossing_pairs.py`), consistent with residual
     pedestal-fabric coupling that grows with the axis-to-antenna angle
     (N-S lines hold the axis ~6.5 deg from an antenna, rows ~18.5, the
