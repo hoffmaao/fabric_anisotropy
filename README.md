@@ -160,7 +160,7 @@ units).
     dlam is signed with no folded-noise floor, and theta0 abstains where
     the birefringence is unresolvable. Two-pass use: frame-level theta0,
     then per-block dlam with theta0 pinned.
-    KNOWN SYSTEMATIC (measured 10 Aug 2026, unresolved, and CONFIRMED not
+    KNOWN SYSTEMATIC (measured 11 Aug 2026, unresolved, and CONFIRMED not
     to be the heading-wrap bug - see below): dlam carries a
     heading-family bias of order 0.01 (~17%) - same-ice crossing
     pairs between the N-S lines and the rows at Ridge A differ by +0.009
@@ -172,15 +172,14 @@ units).
     The combinations involving the NW-SE connectors are not quotable in
     either direction: their crossings are one cluster of end-of-row stubs
     and survive deduplication as n = 2 (NW-SE minus row) and n = 3 (N-S
-    minus NW-SE). Orientation is unaffected.
-    Until fixed, quote deep dlam with a +-0.005-0.01
-    family systematic; near-aligned lines are least coupled and read
-    high (0.067-0.074 deep at Ridge A). THE PLANNED FIX is raw-channel
-    calibration (chan_equal): fit the complex HV/VH leakage once per
-    system at the channel level and correct BEFORE synthesis, removing
-    the pedestal at its source; the per-frame ls_pedestal record and the
-    crossing-pair test (paired same-ice difference -> 0) are its inputs
-    and acceptance criterion.
+    minus NW-SE). Orientation is unaffected. Until fixed, quote deep
+    dlam with a +-0.005-0.01 family systematic; near-aligned lines are
+    least coupled and read high (0.067-0.074 deep at Ridge A). THE
+    PLANNED FIX is raw-channel calibration (chan_equal): fit the complex
+    HV/VH leakage once per system at the channel level and correct
+    BEFORE synthesis, removing the pedestal at its source; the per-frame
+    ls_pedestal record and the crossing-pair test (paired same-ice
+    difference -> 0) are its inputs and acceptance criterion.
     RULED OUT as the cause: the 0/180 heading-wrap interpolation bug
     fixed in 0e793d5 lived exactly on the N-S family, so all 17 N-S and
     curved Ridge A frames were reswept with the fixed code, and all 17
@@ -191,10 +190,11 @@ units).
     0.005, largest single block 0.0048), and frame theta0 was unchanged
     to 0.12 deg. No block's usability flipped either way across the whole
     2025 series (gain 0, lost 0), so nothing sits outside that n: the
-    null is not hiding a block that gained or lost a usable contrast. The bug was real but the per-block circular mean over
-    125-200 traces absorbed the handful of mis-interpolated headings it
-    produced. The family systematic is therefore instrument physics, not
-    that defect, and chan_equal is the right thing to build against it.
+    null is not hiding a block that gained or lost a usable contrast.
+    The bug was real but the per-block circular mean over 125-200 traces
+    absorbed the handful of mis-interpolated headings it produced. The
+    family systematic is therefore instrument physics, not that defect,
+    and chan_equal is the right thing to build against it.
     `scripts/compare_sections.py` is how that measurement is made and
     will re-make it, but only where both product generations exist on
     disk: the pre-fix inputs survive solely in a local mirror
