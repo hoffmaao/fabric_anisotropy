@@ -26,10 +26,11 @@ finite cells); position = the block centre; family from the block's OWN
 sec_az (curved connectors change family mid-frame), by nearest family
 axis: N-S ~ 0/180, rows ~ 79, NW-SE ~ 148. A pair = the closest
 cross-frame, cross-family block pair within max_sep, deduped to one per
-CROSSING by clustering a frame pair's candidates on midpoint proximity
-(CROSS_RADIUS), so a cluster of blocks meeting at one crossing votes once
-while two frames that cross twice count twice. No frame pair crosses
-twice in this survey, so every one of the 45 contributes a single pair.
+CROSSING by clustering a frame pair's candidates on midpoint proximity,
+at a radius derived per family combo from that combo's crossing corridor
+so a shallow-angle combo groups as reliably as a near-perpendicular one.
+Two frames that cross twice therefore count twice; none does in this
+survey, so each of the 45 contributes a single pair.
 The sign test treats pairs as independent when they are not
 - one block can be the closest match at several crossings - so its p is
 optimistic. z_max special runs (_z<N> tags) are excluded: they duplicate
@@ -59,11 +60,17 @@ MAX_SEP = float(sys.argv[2]) if len(sys.argv) > 2 else 300.0
 PREFIX = sys.argv[3] if len(sys.argv) > 3 else '2025'
 Z_DEEP = (1150.0, 1500.0)     # same contrast band the map figure encodes
 MIN_CELLS = 5                 # finite section cells required in the band
-# Two candidate pairs of the same frame pair are the same crossing when
-# their midpoints are closer than this. It has to exceed the ~125 m block
-# spacing, so every block meeting at one crossing groups together, and stay
-# well under the several km between distinct crossings of two frames.
-CROSS_RADIUS = 500.0
+# What sizes the cluster radius is the crossing corridor, not the block
+# spacing: two lines whose axes differ by A stay within max_sep over a
+# corridor of half-length max_sep / sin(A), and since candidates are taken
+# closest-first the representative sits at the corridor centre, so the
+# radius must cover that half-length. Derived per family combo rather than
+# fixed, because max_sep is a CLI argument and the FAMS axes are
+# survey-specific: a constant silently stops covering the corridor as soon
+# as either moves. At the defaults this is 458 m for ns-row (corridor 306),
+# 482 m for nwse-row (321) and 849 m for ns-nwse (566).
+CROSS_MARGIN = 1.5
+MIN_AXIS_SEP = 1.0            # deg; near-parallel families have no crossing
 BLUE = '#2a78d6'
 
 # Family axes [deg, mod 180] measured from the survey itself; a block
@@ -133,8 +140,12 @@ def pair_families(tags, x, y, fam, dl, fa, fb):
     snapped to a fixed grid, which is not translation invariant: a cluster
     straddling a cell boundary would split and vote twice, the exact
     double-count this exists to prevent. Closest candidate first, so each
-    cluster is represented by its own tightest pair.
+    cluster is represented by its own tightest pair, and the radius covers
+    this combo's crossing corridor so a shallow-angle combo groups as
+    reliably as a near-perpendicular one.
     """
+    sep = max(float(axdist(FAMS[fa][0], FAMS[fb][0])), MIN_AXIS_SEP)
+    radius = CROSS_MARGIN * MAX_SEP / np.sin(np.radians(sep))
     ia = np.flatnonzero(fam == fa)
     ib = np.flatnonzero(fam == fb)
     cand = {}
@@ -155,7 +166,7 @@ def pair_families(tags, x, y, fam, dl, fa, fb):
         seen = []
         for s, i, j in sorted(cand[key]):
             mx, my = 0.5 * (x[i] + x[j]), 0.5 * (y[i] + y[j])
-            if any(np.hypot(mx - px, my - py) <= CROSS_RADIUS
+            if any(np.hypot(mx - px, my - py) <= radius
                    for px, py in seen):
                 continue
             seen.append((mx, my))
