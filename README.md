@@ -179,15 +179,26 @@ units).
     crossing-pair test (paired same-ice difference -> 0) are its inputs
     and acceptance criterion.
     RULED OUT as the cause: the 0/180 heading-wrap interpolation bug
-    fixed in 0e793d5 lived exactly on the N-S family, so the 17 N-S and
-    curved Ridge A frames were reswept with the fixed code and compared
-    block for block against their pre-fix products. The deep dlam moved
-    by a median of 0.00000 over 660 blocks (99.8% under 0.001, largest
-    single block 0.005) and frame theta0 was unchanged to 0.1 deg: the
-    bug was real but the per-block circular mean over 125-200 traces
-    absorbed the handful of mis-interpolated headings it produced. The
-    family systematic is therefore instrument physics, not that defect,
-    and chan_equal is the right thing to build against it.
+    fixed in 0e793d5 lived exactly on the N-S family, so all 17 N-S and
+    curved Ridge A frames were reswept with the fixed code. Seven of
+    them could be compared block for block against a pre-fix copy: the
+    deep dlam moved by a median of 0.00000 over 660 blocks (99.8% under
+    0.001, largest single block 0.005) and frame theta0 was unchanged to
+    0.1 deg. A control of seven frames that were already post-fix in
+    BOTH copies moved by the same nothing (758 blocks, median -0.00000,
+    largest 0.0012), which is what rules out the comparison itself
+    manufacturing a null. The bug was real but the per-block circular
+    mean over 125-200 traces absorbed the handful of mis-interpolated
+    headings it produced. The family systematic is therefore instrument
+    physics, not that defect, and chan_equal is the right thing to build
+    against it. `scripts/compare_sections.py` is how that measurement is
+    made and will re-make it, but only where both product generations
+    exist on disk: the pre-fix inputs survive solely in a local mirror
+    captured mid-resweep (`all_sections_final.tar` under `SCAR_DATA`,
+    written 07:37 on 10 Aug 2026), which is why exactly the seven frames
+    reswept after it could be compared. That mirror is not in this repo
+    and cannot be regenerated from it, so the numbers above are a
+    recorded one-time measurement, not something CI can re-derive.
   - `ptt.coregisterChannels` - aligns every channel onto the reference by
     CALLING the OPR toolbox `coregistration`, deliberately with no
     implementation of its own (it errors if the toolbox is absent), so the
@@ -209,6 +220,13 @@ Scripts (each validates or applies the above end to end):
   quantized because it only ever becomes movie frames, plus the
   look-angle energy reductions that are used quantitatively, kept at
   full precision. Look angles are written in degrees under `theta_deg`.
+- `scripts/compare_sections.py` - differences two directories of
+  `quadpol_section_*.mat` for the same frames: per-block deep dlam
+  change over 1150-1500 m (same >= 5 finite cells rule as
+  `crossing_pairs.py`) and the frame theta0 change as a doubled-angle
+  phasor difference, per frame and pooled. This is what measured the
+  heading-wrap resweep above; it needs both product generations staged
+  locally, so it re-makes that measurement only where they are.
 - `scripts/figures/` - Python (matplotlib + scipy; cartopy required by
   the map figures) figure scripts that reproduce the analysis figures
   from the `opr_fabric/server/run_fabric_scratch.m` and
