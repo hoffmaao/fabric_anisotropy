@@ -164,9 +164,7 @@ def main():
     axa.set_ylabel(r'recovered $\theta$ (deg E of N)', color=INK)
     axa.set_title('(a) heading test, %d blocks' % keep.sum(), fontsize=10,
                   color=INK)
-    # lower left: the only corner neither branch of the wrapped antenna line
-    # nor the geographic line runs through
-    axa.legend(loc='lower left', fontsize=7, frameon=False)
+    axa.legend(loc='best', fontsize=7, frameon=False)
 
     axb.plot(az, ta, 'o', color=C_OK, ms=4, alpha=0.55,
              markeredgecolor='none')

@@ -5,25 +5,33 @@ contrast: global comparisons across heading families are confounded with
 the real NW-SE spatial gradient at Ridge A, but where two survey lines
 from different families CROSS, their nearest along-track blocks see the
 same ice, so the paired difference isolates whatever the acquisition
-geometry adds. Measured 10 Aug 2026 on the pre-wrap-fix sections: N-S
-minus row = +0.009 median over 67 pairs, 94% positive - a ~15-20%
+geometry adds. On the Ridge A sections as of 11 Aug 2026: N-S minus row
+= +0.0068 median over 49 crossings, 90% positive - a ~15-20%
 family-dependent bias on identical ice, consistent with residual
-pedestal-fabric coupling growing with the axis-to-antenna angle.
+pedestal-fabric coupling growing with the axis-to-antenna angle. The
+NW-SE minus row combination (-0.0271, n = 16) comes from one cluster of
+end-of-row stubs and is not quotable in either direction.
 
 This script makes that test durable and re-runnable: it is the
-acceptance criterion for the chan_equal raw-channel calibration (the
+acceptance criterion for the chan_equal raw-channel calibration - the
 paired same-ice difference should go to ~0 once the cross-pol pedestal
-is removed at source), and the arbiter of how much of the systematic was
-instead the 0/180 heading-wrap interpolation bug fixed at the 10 Aug
-gate, which corrupted exactly the N-S family's sub-block rotations.
+is removed at source. The 0/180 heading-wrap interpolation bug fixed at
+the 10 Aug gate corrupted exactly the N-S family's sub-block rotations,
+so it was the leading suspect for this systematic; the resweep settled
+it separately (median deep-dlam change 0.00000 over 660 blocks), which
+leaves instrument physics.
 
 Per block: deep dlam = median LS sec_dlam_ls over 1150-1500 m (>= 5
 finite cells); position = the block centre; family from the block's OWN
 sec_az (curved connectors change family mid-frame), by nearest family
 axis: N-S ~ 0/180, rows ~ 79, NW-SE ~ 148. A pair = the closest
-cross-family block pair within max_sep, deduped to one per frame pair
-(one grid crossing produces one pair, not a cluster). z_max special runs
-(_z<N> tags) are excluded: they duplicate batch frames.
+cross-frame, cross-family block pair within max_sep, deduped to one per
+CROSSING (frame pair plus a CROSS_BIN cell), so a cluster of blocks
+meeting at one crossing votes once while two frames that cross twice
+count twice. The sign test treats pairs as independent when they are not
+- one block can be the closest match at several crossings - so its p is
+optimistic. z_max special runs (_z<N> tags) are excluded: they duplicate
+batch frames.
 
 Usage: python crossing_pairs.py <out_dir> [max_sep_m] [tag_prefix]
 """
@@ -49,6 +57,7 @@ MAX_SEP = float(sys.argv[2]) if len(sys.argv) > 2 else 300.0
 PREFIX = sys.argv[3] if len(sys.argv) > 3 else '2025'
 Z_DEEP = (1150.0, 1500.0)     # same contrast band the map figure encodes
 MIN_CELLS = 5                 # finite section cells required in the band
+CROSS_BIN = 1000.0            # crossings this far apart are separate events
 BLUE = '#2a78d6'
 
 # Family axes [deg, mod 180] measured from the survey itself; a block
@@ -96,6 +105,9 @@ def load_blocks():
                 continue
             rows.append((tag, blat[b], blon[b], baz[b],
                          float(np.nanmedian(col))))
+    if not rows:
+        raise SystemExit('no quadpol_section_%s*.mat block with a usable '
+                         'deep contrast under %s' % (PREFIX, DATA))
     tags = np.array([r[0] for r in rows])
     lat = np.array([r[1] for r in rows])
     lon = np.array([r[2] for r in rows])
@@ -106,7 +118,15 @@ def load_blocks():
 
 
 def pair_families(tags, x, y, fam, dl, fa, fb):
-    """Closest block pair per frame crossing, families fa vs fb."""
+    """Closest block pair per frame crossing, families fa vs fb.
+
+    The crossing, not the frame pair, is the unit: two frames that cross
+    twice are two independent samples of the ice, while the cluster of
+    blocks meeting at one crossing is a single sample, so the key is the
+    frame pair plus the CROSS_BIN cell the pair midpoint falls in. Blocks
+    of the SAME frame never pair: a curved connector changes family at its
+    turn, and its two sides are one continuous track, not a crossing.
+    """
     ia = np.flatnonzero(fam == fa)
     ib = np.flatnonzero(fam == fb)
     best = {}
@@ -114,7 +134,11 @@ def pair_families(tags, x, y, fam, dl, fa, fb):
         d = np.hypot(x[ib] - x[i], y[ib] - y[i])
         for k in np.flatnonzero(d < MAX_SEP):
             j = ib[k]
-            key = (tags[i], tags[j])
+            if tags[i] == tags[j]:
+                continue
+            key = (tags[i], tags[j],
+                   int(round(0.5 * (x[i] + x[j]) / CROSS_BIN)),
+                   int(round(0.5 * (y[i] + y[j]) / CROSS_BIN)))
             if key not in best or d[k] < best[key][0]:
                 best[key] = (d[k], i, j)
     pairs = [(i, j, s) for s, i, j in best.values()]
@@ -135,7 +159,7 @@ def report(name, pairs, diffs):
 
 def main():
     tags, x, y, fam, dl = load_blocks()
-    for name, (ctr, _) in FAMS.items():
+    for name in FAMS:
         print('%-5s %4d blocks' % (name, (fam == name).sum()))
 
     combos = [('ns', 'row'), ('nwse', 'row'), ('ns', 'nwse')]
@@ -144,14 +168,24 @@ def main():
         pairs, diffs = pair_families(tags, x, y, fam, dl, fa, fb)
         results[(fa, fb)] = (pairs, diffs)
         report('%s - %s' % (fa, fb), pairs, diffs)
+    print('  sign-test p is optimistic: one block can be the closest match '
+          'at several\n  crossings, so the pairs are not independent.')
 
     pairs, diffs = results[('ns', 'row')]
+    if not pairs:
+        raise SystemExit('no ns-row crossing within %.0f m in '
+                         'quadpol_section_%s*.mat under %s'
+                         % (MAX_SEP, PREFIX, DATA))
     a = np.array([dl[i] for i, _, _ in pairs])
     b = np.array([dl[j] for _, j, _ in pairs])
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9.6, 4.4),
                                    layout='constrained')
-    lim = (0.0, max(0.1, 1.05 * max(a.max(), b.max())))
+    # dlam is signed, so the lower bound follows the data: clipping it at 0
+    # would drop negative blocks from the scatter that the histogram, the
+    # median and the reported n all still count.
+    lim = (min(a.min(), b.min(), 0.0),
+           max(0.1, 1.05 * max(a.max(), b.max())))
     ax1.plot(lim, lim, '-', color=MUTED, lw=1.0, zorder=1)
     ax1.scatter(b, a, s=26, color=BLUE, edgecolors='white',
                 linewidths=0.6, zorder=2)
