@@ -12,8 +12,10 @@ them.
                                                 antennas, and has measured
                                                 nothing about the fabric
 
-Panel (a) is that test. The diagonal is the failure mode: any point on it
-has theta fixed in the ANTENNA frame. The horizontal is the success mode.
+Panel (a) is that test. The failure mode is the diagonal OFFSET by the
+measured theta_ant, because run_quadpol_frame.m forms theta_geo as
+theta_ant + track azimuth (mod 180): any point on that line has theta
+fixed in the ANTENNA frame. The horizontal is the success mode.
 
 The test only means something where the cross-polarized channels are
 trustworthy in the first place, so panel (c) carries the reciprocity
@@ -121,10 +123,19 @@ def main():
     axc = fig.add_subplot(gs[0, 2])
     axd = fig.add_subplot(gs[0, 3])
 
-    # (a) the test
-    gr = np.linspace(0, 180, 2)
-    axa.plot(gr, gr, '-', color='#c0392b', lw=1.6, zorder=2,
-             label='fixed in ANTENNA frame\n(measures nothing)')
+    # (a) the test. run_quadpol_frame.m forms theta_geo = theta_ant +
+    # track_az (mod 180), so the antenna-frame hypothesis is the diagonal
+    # offset by the measured theta_ant, not the 1:1 line: drawn at 1:1 the
+    # frames sit a whole theta_ant above their own reference.
+    th_ant0 = circ_mean(ant)
+    gr = np.linspace(0, 180, 361)
+    pred = (gr + th_ant0) % 180
+    # split at the mod-180 wrap so no vertical stroke crosses the panel
+    cut = np.flatnonzero(np.abs(np.diff(pred)) > 90) + 1
+    axa.plot(np.insert(gr, cut, np.nan), np.insert(pred, cut, np.nan),
+             '-', color='#c0392b', lw=1.6, zorder=2,
+             label=(r'fixed in ANTENNA frame ($\theta_{\rm ant}$ = '
+                    r'%.0f$^\circ$)' % th_ant0) + '\n(measures nothing)')
     axa.axhline(circ_mean(th), color='#1baf7a', lw=1.6, ls='--', zorder=2,
                 label='fixed in GEOGRAPHIC frame\n(measures the ice)')
     axa.plot(ta, th, 'o', color=C_OK, ms=8, markeredgecolor='white',
@@ -138,7 +149,7 @@ def main():
     axa.set_ylabel(r'recovered $\theta$ (deg E of N)', color=INK)
     axa.set_title('(a) heading test, %d reciprocal frames' % len(ok),
                   fontsize=10, color=INK)
-    axa.legend(loc='upper left', fontsize=7, frameon=False)
+    axa.legend(loc='best', fontsize=7, frameon=False)
     axa.grid(alpha=0.25, lw=0.6)
 
     # (b) the same angle in the antenna frame, where the scatter collapses

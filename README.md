@@ -164,8 +164,8 @@ units).
     to be the heading-wrap bug - see below): dlam carries a
     heading-family bias of order 0.01 (~15-20%) - same-ice crossing
     pairs between the N-S lines and the rows at Ridge A differ by +0.007
-    median with 91% sign consistency (n = 45 frame-pair crossings,
-    `scripts/figures/crossing_pairs.py`), consistent with residual
+    median with 90% sign consistency (n = 49 line crossings, one pair
+    each, `scripts/figures/crossing_pairs.py`), consistent with residual
     pedestal-fabric coupling that grows with the axis-to-antenna angle
     (N-S lines hold the axis ~6.5 deg from an antenna, rows ~18.5, the
     NW-SE connectors ~36.5 - nearest the 45-deg degenerate geometry, so
@@ -358,12 +358,25 @@ Scripts (each validates or applies the above end to end):
   - `quadpol_heading_test.py` and `ershadi_heading_test.py` - the decisive
     ice-or-antennas test, run on an existing raster survey at no extra
     acquisition cost: theta expressed geographically must be independent of
-    the driving heading, and the diagonal of panel (a) is the failure mode.
+    the driving heading. The failure mode drawn in panel (a) is the diagonal
+    OFFSET by the measured theta_ant, not the 1:1 line, because both
+    pipelines form theta_geo as theta_ant + heading (mod 180); it is drawn
+    wrapped into two branches and labelled with the theta_ant behind it.
     The first works per frame, the second per 200-trace heading block, which
     puts the test WITHIN frames as well as between them - same ice, same
     calibration, only the heading differing. Both screen frames on HV/VH
     reciprocity first, since the test means nothing where the
     cross-polarized channels are measuring the system.
+  - `crossing_pairs.py` - the same-ice crossing-pair test of the
+    heading-family dlam systematic, and the acceptance criterion for the
+    planned chan_equal raw-channel calibration (the paired difference
+    should go to ~0 once the cross-pol pedestal is removed at source).
+    Where two lines of different heading families cross, their nearest
+    blocks see the same ice, so their difference isolates what the
+    acquisition geometry adds and not the survey's real NW-SE gradient.
+    Blocks are classified by their OWN sec_az, since curved connectors
+    change family mid-frame, and pairs are deduped to one per crossing so
+    a cluster meeting at a single crossing cannot vote repeatedly.
 - `scripts/prototypes/deltak_remedy.py` - a PARKED investigation into the
   delta-k stage-A suppression at Ridge A (deramped coherent multilook
   before the cross products). It runs and reports, but it does not resolve
