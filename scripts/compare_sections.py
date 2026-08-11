@@ -26,8 +26,8 @@ duplicate batch frames.
 Reproducing the recorded heading-wrap measurement needs BOTH product
 generations on disk. The pre-fix copies are not in this repo and are not
 regenerable from it - they survive only in a local mirror captured
-mid-resweep - so that measurement is a one-time record, not something
-CI can re-derive.
+before the resweep - so that measurement is a one-time record, not
+something CI can re-derive.
 
 Usage: python compare_sections.py <before_dir> <after_dir> [prefix]
 """

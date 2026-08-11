@@ -180,25 +180,27 @@ units).
     and acceptance criterion.
     RULED OUT as the cause: the 0/180 heading-wrap interpolation bug
     fixed in 0e793d5 lived exactly on the N-S family, so all 17 N-S and
-    curved Ridge A frames were reswept with the fixed code. Seven of
-    them could be compared block for block against a pre-fix copy: the
-    deep dlam moved by a median of 0.00000 over 660 blocks (99.8% under
-    0.001, largest single block 0.005) and frame theta0 was unchanged to
-    0.1 deg. A control of seven frames that were already post-fix in
-    BOTH copies moved by the same nothing (758 blocks, median -0.00000,
-    largest 0.0012), which is what rules out the comparison itself
-    manufacturing a null. The bug was real but the per-block circular
-    mean over 125-200 traces absorbed the handful of mis-interpolated
-    headings it produced. The family systematic is therefore instrument
-    physics, not that defect, and chan_equal is the right thing to build
-    against it. `scripts/compare_sections.py` is how that measurement is
-    made and will re-make it, but only where both product generations
-    exist on disk: the pre-fix inputs survive solely in a local mirror
-    captured mid-resweep (`all_sections_final.tar` under `SCAR_DATA`,
-    written 07:37 on 10 Aug 2026), which is why exactly the seven frames
-    reswept after it could be compared. That mirror is not in this repo
-    and cannot be regenerated from it, so the numbers above are a
+    curved Ridge A frames were reswept with the fixed code, and all 17
+    still have a surviving pre-fix copy to be compared block for block
+    against. Over that whole set the deep dlam moved by a median of
+    +0.00000 and a mean of +0.00000 across 1574 blocks (p10/p90
+    -0.00003/+0.00004, 99.9% under 0.001, two blocks over it, none over
+    0.005, largest single block 0.0048), and frame theta0 was unchanged
+    to 0.12 deg. The bug was real but the per-block circular mean over
+    125-200 traces absorbed the handful of mis-interpolated headings it
+    produced. The family systematic is therefore instrument physics, not
+    that defect, and chan_equal is the right thing to build against it.
+    `scripts/compare_sections.py` is how that measurement is made and
+    will re-make it, but only where both product generations exist on
+    disk: the pre-fix inputs survive solely in a local mirror
+    (`all_sections_final.tar` under `SCAR_DATA`), which is not in this
+    repo and cannot be regenerated from it, so the numbers above are a
     recorded one-time measurement, not something CI can re-derive.
+    On the timeline, which reads as contradictory until the zones are
+    lined up: 0e793d5 is stamped 09:05 +0200, i.e. 02:05 US/Central, and
+    the resweep ran 03:09-10:40 CDT, so the fixed code was in place for
+    all of it and every 2025-series member of the mirror (9 Aug 23:40 to
+    10 Aug 02:09) is pre-fix.
   - `ptt.coregisterChannels` - aligns every channel onto the reference by
     CALLING the OPR toolbox `coregistration`, deliberately with no
     implementation of its own (it errors if the toolbox is absent), so the
