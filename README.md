@@ -417,14 +417,24 @@ Scripts (each validates or applies the above end to end):
     over-merging): no cluster is more than 101 m wide across track where
     two distinct parallel lines are ~1.5 km apart, and the closest
     candidate midpoint in another cluster is 1487 m against a 458 m
-    radius. It re-derives both on every run and names any cluster
-    that fuses two lines, so a survey with tighter line spacing fails
-    loudly instead of quietly reporting too few crossings.
+    radius. It re-derives both on every run, on the same clustering the
+    reported pairs came from, and it runs BEFORE each combo's headline:
+    a combo whose audit names a fused cluster is not reported at all (no
+    median, no n, and it is left out of the npz) and the run exits
+    non-zero, so a survey with tighter line spacing cannot quietly
+    report too few crossings. Clusters it could not measure, because
+    MIN_CELLS holes left their blocks with no index-adjacent sibling to
+    take a direction from, are counted as unverified rather than passed.
+    Its reach is bounded: projecting across track separates two lines
+    only insofar as they are near-parallel, so two converging
+    same-family lines or one line curving back over itself are outside
+    what it can certify.
     `test_crossing_pairs.py` beside it pins the invariant on synthetic
     geometry (a line split across consecutive frames, a curved connector
     contributing to both families, a repeat pass, two crossings that must
-    stay apart, and a deliberately fused pair the audit must catch); it
-    reads no data files and runs under pytest or directly.
+    stay apart, a deliberately fused pair the audit must catch, and a
+    cluster nothing could measure that must read unverified rather than
+    clean); it reads no data files and runs under pytest or directly.
 - `scripts/prototypes/deltak_remedy.py` - a PARKED investigation into the
   delta-k stage-A suppression at Ridge A (deramped coherent multilook
   before the cross products). It runs and reports, but it does not resolve
