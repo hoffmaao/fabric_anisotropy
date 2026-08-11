@@ -23,6 +23,8 @@ safe while the radius stays well under the line spacing:
   distinct  two genuinely separate crossings 3 km apart stay two pairs
   audit     a cluster that DOES fuse two parallel lines is reported by
             merge_audit rather than passing silently
+  abstain   a cluster nothing could measure reads UNVERIFIED, not clean,
+            since those two must never share a value
 
 Synthetic geometry in EPSG:3031 metres, built from the module's own
 defaults and FAMS so it tracks them rather than hard-coding them. No data
@@ -37,7 +39,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from crossing_pairs import (DEFAULT_MAX_SEP, FAMS,  # noqa: E402
-                            merge_audit, pair_families)
+                            analyse, line_spread, pair_families)
 
 STEP = 0.25 * DEFAULT_MAX_SEP   # block spacing well inside the radius
 ROW_AZ = np.radians(FAMS['row'][0])
@@ -112,16 +114,20 @@ def test_distinct_crossings_stay_apart():
     assert npairs(blocks) == 2
 
 
+def audit(blocks, fa='ns', fb='row'):
+    tags, bidx, x, y, fam, dl = arrays(blocks)
+    return analyse(tags, bidx, x, y, fam, dl, fa, fb)
+
+
 def test_audit_passes_a_clean_repeat():
     blocks = (ns_blocks('A', 0.0, 0.0, [-STEP, 0.0, STEP])
               + row_blocks('B', 0.0, 0.0, [-STEP, 0.0, STEP])
               + ns_blocks('A2', 30.0, 0.0, [-STEP, 0.0, STEP]))
-    tags, bidx, x, y, fam, _ = arrays(blocks)
-    radius, on_line, gap, bad = merge_audit(tags, bidx, x, y, fam,
-                                            'ns', 'row')
-    assert not bad, bad
-    assert on_line < 150.0, on_line
-    assert radius > 0
+    _, _, au = audit(blocks)
+    assert not au['bad'], au['bad']
+    assert au['on_line'] < 150.0, au['on_line']
+    assert au['checked'] >= 1 and au['unverified'] == 0, au
+    assert au['radius'] > 0
 
 
 def test_audit_catches_two_parallel_lines_fused():
@@ -134,14 +140,31 @@ def test_audit_catches_two_parallel_lines_fused():
     blocks = (ns_blocks('A', -200.0, 0.0, ts)
               + ns_blocks('C', 200.0, 0.0, ts)
               + row_blocks('B', 0.0, 0.0, [t * STEP for t in range(-4, 5)]))
-    tags, bidx, x, y, fam, _ = arrays(blocks)
-    _, on_line, gap, bad = merge_audit(tags, bidx, x, y, fam, 'ns', 'row')
-    assert bad, 'audit missed two parallel lines fused into one cluster'
-    assert ['A', 'C'] in [b[0] for b in bad], bad
-    assert on_line > 150.0, on_line
+    _, _, au = audit(blocks)
+    assert au['bad'], 'audit missed two parallel lines fused into a cluster'
+    assert ['A', 'C'] in [b[0] for b in au['bad']], au['bad']
+    assert au['on_line'] > 150.0, au['on_line']
     # and the candidate-set margin collapses too, unlike a separation
     # measured among survivors, which the radius would still bound below
-    assert gap < 150.0, gap
+    assert au['gap'] < 150.0, au['gap']
+
+
+def test_unmeasurable_cluster_abstains_not_passes():
+    # Every block isolated in its own frame, as MIN_CELLS holes in the
+    # bidx run leave them: no index-adjacent sibling anywhere, so no
+    # direction can be taken. This must read UNVERIFIED, never as the
+    # clean 0.0 it would share a value with.
+    blocks = [('A%d' % k, 0.0, t, 'ns')
+              for k, t in enumerate([-STEP, 0.0, STEP])]
+    blocks += [('B%d' % k, t * ROW_DIR[0], t * ROW_DIR[1], 'row')
+               for k, t in enumerate([-STEP, 0.0, STEP])]
+    tags, bidx, x, y, fam, dl = arrays(blocks)
+    assert np.isnan(line_spread(tags, bidx, x, y, [0, 1, 2])), 'not NaN'
+    _, _, au = audit(blocks)
+    assert au['unverified'] >= 1, au
+    assert au['checked'] == 0, au
+    assert np.isnan(au['on_line']), au['on_line']
+    assert not au['bad'], au['bad']
 
 
 CHECKS = [test_split_frames_are_one_crossing,
@@ -149,7 +172,8 @@ CHECKS = [test_split_frames_are_one_crossing,
           test_repeat_pass_is_one_crossing,
           test_distinct_crossings_stay_apart,
           test_audit_passes_a_clean_repeat,
-          test_audit_catches_two_parallel_lines_fused]
+          test_audit_catches_two_parallel_lines_fused,
+          test_unmeasurable_cluster_abstains_not_passes]
 
 
 def main():
