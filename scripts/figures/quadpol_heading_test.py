@@ -44,9 +44,16 @@ FN = os.path.join(DATA, 'quadpol_%s.mat' % SITE)
 
 RECIP_MIN = 0.5       # HV/VH coherence a frame must clear to be believed
 Z_BAND = (200.0, 1200.0)
-# The independent two-azimuth solve over the same raster (fabric_map.py),
-# which uses only co-polarized data and shares no estimator with this path.
-REF_P = 0.05
+# Scale bar for panel (d): the quad-pol LS contrast over the SAME 200-1200 m
+# Z_BAND each frame here is summarised over, so the two numbers are directly
+# comparable. Per site, because drawing one site's contrast across another's
+# frames would be a comparison to nothing. Ridge A: median of sec_dlam_ls
+# over the 36-frame survey (1.9e6 cells, p25/p75 0.029/0.067). This replaces
+# the earlier two-azimuth solve reference, which the LS estimator superseded
+# - its correlated (theta, P) errors biased it high - and it is the same bar
+# ershadi_heading_test.py draws, since the two figures are shown as a pair
+# and must not disagree about what the contrast is compared against.
+REF_DLAM = {'ridge_a': 0.052}
 C_OK, C_BAD = '#2a78d6', '#eb6834'
 
 
@@ -182,14 +189,16 @@ def main():
     # (d) the contrast, which does not depend on the cross-pol channels
     axd.plot(ta, dl, 'o', color=C_OK, ms=7, markeredgecolor='white',
              markeredgewidth=0.8)
-    axd.axhline(REF_P, color='black', lw=1.4, ls='--',
-                label='two-azimuth solve')
+    if SITE in REF_DLAM:
+        axd.axhline(REF_DLAM[SITE], color='black', lw=1.4, ls='--',
+                    label='quad-pol LS, same band')
     axd.set_xlim(0, 180)
     axd.set_xticks([0, 45, 90, 135, 180])
     axd.set_xlabel('track azimuth (deg E of N)', color=INK)
     axd.set_ylabel(r'$\Delta\lambda$', color=INK)
     axd.set_title('(d) contrast vs heading', fontsize=10, color=INK)
-    axd.legend(loc='upper right', fontsize=7.5, frameon=False)
+    if SITE in REF_DLAM:
+        axd.legend(loc='upper right', fontsize=7.5, frameon=False)
     axd.grid(alpha=0.25, lw=0.6)
 
     for ax in (axa, axb, axc, axd):
