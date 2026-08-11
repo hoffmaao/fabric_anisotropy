@@ -17,7 +17,7 @@ Panel (b) is the leakage test made quantitative: finite antenna isolation
 adds a floor that does NOT null, so it shows up as cross/co power that
 sits flat with depth instead of oscillating.
 
-Usage: python quadpol_diagnostic.py <out_dir> [tag]
+Usage: python quadpol_diagnostic.py <out_dir> [tag] [site]
 """
 import os
 import sys
@@ -34,14 +34,32 @@ from scar_style import DATA, INK, MUTED  # noqa: E402
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
 TAG = sys.argv[2] if len(sys.argv) > 2 else '20250108_02_009'
+SITE = sys.argv[3] if len(sys.argv) > 3 else 'ridge_a'
 FN = os.path.join(DATA, 'quadpol_%s.mat' % TAG)
 
-# What the independent azimuthal solve (fabric_map.py, two-azimuth fit over
-# the Ridge A raster) reports for this site, drawn for comparison. That
-# solve shares no code and no estimator with the quad-pol path - it uses
-# the co-polarized fringe rate across differently-headed legs - so
-# agreement is a real cross-validation rather than a consistency check.
-REF_P = 0.05          # median P over the resolved cells
+# Scale bar for panel (d): the median quad-pol LS contrast over the
+# 200-1200 m band. Per site, because drawing one site's contrast across
+# another site's frame would be a comparison to nothing, and no bar at all
+# is drawn for a site with no entry. Ridge A: median of sec_dlam_ls over the
+# 36-frame survey (1.9e6 cells, p25/p75 0.029/0.067). This is the same bar
+# ershadi_heading_test.py and quadpol_heading_test.py draw, since the three
+# figures are shown in one deck and must not disagree about what the
+# contrast is compared against.
+#
+# It replaces the two-azimuth solve (fabric_map.py) this panel used to draw,
+# which is NOT an independent check of the quad-pol path, for two separate
+# reasons. First, the LS estimator superseded it: its correlated (theta, P)
+# errors bias it high. Second, at Ridge A that solve is close to singular -
+# its conditioning goes as |sin 2*da| in the azimuth separation, which
+# vanishes at BOTH 0 and 90 deg, and Ridge A's rows at 80.5 deg against the
+# N-S connectors at 179.1 deg sit 81.4 deg apart, 9 deg from the 90 deg
+# singularity, for 3.4x error amplification. That is how a leg-level bias of
+# ~0.007 becomes a factor-of-two disagreement in P. Do not try to fix that
+# conditioning here: fabric_map.py's AZ_MIN_SEP gate has the same one-sided
+# flaw and is a separate change.
+REF_DLAM = {'ridge_a': 0.052}
+# Orientation from that same two-azimuth solve, drawn in panel (c) labelled
+# with its provenance. Context for the eye, not an independent check.
 REF_THETA = 90.0      # median theta, deg E of N
 Z_SHOW = (0.0, 1400.0)
 
@@ -128,17 +146,18 @@ def main():
     axt.set_title('(c) orientation', fontsize=10, color=INK)
     axt.grid(alpha=0.25, lw=0.6)
 
-    # (d) the two contrast estimators against the independent solve
+    # (d) the two contrast estimators against the quad-pol LS reference
     axd.plot(dlam[m], z[m], '-', color='#2a78d6', lw=1.6,
              label='coherence phase gradient')
     axd.plot(dlam_node[m], z[m], '-', color='#1baf7a', lw=1.2, alpha=0.8,
              label='cross-pol fringe rate')
-    axd.axvline(REF_P, color='black', lw=1.4, ls='--',
-                label='two-azimuth solve')
+    if SITE in REF_DLAM:
+        axd.axvline(REF_DLAM[SITE], color='black', lw=1.4, ls='--',
+                    label='quad-pol LS, 200-1200 m')
     # Scaled to the estimator that works. The cross-pol fringe rate runs to
     # ~2 here and letting it set the axis would compress the phase-gradient
-    # curve - the one that agrees with the independent solve - into the
-    # axis line.
+    # curve - the one that agrees with the LS reference - into the axis
+    # line.
     axd.set_xlim(0, 0.35)
     axd.set_xlabel(r'$\Delta\lambda$', color=INK)
     axd.set_title('(d) contrast, two ways', fontsize=10, color=INK)
@@ -152,8 +171,11 @@ def main():
         for s in ('top', 'right'):
             ax.spines[s].set_visible(False)
 
-    fig.suptitle('Quad-pol scattering-matrix inversion, Ridge A %s  '
-                 '(track %.0f$^\\circ$)' % (TAG, track_az),
+    # Site follows SITE rather than being fixed to Ridge A, so a frame from
+    # another survey is not labelled with this one's name.
+    fig.suptitle('Quad-pol scattering-matrix inversion, %s %s  '
+                 '(track %.0f$^\\circ$)'
+                 % (SITE.replace('_', ' ').title(), TAG, track_az),
                  fontsize=12, color=INK)
     out = os.path.join(OUT, 'scar_quadpol_%s.png' % TAG)
     fig.savefig(out, dpi=200, bbox_inches='tight', facecolor='white')
