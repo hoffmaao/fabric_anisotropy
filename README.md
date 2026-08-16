@@ -160,22 +160,52 @@ units).
     dlam is signed with no folded-noise floor, and theta0 abstains where
     the birefringence is unresolvable. Two-pass use: frame-level theta0,
     then per-block dlam with theta0 pinned.
-    KNOWN SYSTEMATIC (measured 10 Aug 2026, unresolved): dlam carries a
-    heading-family bias of order 0.01 (~15-20%) - 67 same-ice crossing
+    KNOWN SYSTEMATIC (measured 11 Aug 2026, unresolved, and CONFIRMED not
+    to be the heading-wrap bug - see below): dlam carries a
+    heading-family bias of order 0.01 (~17%) - same-ice crossing
     pairs between the N-S lines and the rows at Ridge A differ by +0.009
-    median with 94% sign consistency, consistent with residual
-    pedestal-fabric coupling that grows with the axis-to-antenna angle
-    (N-S lines hold the axis ~6.5 deg from an antenna, rows ~18.5, the
-    NW-SE connectors ~36.5 - nearest the 45-deg degenerate geometry, so
-    their end-of-row stubs read visibly different strength). Orientation
-    is unaffected. Until fixed, quote deep dlam with a +-0.005-0.01
-    family systematic; near-aligned lines are least coupled and read
-    high (0.067-0.074 deep at Ridge A). THE PLANNED FIX is raw-channel
-    calibration (chan_equal): fit the complex HV/VH leakage once per
-    system at the channel level and correct BEFORE synthesis, removing
-    the pedestal at its source; the per-frame ls_pedestal record and the
-    crossing-pair test (paired same-ice difference -> 0) are its inputs
-    and acceptance criterion.
+    median with 93% sign consistency (26 of n = 28 line crossings, one
+    pair each, `scripts/figures/crossing_pairs.py`), consistent with
+    residual pedestal-fabric coupling that grows with the axis-to-antenna
+    angle (N-S lines hold the axis ~6.5 deg from an antenna, rows ~18.5,
+    the NW-SE connectors ~36.5 - nearest the 45-deg degenerate geometry).
+    The combinations involving the NW-SE connectors are not quotable in
+    either direction: their crossings are one cluster of end-of-row stubs
+    and survive deduplication as n = 2 (NW-SE minus row) and n = 3 (N-S
+    minus NW-SE). Orientation is unaffected. Until fixed, quote deep
+    dlam with a +-0.005-0.01 family systematic; near-aligned lines are
+    least coupled and read high (0.067-0.074 deep at Ridge A). THE
+    PLANNED FIX is raw-channel calibration (chan_equal): fit the complex
+    HV/VH leakage once per system at the channel level and correct
+    BEFORE synthesis, removing the pedestal at its source; the per-frame
+    ls_pedestal record and the crossing-pair test (paired same-ice
+    difference -> 0) are its inputs and acceptance criterion.
+    RULED OUT as the cause: the 0/180 heading-wrap interpolation bug
+    fixed in 0e793d5 lived exactly on the N-S family, so all 17 N-S and
+    curved Ridge A frames were reswept with the fixed code, and all 17
+    still have a surviving pre-fix copy to be compared block for block
+    against. Over that whole set the deep dlam moved by a median of
+    +0.00000 and a mean of +0.00000 across 1574 blocks (p10/p90
+    -0.00003/+0.00004, 99.9% under 0.001, two blocks over it, none over
+    0.005, largest single block 0.0048), and frame theta0 was unchanged
+    to 0.12 deg. No block's usability flipped either way across the whole
+    2025 series (gain 0, lost 0), so nothing sits outside that n: the
+    null is not hiding a block that gained or lost a usable contrast.
+    The bug was real but the per-block circular mean over 125-200 traces
+    absorbed the handful of mis-interpolated headings it produced. The
+    family systematic is therefore instrument physics, not that defect,
+    and chan_equal is the right thing to build against it.
+    `scripts/compare_sections.py` is how that measurement is made and
+    will re-make it, but only where both product generations exist on
+    disk: the pre-fix inputs survive solely in a local mirror
+    (`all_sections_final.tar` under `SCAR_DATA`), which is not in this
+    repo and cannot be regenerated from it, so the numbers above are a
+    recorded one-time measurement, not something CI can re-derive.
+    On the timeline, which reads as contradictory until the zones are
+    lined up: 0e793d5 is stamped 09:05 +0200, i.e. 02:05 US/Central, and
+    the resweep ran 03:09-10:40 CDT, so the fixed code was in place for
+    all of it and every 2025-series member of the mirror (9 Aug 23:40 to
+    10 Aug 02:09) is pre-fix.
   - `ptt.coregisterChannels` - aligns every channel onto the reference by
     CALLING the OPR toolbox `coregistration`, deliberately with no
     implementation of its own (it errors if the toolbox is absent), so the
@@ -197,6 +227,17 @@ Scripts (each validates or applies the above end to end):
   quantized because it only ever becomes movie frames, plus the
   look-angle energy reductions that are used quantitatively, kept at
   full precision. Look angles are written in degrees under `theta_deg`.
+- `scripts/compare_sections.py` - differences two directories of
+  `quadpol_section_*.mat` for the same frames: per-block deep dlam
+  change over 1150-1500 m (same >= 5 finite cells rule as
+  `crossing_pairs.py`) and the frame theta0 change as a doubled-angle
+  phasor difference, per frame and pooled. Only blocks usable in BOTH
+  generations have a delta, so the blocks whose usability flipped are
+  counted beside n in the `gain` and `lost` columns rather than dropped
+  silently - a null result must not be able to hide a block that gained
+  or lost a usable deep contrast. This is what measured the
+  heading-wrap resweep above; it needs both product generations staged
+  locally, so it re-makes that measurement only where they are.
 - `scripts/figures/` - Python (matplotlib + scipy; cartopy required by
   the map figures) figure scripts that reproduce the analysis figures
   from the `opr_fabric/server/run_fabric_scratch.m` and
@@ -346,12 +387,63 @@ Scripts (each validates or applies the above end to end):
   - `quadpol_heading_test.py` and `ershadi_heading_test.py` - the decisive
     ice-or-antennas test, run on an existing raster survey at no extra
     acquisition cost: theta expressed geographically must be independent of
-    the driving heading, and the diagonal of panel (a) is the failure mode.
+    the driving heading. The failure mode drawn in panel (a) is the diagonal
+    OFFSET by the measured theta_ant, not the 1:1 line, because both
+    pipelines form theta_geo as theta_ant + heading (mod 180); it is drawn
+    wrapped into two branches and labelled with the theta_ant behind it.
     The first works per frame, the second per 200-trace heading block, which
     puts the test WITHIN frames as well as between them - same ice, same
     calibration, only the heading differing. Both screen frames on HV/VH
     reciprocity first, since the test means nothing where the
     cross-polarized channels are measuring the system.
+  - `crossing_pairs.py` - the same-ice crossing-pair test of the
+    heading-family dlam systematic, and the acceptance criterion for the
+    planned chan_equal raw-channel calibration (the paired difference
+    should go to ~0 once the cross-pol pedestal is removed at source).
+    Where two lines of different heading families cross, their nearest
+    blocks see the same ice, so their difference isolates what the
+    acquisition geometry adds and not the survey's real NW-SE gradient.
+    Blocks are classified by their OWN sec_az, since curved connectors
+    change family mid-frame, and pairs are deduped to one per crossing so
+    a cluster meeting at a single crossing cannot vote repeatedly. That
+    dedup clusters midpoints across the whole family combo rather than
+    within a frame pair, because a crossing is a PLACE: scoped per frame
+    pair it let one crossing vote once per frame covering it, which on
+    this grid inflated the N-S/row count from 28 to 45. All 17 of those
+    removals are one physical line re-flown under a second frame tag, not
+    a lost independent sample - `merge_audit` establishes that on the
+    CANDIDATE set rather than on the survivors (whose separations exceed
+    the cluster radius by construction, so they could never have shown
+    over-merging): no cluster is more than 101 m wide across track where
+    two distinct parallel lines are ~1.5 km apart, and the closest
+    candidate midpoint in another cluster is 1487 m against a 458 m
+    radius. It re-derives both on every run, on the same clustering the
+    reported pairs came from, and it runs BEFORE each combo's headline:
+    a combo whose audit names a fused cluster is not reported at all (no
+    median, no n, and it is left out of the npz) and the run exits
+    non-zero, so a survey with tighter line spacing cannot quietly
+    report too few crossings. Clusters it could not measure, because
+    MIN_CELLS holes left their blocks with no index-adjacent sibling to
+    take a direction from, are counted as unverified rather than passed,
+    while a side that was measured over the tolerance fails its cluster
+    whatever the other side did - evidence of a fusion outranks the
+    absence of evidence. The npz records that verdict per combo
+    (verified/failed/unverified cluster counts, the across-track width,
+    the candidate gap, the radius) with a run-level `audit_pass`, so a
+    later comparison can tell a fully audited run from one it should not
+    lean on.
+    Its reach is bounded: projecting across track separates two lines
+    only insofar as they are near-parallel, so two converging
+    same-family lines or one line curving back over itself are outside
+    what it can certify.
+    `test_crossing_pairs.py` beside it pins the invariant on synthetic
+    geometry (a line split across consecutive frames, a curved connector
+    contributing to both families, a repeat pass, two crossings that must
+    stay apart, a deliberately fused pair the audit must catch, a cluster
+    nothing could measure that must read unverified rather than clean,
+    and a cluster with one unmeasurable side and one measured fusion that
+    must read failed); it reads no data files and runs under pytest or
+    directly.
 - `scripts/prototypes/deltak_remedy.py` - a PARKED investigation into the
   delta-k stage-A suppression at Ridge A (deramped coherent multilook
   before the cross products). It runs and reports, but it does not resolve
