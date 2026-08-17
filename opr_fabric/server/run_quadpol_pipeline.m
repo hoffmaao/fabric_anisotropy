@@ -88,6 +88,17 @@ else
   nblk_auto = false;
 end
 NBLK_TR = nblk_tr;
+% Along-track SEGMENT length for the first-pass theta0(z) fits, in metres.
+% The frame pass re-fits theta0 per ~SEG_LEN_M segment so lateral fabric
+% variation is resolved instead of pooled away - the pooled frame pass is
+% the two-pass design's single point of failure on laterally-varying
+% frames (test_egrip_blocks.m). Frames shorter than two segments keep the
+% single frame fit unchanged. See ptt.quadpolFrameTheta.
+if exist('seg_len_m', 'var') && ~isempty(seg_len_m)
+  SEG_LEN_M = seg_len_m;
+else
+  SEG_LEN_M = 2000;
+end
 CACHE_COREG = true;   % keep the coregistered channels; see below
 name = sprintf('Data_%s_%03d.mat', day_seg, frm);
 t_all = tic;
@@ -430,91 +441,52 @@ xi = (1:numel(az_tr)).' + SMH/2;
 ph2h = interp1(xi, exp(2i*deg2rad(az_tr)), ...
   min(max((1:Nx).', xi(1)), xi(end)), 'linear');
 az_tr = mod(rad2deg(angle(ph2h))/2, 180);
-az0 = mod(rad2deg(angle(mean(exp(2i*deg2rad(az_tr)))))/2, 180);
-hdev = abs(mod(az_tr - az0 + 90, 180) - 90);
-hspread = prctile(hdev, 95);
-curved = hspread > 5;
+% Along-track distance, so segment boundaries are cut in metres and
+% "2 km" means 2 km at every site regardless of trace spacing.
+R_E = 6371000;
+dph_x = deg2rad(diff(la(:)));
+dlo_x = deg2rad(diff(lo(:)));
+aa_x = sin(dph_x/2).^2 ...
+  + cos(deg2rad(la(1:end-1))) .* cos(deg2rad(la(2:end))) .* sin(dlo_x/2).^2;
+x_along = [0; cumsum(2 * R_E * asin(min(1, sqrt(aa_x))))].';
 NBLK_ROT = 200;
-% The curved-path fit runs on this sweep; the step is passed to the
-% estimator in that call so the field and the fit grid cannot drift.
-PSI_STEP_FIT = 2;
-PSI_FIT = (0:PSI_STEP_FIT:180-PSI_STEP_FIT) * pi/180;
 
+% The frame pass - the antenna-frame pedestal, the frame-pooled theta0(z)
+% profile, and the per-SEGMENT geographic theta0(z) profiles the blocks
+% inherit - lives in ptt.quadpolFrameTheta, so the synthetic gates
+% (test_quadpol_segmented.m) exercise exactly the code that runs here.
+% Segments re-fit theta0 laterally every ~SEG_LEN_M because the pooled
+% frame pass is the two-pass design's single point of failure on
+% laterally-varying frames; the pedestal stays frame-level because it is
+% an instrument constant. Curved frames keep the validated geographic
+% path (test_quadpol_curved.m) inside the helper.
+fp = ptt.quadpolFrameTheta(T, z, az_tr, x_along, struct('fc', FC, ...
+  'deramped', true, 'dlam_max', DLAM_MAX, 'seg_len_m', SEG_LEN_M, ...
+  'nblk_rot', NBLK_ROT, 'track_az', track_az));
+lsq = fp.lsq;
+curved = fp.curved;
+hspread = fp.hspread;
+ped_ant = fp.ped_ant;
 if ~curved
-  lsq = ptt.quadpolFabricLS(T, z, struct('fc', FC, ...
-    'deramped', true, 'dlam_max', DLAM_MAX));
-  ped_ant = lsq.pedestal;
   th_geo_raw = lsq.theta0 + deg2rad(track_az);
 else
-  % antenna-frame single pass: theta/dlam are junk on a curve, but the
-  % pedestal estimate is CLEANER than on a straight line (fabric smears,
-  % instrument adds coherently)
-  lsa = ptt.quadpolFabricLS(T, z, struct('fc', FC, 'deramped', true, ...
-    'pedestal', 'window', 'dlam_max', DLAM_MAX));
-  ped_ant = lsa.pedestal;
-  if ~all(isfinite(ped_ant)), ped_ant = [0 0 0]; end
-  Mg = [];
-  wsum = 0;
-  for jr = 1:NBLK_ROT:Nx
-    jr1 = min(jr + NBLK_ROT - 1, Nx);
-    if jr1 - jr < 16, continue; end
-    Sb = struct();
-    for k = 1:4, Sb.(CHAN{k}) = T.(CHAN{k})(:, jr:jr1); end
-    Mb = ptt.quadpolMoments(Sb, [1 (jr1-jr+1)]);
-    hb = mod(rad2deg(angle(mean(exp(2i*deg2rad(az_tr(jr:jr1))))))/2, 180);
-    Mr = ptt.rotateMoments(Mb, -deg2rad(hb));
-    if isempty(Mg), Mg = zeros(size(Mr)); end
-    Mg = Mg + Mr * (jr1-jr+1);
-    wsum = wsum + (jr1-jr+1);
-    clear Sb Mb Mr;
-  end
-  Mg = Mg / wsum;
-  mh2 = mean(exp(2i*deg2rad(az_tr)));
-  mh4 = mean(exp(4i*deg2rad(az_tr)));
-  c2h = real(mh2); s2h = imag(mh2);
-  c4h = real(mh4); s4h = imag(mh4);
-  pfld = (ped_ant(1) + 1i*ped_ant(2)) ...
-    * (c2h*sin(2*PSI_FIT(:)) - s2h*cos(2*PSI_FIT(:))) ...
-    + ped_ant(3) * (0.5 - 0.5*(c4h*cos(4*PSI_FIT(:)) + s4h*sin(4*PSI_FIT(:))));
-  lsq = ptt.quadpolFabricLS(struct('M', Mg), z, struct('fc', FC, ...
-    'deramped', true, 'psi_step_deg', PSI_STEP_FIT, 'pedestal', pfld, ...
-    'dlam_max', DLAM_MAX));
   th_geo_raw = lsq.theta0;   % the geographic fit reports geographically
 end
-
 okt = isfinite(th_geo_raw);
-if nnz(okt) >= 2
-  % Hand the blocks a SMOOTHED GEOGRAPHIC axis, built on the doubled-angle
-  % phasor weighted by each window's own theta0 contrast - never an
-  % unwrapped angle. Each block converts it into its own antenna frame
-  % through its own heading below.
-  qw = lsq.q_theta;
-  qw(~isfinite(qw) | qw < 0) = 0;
-  ph = qw .* exp(2i * th_geo_raw);
-  ph(~okt) = 0;
-  ks = ones(5, 1);
-  num_p = conv(ph, ks, 'same');
-  den_p = conv(qw .* double(okt), ks, 'same');
-  oks = den_p > 0.25 & abs(num_p) > 0;
-  if nnz(oks) >= 2
-    th_geo_prof = struct('z', lsq.zw(oks), 'theta', 0.5 * angle(num_p(oks)));
-  else
-    th_geo_prof = struct('z', lsq.zw(okt), 'theta', th_geo_raw(okt));
-  end
-else
-  th_geo_prof = [];   % nothing usable; let the blocks estimate their own
-end
 % Blocks inherit the ANTENNA-frame pedestal (an instrument constant, so it
-% is the same in every block's own frame) and the geographic axis.
+% is the same in every block's own frame) and their segment's geographic
+% axis through ptt.thetaProfileAt below.
 if all(isfinite(ped_ant))
   blk_ped = ped_ant;
 else
   blk_ped = 'frame';
 end
 fprintf(['LS frame pass %.1f min (%s, heading p95 spread %.1f deg): ' ...
-  'theta0 constrained on %d of %d windows, pedestal [%.3f %+.3fi %.3f]\n'], ...
+  'theta0 constrained on %d of %d windows, pedestal [%.3f %+.3fi %.3f], ' ...
+  '%d segment(s) of ~%.1f km\n'], ...
   toc(t0)/60, H_tag(curved, 'GEOGRAPHIC frame', 'antenna frame'), hspread, ...
-  nnz(okt), numel(th_geo_raw), ped_ant(1), ped_ant(2), ped_ant(3));
+  nnz(okt), numel(th_geo_raw), ped_ant(1), ped_ant(2), ped_ant(3), ...
+  fp.nseg, (x_along(end) - x_along(1)) / max(fp.nseg, 1) / 1000);
 
 %% 4b. the SECTION: both estimators, per along-track block
 % The frame-average profile above answers "what is the fabric here"; this
@@ -549,9 +521,11 @@ for b = 1:nb
   sec_theta(:, b) = rad2deg(ob.theta);
   sec_cmag(:, b) = ob.Cmag(:, 1);
   hb_blk = mod(rad2deg(angle(mean(exp(2i*deg2rad(az_tr(j0:j1))))))/2, 180);
-  if isstruct(th_geo_prof)
-    th_b = struct('z', th_geo_prof.z, ...
-      'theta', th_geo_prof.theta - deg2rad(hb_blk));
+  % the block's SEGMENT profile, phasor-interpolated across segment
+  % centres at the block centre, converted into the block's antenna frame
+  pg = ptt.thetaProfileAt(fp, mean(x_along(j0:j1)));
+  if isstruct(pg)
+    th_b = struct('z', pg.z, 'theta', pg.theta - deg2rad(hb_blk));
   else
     th_b = [];
   end
@@ -625,6 +599,11 @@ res = struct('tag', sprintf('%s_%03d', day_seg, frm), ...
   'ls_dlam', single(lsq.dlam), 'ls_q_theta', single(lsq.q_theta), ...
   'ls_resid', single(lsq.resid), 'ls_gamma', single(lsq.gamma), ...
   'ls_leak', single(lsq.leak), 'ls_pedestal', ped_ant, ...
+  'ls_theta_seg', single(rad2deg(fp.th_seg)), ...
+  'ls_q_seg', single(fp.q_seg), ...
+  'ls_dlam_seg', single(fp.dlam_seg), ...
+  'ls_resid_seg', single(fp.resid_seg), ...
+  'ls_seg_x', fp.seg_x, 'ls_nseg', fp.nseg, 'seg_len_m', SEG_LEN_M, ...
   'theta0_ls', single(rad2deg(lsq.theta0_z(s))), ...
   'dlam_ls', single(lsq.dlam_z(s)), ...
   'sec_dlam_ls', single(sec_dlam_ls(s,:)), ...
