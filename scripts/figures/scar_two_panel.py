@@ -53,18 +53,6 @@ BATCH = os.path.expanduser('~/data/opr/fabric_batch')
 MARGIN = os.path.expanduser('~/data/opr/margin')
 
 
-def scale_bar_br(ax, extent, frac=0.25):
-    """Shared bottom-right scale bar, on the Antarctic projection.
-
-    The bar length uses antarctic_basemap's rounding rule, so it matches
-    the other EPSG:3031 figures in that family.
-    """
-    sty.scale_bar_br(ax, extent, ab.proj3031(), frac=frac,
-                     nice_length=ab._nice_length)
-
-
-C_ICE = 299792458.0 / np.sqrt(3.171)
-GREY = np.array([0.74, 0.74, 0.74])
 
 
 def fabric_panel(ax, fig, tag, dist, lats, lons, t_us, surf_t_s, vmax,
@@ -188,7 +176,7 @@ def thwaites():
                           color='gray', y_inline=False)
         gl.top_labels = False
         gl.right_labels = False
-        scale_bar_br(ax, extent)
+        ab.scale_bar_br(ax, extent, ab.proj3031())
         # Hard right in the top corner: the zoom window sits high and
         # slightly left of centre here, so at 0.665 the locator painted
         # over the top-right corner of its dashed box. The locator keeps
@@ -303,7 +291,7 @@ def ridge_a():
                           color='gray', y_inline=False)
         gl.top_labels = False
         gl.right_labels = False
-        scale_bar_br(ax, extent)
+        ab.scale_bar_br(ax, extent, ab.proj3031())
         sty.continental_inset(ax, 'antarctica',
                               (0.02, 0.755, 0.26, 0.225), extent, proj)
         # No in-map caption, boxed or loose - deliberate, do not re-add. The
