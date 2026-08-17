@@ -289,8 +289,19 @@ cache_fn = fullfile(out_dir, 'coreg_cache', ...
 from_cache = false;
 if exist(cache_fn, 'file') == 2
   try
-    cq = load(cache_fn, 'z', 'CO', 'r0', 'r1');
-    if isequal(cq.CO, CO) && cq.r0 == r0 && cq.r1 == r1 ...
+    % Nx (the post-cull trace count) is part of the key so a changed cull
+    % rule can never reuse a cache whose trace axis no longer matches the
+    % freshly culled coordinates. Caches written before the field existed
+    % lack it; a MISSING Nx counts as valid when everything else matches,
+    % so the existing Antarctic and EastGRIP caches are not invalidated.
+    if ismember('Nx', who('-file', cache_fn))
+      cq = load(cache_fn, 'z', 'CO', 'r0', 'r1', 'Nx');
+      nx_ok = isequal(double(cq.Nx), double(Nx));
+    else
+      cq = load(cache_fn, 'z', 'CO', 'r0', 'r1');
+      nx_ok = true;
+    end
+    if isequal(cq.CO, CO) && cq.r0 == r0 && cq.r1 == r1 && nx_ok ...
         && numel(cq.z) == numel(z) && max(abs(cq.z(:) - z(:))) < 1e-6
       cq = load(cache_fn, 'hh', 'vv', 'hv', 'vh');
       T = struct('hh', double(cq.hh), 'vv', double(cq.vv), ...
@@ -350,7 +361,7 @@ if CACHE_COREG && ~from_cache
   % write to a temp name in the same directory and rename into place, so a
   % worker killed mid-write can never leave a truncated cache behind
   tmp_fn = [cache_fn '.tmp'];
-  save(tmp_fn, '-v7.3', 'hh', 'vv', 'hv', 'vh', 'z', 'CO', 'r0', 'r1');
+  save(tmp_fn, '-v7.3', 'hh', 'vv', 'hv', 'vh', 'z', 'CO', 'r0', 'r1', 'Nx');
   movefile(tmp_fn, cache_fn);
   clear hh vv hv vh;
   fprintf('cached coregistered channels -> %s\n', cache_fn);

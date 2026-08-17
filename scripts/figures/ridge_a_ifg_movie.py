@@ -29,6 +29,7 @@ Usage: python ridge_a_ifg_movie.py <ifg_movie_dir> <out_dir> [fps] [sec]
 """
 import glob
 import os
+import shutil
 import subprocess
 import sys
 
@@ -79,14 +80,14 @@ REMA_FN = os.path.join(BASEMAP, 'REMA_32m_32_34_dem.tif')
 
 def find_ffmpeg():
     """ffmpeg is not on PATH in the cartopy env these figures render in."""
-    import shutil
     for c in (shutil.which('ffmpeg'),
               '/opt/anaconda3/envs/ar-env/bin/ffmpeg',
               '/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg'):
         if c and os.path.exists(c):
             return c
-    raise SystemExit('no ffmpeg found; frames are in <out>/frames if you '
-                     'want to encode them by hand')
+    raise SystemExit('no ffmpeg found; frames are in '
+                     '<out>/frames_ridge_a_ifg_movie if you want to '
+                     'encode them by hand')
 
 
 def read_rema(extent):
@@ -198,8 +199,15 @@ def main():
     else:
         rema_lo = rema_hi = None
 
-    fdir = os.path.join(OUT, 'frames')
-    os.makedirs(fdir, exist_ok=True)
+    fdir = None
+    if still_tag is None:
+        # per-output frame dir, cleared up front: leftover seq_/f* frames
+        # from a crashed run would be numbered after this run's and ffmpeg
+        # would append them to the tail of the movie
+        fdir = os.path.join(OUT, 'frames_ridge_a_ifg_movie')
+        if os.path.isdir(fdir):
+            shutil.rmtree(fdir)
+        os.makedirs(fdir)
     hold = max(1, int(round(FPS * SEC_PER_SEG)))
     n = 0
     draw = [f for f in frames if still_tag is None or f['tag'] == still_tag]
@@ -284,6 +292,7 @@ def main():
          '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20',
          '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', mp4],
         check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    shutil.rmtree(fdir)
     print('wrote %s (%d frames, %.1f s)' % (mp4, n, n / FPS))
 
 

@@ -52,6 +52,14 @@ ls $R/CSARP_qlook_HH/*/Data_2024*.mat 2>/dev/null | grep -v Data_img \
   | sort -u > egrip_work.txt
 echo "$(wc -l < egrip_work.txt) frames queued"
 
+# Stale locks from a killed run would make every worker skip those frames
+# forever; the chain is launched once, so any lock present now is stale.
+stale=$(find $F/invert_logs -maxdepth 1 -type d -name 'lock_egrip_*' 2>/dev/null)
+if [ -n "$stale" ]; then
+  echo "removing $(echo "$stale" | wc -l) stale lock(s)"
+  echo "$stale" | xargs rmdir
+fi
+
 worker() {
   while read -r seg frm; do
     tag=$(printf '%s_%03d' "$seg" "$((10#$frm))")
