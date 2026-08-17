@@ -162,3 +162,24 @@ def add_scale_bar(ax, extent, frac=0.25):
             path_effects=None,
             bbox=dict(boxstyle='round,pad=0.15', fc='white', ec='none',
                       alpha=0.7))
+
+
+def scale_bar_br(ax, extent, proj, frac=0.25):
+    """Bottom-right plain black scale bar, the SCAR-deck style.
+
+    One definition shared by the two-panel stills and the movie frames -
+    they render the same panel geometry and a private copy in each drifted
+    once already. `add_scale_bar` above is the white-cased bottom-left
+    variant used on imagery backgrounds; this one is bare black for the
+    plain-background survey panels.
+    """
+    width = extent[1] - extent[0]
+    height = extent[3] - extent[2]
+    length = _nice_length(frac * width)
+    x1 = extent[1] - 0.06 * width
+    y0 = extent[2] + 0.07 * height
+    ax.plot([x1 - length, x1], [y0, y0], color='black', lw=3.0,
+            transform=proj, zorder=9, solid_capstyle='butt')
+    label = f'{length/1000:g} km' if length >= 1000 else f'{length:g} m'
+    ax.text(x1 - length / 2, y0 + 0.025 * height, label, ha='center',
+            va='bottom', fontsize=9, color='black', transform=proj, zorder=9)
