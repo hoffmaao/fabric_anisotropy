@@ -387,15 +387,6 @@ Scripts (each validates or applies the above end to end):
     coherence-field fit above the published direct chain - on a shared
     color scale; older .mat files without them still draw the two-row
     layout.
-  - `quadpol_fabric_map.py` - the quad-pol LS result in map view over a
-    survey grid, from the `run_quadpol_pipeline.m` section files staged
-    under `SCAR_DATA`: deep principal contrast coloured along each track,
-    orientation as one fixed-length ink bar per frame from the
-    geographic-frame theta0. Bars are built geodetically (endpoints
-    offset along the azimuth in lat/lon, then projected), and the on-map
-    key is itself such a bar at the survey's median axis with no azimuth
-    number attached, because meridian convergence rotates azimuths on
-    the page.
   - `quadpol_sites.py` - the one shared definition of survey identity and
     drawing parameters for the multi-site quad-pol maps and depth movies.
     Sites are selected by POSITION, not tag prefix - the 2024 tags alone
