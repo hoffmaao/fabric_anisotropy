@@ -43,7 +43,6 @@ import matplotlib
 import numpy as np
 
 matplotlib.use('Agg')
-import cartopy.crs as ccrs                             # noqa: E402
 import matplotlib.pyplot as plt                        # noqa: E402
 from matplotlib.collections import LineCollection      # noqa: E402
 from matplotlib.colors import TwoSlopeNorm             # noqa: E402
@@ -139,7 +138,7 @@ def main():
     print('  value: median %+.4f  p10/p90 %+.4f/%+.4f'
           % (np.median(allv), *np.percentile(allv, [10, 90])))
     gn = qs.grid_north_az([np.mean([f['lat'] for f in frames])],
-                       [np.mean([f['lon'] for f in frames])])[0]
+                          [np.mean([f['lon'] for f in frames])])[0]
     print('  grid north at survey centre: %.2f deg E of true north' % gn)
 
     proj = ab.proj3031()
