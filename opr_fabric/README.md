@@ -253,6 +253,23 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     special runs that need the full record; any non-default depth gets a
     `_z<depth>` suffix on both the coreg cache and the section output
     name, so such runs can never clobber the standard batch products.
+    Where NO polarimetric product exists at all - the 2024 Greenland
+    (EastGRIP) season ships only `CSARP_qlook_{HH,VV,HV,VH}`, with
+    all-NaN Surface and a third of the traces stationary - the pipeline
+    runs in QLOOK MODE, supplying each missing piece explicitly (the
+    header argues every choice): coregistration defaults copied from
+    what the Antarctic products recorded, the range window from a
+    leading-edge surface pick (the `negis_interferogram.m` rule) plus
+    `z_max`, a stationary-trace cull BEFORE any block geometry, and a
+    loud error on a real-valued channel (segment 20240618_01 is a
+    real-only setup day). Antarctic behavior is unchanged. The LS dlam
+    search ceiling is site-aware and overridable per run via `dlam_max`:
+    the estimator default 0.25 for the Antarctic sites, 0.45 in qlook
+    mode because the EGRIP contrast (~0.3) sits above the default cap
+    (`test/test_egrip_cap.m` pins both sides). `nblk_tr` is likewise
+    overridable, and qlook mode auto-defaults it to Ridge A's ~125 m
+    block LENGTH from the measured trace spacing, because 125 TRACES at
+    this season's ~9 m spacing would be a 1.1 km block.
   - `coreg_batch.sh` / `coreg_one.sh` and `invert_batch.sh` /
     `invert_one.sh` - survey-scale drivers for that pipeline on the
     shared node: the coreg batch builds the caches (the one genuinely
@@ -265,6 +282,22 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     coreg-batch/invert-follower pair end to end, one site at a time,
     starting only after every currently running batch has gone fully
     quiet; its header carries the launch line.
+  - `egrip_chain.sh` - the EastGRIP season driver for the pipeline's
+    qlook mode: revalidates one frame with the raised dlam ceiling,
+    gates on its LS residuals (median resid < 0.40 AND finite fraction
+    > 0.60 over 300-1100 m), and only past the gate batches every
+    complex frame of the season with the same idempotent lock/retry
+    discipline as the other drivers. The gate stopping the batch is the
+    feature: a failing estimator must not burn days of compute. The
+    revalidated frame currently stops there (resid 0.485 with dlam and
+    finite fraction recovered), so the season is deliberately unbatched
+    until the remaining misfit is diagnosed.
+  - `extract_sweep_egrip.m` - pulls the measured C(psi,z) and P(psi,z)
+    azimuth sweeps for that validation frame, for exactly that open
+    diagnosis: the suspect is anisotropic reflectivity from the EGRIP
+    girdle, an even cos-2psi structure in the co-pol power that the LS
+    nuisance basis cannot absorb, and that hypothesis is testable in
+    Phh(psi) directly.
   - `mech_experiment_009.m` - split-sample tests (interleaved azimuth
     halves, interleaved trace halves, reflectivity correlation) of the
     LS profile's residual 50-150 m depth wiggles, run from the frame-009
@@ -422,6 +455,21 @@ the same way:
   pedestal pinned as a precomputed field over the measured heading
   distribution - must recover axis and contrast, with and without that
   pedestal.
+- `test_egrip_cap.m` - the dlam search ceiling (its header carries the
+  `matlab -batch` line, as does the next one). The estimator's default
+  `dlam_max` = 0.25 sits BELOW the EGRIP core's ~0.2-0.35 contrast, and
+  a window whose true rate exceeds the cap rails and abstains or locks
+  an aliased branch: at the default a constant 0.32 synthetic fabric
+  abstains on 100% of windows, and at the pipeline's qlook-mode 0.45 it
+  is recovered exactly at both 125- and 14-trace blocks. This is the
+  regression for the site-aware `DLAM_MAX` in `run_quadpol_pipeline.m`.
+- `test_egrip_blocks.m` - the two-pass coupling. The pipeline hands the
+  frame-level theta0 to every section block, so a frame pass killed by
+  along-track dlam structure (a 0.10 ramp on an EastGRIP-like column)
+  poisons every block size; the test asserts small blocks do NOT rescue
+  it, and fails if that single point of failure silently changes. Its
+  header records why it was reframed from the block-size hypothesis it
+  was written for.
 
 `test/test_copol_surface.m` covers the co-polarized chain's surface
 reference at the solver level: the OLD surface-anchored call must
