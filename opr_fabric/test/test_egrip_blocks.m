@@ -44,7 +44,6 @@ rng(7);
 t0 = tic;
 
 thisDir = fileparts(mfilename('fullpath'));
-thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
 
 C = ptt.constants();

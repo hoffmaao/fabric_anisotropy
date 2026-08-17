@@ -52,7 +52,8 @@ ACCUM = os.path.expanduser('~/data/opr/accum/2024_Antarctica_Ground2')
 BATCH = os.path.expanduser('~/data/opr/fabric_batch')
 MARGIN = os.path.expanduser('~/data/opr/margin')
 
-
+C_ICE = 299792458.0 / np.sqrt(3.171)
+GREY = np.array([0.74, 0.74, 0.74])
 
 
 def fabric_panel(ax, fig, tag, dist, lats, lons, t_us, surf_t_s, vmax,

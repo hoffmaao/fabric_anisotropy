@@ -37,6 +37,7 @@ Usage: python quadpol_depth_movie.py <out_dir> [site]
 import glob
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -78,12 +79,12 @@ T = Transformer.from_crs('EPSG:4326', 'EPSG:3031', always_xy=True)
 
 
 def find_ffmpeg():
-    import shutil
     for c in (shutil.which('ffmpeg'), '/opt/anaconda3/envs/ar-env/bin/ffmpeg',
               '/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg'):
         if c and os.path.exists(c):
             return c
-    raise SystemExit('no ffmpeg found; frames are in <out>/frames')
+    raise SystemExit('no ffmpeg found; frames are in '
+                     '<out>/depth_frames_%s' % SITE)
 
 
 def load():
@@ -103,14 +104,12 @@ def load():
             th_geo = np.array(r['ls_theta0_geo']).ravel()
             lat = float(np.array(r['lat']).ravel()[0])
             lon = float(np.array(r['lon']).ravel()[0])
-        if not qs.in_site(CFG, lat, lon, tag):
-            continue
-        with h5py.File(fn) as f:
-            r = f['res']
             lat0 = float(np.array(r['lat0']).ravel()[0])
             lon0 = float(np.array(r['lon0']).ravel()[0])
             lat1 = float(np.array(r['lat1']).ravel()[0])
             lon1 = float(np.array(r['lon1']).ravel()[0])
+        if not qs.in_site(CFG, lat, lon, tag):
+            continue
         ok = np.isfinite(blat) & np.isfinite(blon)
         if not ok.any():
             continue
@@ -142,8 +141,13 @@ def main():
     print('  survey span %.1f x %.1f km, bar %.2f km'
           % (span_x / 1e3, span_y / 1e3, bar_km))
 
-    fdir = os.path.join(OUT, 'depth_frames')
-    os.makedirs(fdir, exist_ok=True)
+    # per-site frame dir, cleared up front: leftover seq_/d* frames from a
+    # crashed run (or another site) would be numbered after this run's and
+    # ffmpeg would append them to the tail of the movie
+    fdir = os.path.join(OUT, 'depth_frames_%s' % SITE)
+    if os.path.isdir(fdir):
+        shutil.rmtree(fdir)
+    os.makedirs(fdir)
     n = 0
     for k, zc in enumerate(centres):
         lo, hi = zc - WIN_M / 2, zc + WIN_M / 2
@@ -262,6 +266,7 @@ def main():
                     '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', mp4],
                    check=True, stdout=subprocess.DEVNULL,
                    stderr=subprocess.DEVNULL)
+    shutil.rmtree(fdir)
     print('wrote %s (%d frames, %.1f s)' % (mp4, n, n / FPS))
 
 
