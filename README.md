@@ -227,6 +227,13 @@ Scripts (each validates or applies the above end to end):
   quantized because it only ever becomes movie frames, plus the
   look-angle energy reductions that are used quantitatively, kept at
   full precision. Look angles are written in degrees under `theta_deg`.
+- `scripts/reduce_ifg_movie.py` - run on mem1 like `extract_swath.py`,
+  making the same trade for the wrapped-phase movie: each ~690 MB Ridge A
+  `CSARP_polarimetric` frame becomes a ~1.5 MB npz of display-resolution
+  uint8 phase and coherence (NaN handled BEFORE the cast, because numpy
+  casts NaN to an arbitrary uint8), while the geometry - read
+  quantitatively by the map marker and distance axis - stays float.
+  `scripts/figures/ridge_a_ifg_movie.py` animates the result locally.
 - `scripts/compare_sections.py` - differences two directories of
   `quadpol_section_*.mat` for the same frames: per-block deep dlam
   change over 1150-1500 m (same >= 5 finite cells rule as
@@ -319,9 +326,14 @@ Scripts (each validates or applies the above end to end):
     averaging their two P values - the fit is linear in the estimates, P
     is their norm.
   - `scar_style.py` - the one definition of the styling constants,
-    end markers, scale bar, panel, zoom-inset and continental-locator
-    geometry and the track-azimuth/geometry helpers those figures share,
-    so the site slides cannot drift apart. Every two-panel figure draws
+    end markers, panel, zoom-inset and continental-locator geometry and
+    the track-azimuth/geometry helpers those figures share, so the site
+    slides cannot drift apart. Scale bars: the plain bottom-right bar for
+    the EPSG:3031 panels is `scale_bar_br` in `antarctic_basemap.py`,
+    shared by the two-panel stills and the movie frames (two private
+    copies of it had drifted once already); `scar_style` keeps the
+    projection-parameterized variant the Greenland-projection figures
+    pass their own rounding rule to. Every two-panel figure draws
     that locator - Antarctica for Thwaites and Ridge A, Greenland for
     NEGIS and EastGRIP - from cached Natural Earth land, so it needs no
     network; the study area is the map panel's OWN extent drawn on the
@@ -384,6 +396,44 @@ Scripts (each validates or applies the above end to end):
     key is itself such a bar at the survey's median axis with no azimuth
     number attached, because meridian convergence rotates azimuths on
     the page.
+  - `quadpol_sites.py` - the one shared definition of survey identity and
+    drawing parameters for the multi-site quad-pol maps and depth movies.
+    Sites are selected by POSITION, not tag prefix - the 2024 tags alone
+    span Thwaites, WAIS Divide and McMurdo, so a prefix map would draw
+    three sites on one axis - with Eastwind and McMurdo, which overlap
+    spatially, split by SEASON (a 2022 single-spot rotation experiment vs
+    a 2024 15 km transect). Each site carries its own depth bands, colour
+    ceiling, movie depth range (stopped where the site's median dlam
+    crosses the estimator's 0.01 abstention threshold; the measured
+    per-window tables are in its comments) and window/step (thin-ice
+    sites get 40 m windows at 5 m steps - 150 m is half the ice at a
+    300 m shelf, and McMurdo's earlier 450 m cut was detecting the ice
+    base, not a fabric limit).
+  - `quadpol_fabric_maps.py` - the multi-site quad-pol maps drawn from
+    those definitions: one script, three modes (principal contrast; the
+    eigenvalue difference projected onto GRID north; both horizontal
+    axes as crosses whose ARM-LENGTH DIFFERENCE carries dlam, the mean
+    length deliberately meaningless because common-offset polarimetry
+    cannot constrain absolute eigenvalue magnitudes). Grid north because
+    per-block meridian convergence, measured numerically, reaches ~69 deg
+    at Ridge A - there the true-north and grid-north projections disagree
+    IN SIGN. Extents are square with span-scaled markers, so fixed-km
+    bars sized for Ridge A's ~25 km grid cannot sprawl across Taylor
+    Dome's few-km-wide strip.
+  - `quadpol_depth_movie.py` - the survey map redrawn per sliding depth
+    window at a fixed colour scale and extent, so the movie shows the
+    fabric strengthening down the column rather than every depth
+    autoscaling to look equally anisotropic; its docstring carries the
+    measured Ridge A profile and the 100%-coverage fact that makes the
+    pale shallow frames measurements of weak fabric, not gaps.
+  - `ridge_a_ifg_movie.py` - the wrapped-phase movie: a fixed basemap
+    (REMA over grey) with a walking segment marker beside that segment's
+    wrapped interferogram, no panel titles and no zoom inset (either
+    would rewrite or re-frame itself every segment), colorbar below the
+    map. `--still` renders one segment through the identical code path -
+    extent and TWTT window still computed over ALL segments - so a slide
+    cuts to the movie with zero on-screen movement. Reads the
+    `scripts/reduce_ifg_movie.py` npz extracts.
   - `quadpol_heading_test.py` and `ershadi_heading_test.py` - the decisive
     ice-or-antennas test, run on an existing raster survey at no extra
     acquisition cost: theta expressed geographically must be independent of
@@ -449,8 +499,20 @@ Scripts (each validates or applies the above end to end):
   before the cross products). It runs and reports, but it does not resolve
   the suppression and its deep profile still anti-correlates with SNAPHU;
   the docstring states the numbers. Not wired into `+ptt`.
-- `scripts/figures/ghost2_swath_movie.py` is the one figure script outside
-  that batch-output family: it renders a look-angle sweep movie (one
+- `scripts/prototypes/extract_polpair.py` (run on mem1) and
+  `scripts/prototypes/crossover_check.py` - the PoRaPy comparison. The
+  first synthesizes along- and across-axis co-pol traces from one frame's
+  full scattering matrix, so no crossing geometry or two-line
+  coregistration enters; the second runs PoRaPy's sliding-bin correlation
+  on them (`PORAPY_SRC` points at Lilien's package, which is not
+  vendored). Their docstrings deliberately carry the measured results as
+  the record: the raw differential phase confirms the LS chain band for
+  band, and the envelope correlation recovers ~a third of the delay -
+  explicitly not a criticism of PoRaPy, whose real method correlates on a
+  bed reflection this radar never reaches.
+- `scripts/figures/ghost2_swath_movie.py` sits outside that batch-output
+  family altogether (as `ridge_a_ifg_movie.py` above does, from its own
+  mem1 extracts): it renders a look-angle sweep movie (one
   along-track radargram per steering angle, TWTT axis, rotating beam icon)
   and an energy-vs-look-angle plot from the rds GHOST2 swath data that
   rode the same 2024-25 traverse train. It reads either a raw

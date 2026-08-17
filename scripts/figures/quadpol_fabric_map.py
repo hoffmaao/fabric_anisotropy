@@ -19,7 +19,12 @@ arithmetic.
 
 Reads every quadpol_section_<prefix>*.mat under the SCAR staging dir
 (the run_quadpol_pipeline.m outputs mirrored locally). The tag prefix
-selects the survey: 2025 is Ridge A, 2024 is Thwaites.
+selects the survey - which is only safe while the mirror holds one
+survey per season prefix. It no longer does: the full 2024 tag set
+spans Thwaites, WAIS Divide and McMurdo, so on the multi-site mirror a
+prefix draws three sites on one axis. Use quadpol_fabric_maps.py,
+which selects sites by POSITION via quadpol_sites.py, for anything
+beyond the original 2025-Ridge-A / 2024-Thwaites staging.
 
 Usage: python quadpol_fabric_map.py <out_dir> [tag_prefix] [title]
 """
