@@ -55,16 +55,52 @@ else
 end
 FC = 750e6;
 PSI_STEP_DEG = 1;
+% dlam search ceiling for the LS estimator. Its default 0.25 predates any
+% site whose contrast approaches it: the EGRIP core sits at ~0.2-0.35,
+% ABOVE the default, and a window whose true rate exceeds the cap either
+% rails there and abstains or locks an aliased branch below it - the
+% oscillating dlam, 0.3-0.6 residuals and 0.233 ceiling of the first
+% EastGRIP validation frame. Synthetic (test_egrip_cap.m): at cap 0.25 a
+% 0.32 fabric abstains on 100% of windows; at 0.45 it is recovered exactly
+% at every block size. Overridable per run; qlook mode defaults high, the
+% Antarctic sites keep the estimator default.
+if exist('dlam_max', 'var') && ~isempty(dlam_max)
+  DLAM_MAX = dlam_max; dlam_ov = true;
+else
+  DLAM_MAX = 0.25; dlam_ov = false;
+end
 % Traces per along-track block for the SECTION. 125 is what run_sections.m
 % uses for the co-polarized Ridge A section, so the two sections have the
 % same along-track sampling and can be read against each other cell for
 % cell rather than approximately.
-NBLK_TR = 125;
+%
+% OVERRIDABLE, because 125 traces is not a fixed LENGTH. Ridge A traces sit
+% ~1 m apart so a block is ~125 m; the EastGRIP qlook traces are ~9 m apart
+% so the same count is a 1.1 km block, and a whole frame becomes 16 of them.
+% At a shear margin, where fabric varies over hundreds of metres, that
+% averages genuinely different ice into one block - which depresses dlam and
+% destabilises theta0 exactly as the first EastGRIP validation frame did.
+% Set nblk_tr at the call site to match the block LENGTH, not the count.
+if ~exist('nblk_tr', 'var') || isempty(nblk_tr)
+  nblk_tr = 125;            % Ridge A's count; ~125 m at ~1 m trace spacing
+  nblk_auto = true;
+else
+  nblk_auto = false;
+end
+NBLK_TR = nblk_tr;
 CACHE_COREG = true;   % keep the coregistered channels; see below
 name = sprintf('Data_%s_%03d.mat', day_seg, frm);
 t_all = tic;
 
 %% 1-2. window, settings and source check, from the product
+% Two acquisition families are handled here. The Antarctic ground seasons
+% ship CSARP_polarimetric, which carries the coregistration settings, the
+% range window, Surface and a `ref` copy of the source - everything the run
+% needs. The 2024 Greenland (EastGRIP) season ships none of that: the
+% channels are CSARP_qlook_{HH,VV,HV,VH}, there is no polarimetric product
+% at all, and Surface is NaN on every frame. QLOOK MODE below supplies each
+% missing piece explicitly rather than silently defaulting, so a frame that
+% took the fallback path says so in its own log.
 pol_fn = fullfile(site_root, 'CSARP_polarimetric', day_seg, name);
 if exist(pol_fn, 'file') ~= 2
   % The 2022/2023 seasons shipped the polarimetric product only in its
@@ -76,28 +112,87 @@ if exist(pol_fn, 'file') ~= 2
     pol_fn = alt;
   end
 end
-if exist(pol_fn, 'file') ~= 2
-  error('run_quadpol_pipeline:noProduct', 'no polarimetric product %s', pol_fn);
+qlook_mode = exist(pol_fn, 'file') ~= 2;
+if qlook_mode
+  CHAN_DIR = 'CSARP_qlook_%s';
+  qfn = fullfile(site_root, sprintf(CHAN_DIR, 'HH'), day_seg, name);
+  if exist(qfn, 'file') ~= 2
+    error('run_quadpol_pipeline:noProduct', ...
+      'neither a polarimetric product nor %s', qfn);
+  end
+  P = load(qfn, 'Time', 'Surface', 'Latitude', 'Longitude', 'GPS_time');
+  % Coregistration defaults, copied from what the Antarctic products
+  % recorded (Ridge A frame 20250108_02_009), so both families are aligned
+  % by the same tiling and search rather than by whatever a toolbox default
+  % happens to be this release.
+  CO = struct('Tt', 101, 'Tx', 301, 'overlap_t', 50, 'overlap_x', 150, ...
+    'search_t', 5, 'search_x', 5, 'one_dim_search_en', 1);
+  fprintf('=== %s_%03d === QLOOK MODE (no polarimetric product)\n', ...
+    day_seg, frm);
+  if ~dlam_ov, DLAM_MAX = 0.45; end
+  fprintf('dlam search ceiling %.2f\n', DLAM_MAX);
+  % Surface is NaN in these products, so the depth zero is picked here -
+  % first sample above 5%% of the trace peak, the leading edge rather than
+  % the broader power maximum. Same rule as negis_interferogram.m and
+  % run_quadpol_frame.m, so every EastGRIP product shares one depth zero.
+  % Picked from a SUBSET of traces read through matfile: the full record is
+  % 32073 samples by several thousand traces and reading it whole, four
+  % times, would cost gigabytes before the window is even known.
+  surf_t = median(P.Surface(:), 'omitnan');
+  if ~isfinite(surf_t)
+    mf = matfile(qfn);
+    [ntq, nxq] = size(mf, 'Data');
+    % a matfile range must be evenly spaced, so stride rather than
+    % linspace: an irregular index list is rejected outright
+    stride = max(1, floor(nxq / 200));
+    js = 1:stride:nxq;
+    Dsub = mf.Data(:, js);
+    pw = abs(double(Dsub)).^2;
+    thr = 0.05 * max(pw, [], 1);
+    st = nan(1, numel(js));
+    for j = 1:numel(js)
+      i0 = find(pw(:, j) > thr(j), 1);
+      if ~isempty(i0), st(j) = P.Time(i0); end
+    end
+    surf_t = median(st, 'omitnan');
+    fprintf('Surface all NaN; leading edge picked at %.3f us from %d traces\n', ...
+      surf_t*1e6, numel(js));
+    clear Dsub pw thr mf;
+  end
+  if ~isfinite(surf_t)
+    error('run_quadpol_pipeline:surface', 'could not pick a surface');
+  end
+  % Range window from the surface and the depth ceiling, not from a
+  % recorded rbin pair: with no polarimetric product there is none, and the
+  % 53 us record runs far past any depth being inverted.
+  C0q = 299792458; C_ICEq = C0q/sqrt(3.171);
+  t_max = surf_t + 2*(z_max + 50)/C_ICEq;
+  r0 = max(1, find(P.Time >= surf_t - 20e-9, 1));
+  r1 = min(numel(P.Time), find(P.Time <= t_max, 1, 'last'));
+  fprintf('window rbin %d:%d of %d (surface %.3f us, z_max %.0f m)\n', ...
+    r0, r1, numel(P.Time), surf_t*1e6, z_max);
+else
+  CHAN_DIR = 'CSARP_standardphase_%s';
+  w = {whos('-file', pol_fn).name};
+  sel = intersect({'param_polarimetric','Time','Surface','Latitude', ...
+    'Longitude','ref','sec_reg'}, w);
+  P = load(pol_fn, sel{:});
+  pp = P.param_polarimetric;
+  if isfield(pp, 'polarimetric'), pp = pp.polarimetric; end
+  r0 = pp.min_rbin; r1 = pp.max_rbin;
+  co = pp.coregistration;
+  CO = struct('Tt', co.Tt, 'Tx', co.Tx, 'overlap_t', co.overlap_t, ...
+    'overlap_x', co.overlap_x, 'search_t', co.search_t, ...
+    'search_x', co.search_x, 'one_dim_search_en', co.one_dim_search_en);
+  fprintf('=== %s_%03d ===\n', day_seg, frm);
+  surf_t = [];
 end
-w = {whos('-file', pol_fn).name};
-sel = intersect({'param_polarimetric','Time','Surface','Latitude', ...
-  'Longitude','ref','sec_reg'}, w);
-P = load(pol_fn, sel{:});
-pp = P.param_polarimetric;
-if isfield(pp, 'polarimetric'), pp = pp.polarimetric; end
-r0 = pp.min_rbin; r1 = pp.max_rbin;
-co = pp.coregistration;
-CO = struct('Tt', co.Tt, 'Tx', co.Tx, 'overlap_t', co.overlap_t, ...
-  'overlap_x', co.overlap_x, 'search_t', co.search_t, ...
-  'search_x', co.search_x, 'one_dim_search_en', co.one_dim_search_en);
-fprintf('=== %s_%03d ===\n', day_seg, frm);
 fprintf('window rbin %d:%d, tiling Tt %d Tx %d ov %d/%d\n', r0, r1, ...
   CO.Tt, CO.Tx, CO.overlap_t, CO.overlap_x);
 
 S = struct();
 for k = 1:4
-  fn = fullfile(site_root, ['CSARP_standardphase_' upper(CHAN{k})], ...
-    day_seg, name);
+  fn = fullfile(site_root, sprintf(CHAN_DIR, upper(CHAN{k})), day_seg, name);
   if exist(fn, 'file') ~= 2
     error('run_quadpol_pipeline:missing', 'missing %s channel', CHAN{k});
   end
@@ -108,10 +203,16 @@ for k = 1:4
   end
   S.(CHAN{k}) = q.Data(r0:r1, :);
   if k == 1, Tv = q.Time(r0:r1); end
+  if qlook_mode && isreal(S.(CHAN{k}))
+    error('run_quadpol_pipeline:notComplex', ...
+      ['%s channel is REAL, not complex - the coherence fit needs the ' ...
+       'full scattering matrix. Segment 20240618_01 of the EastGRIP ' ...
+       'season is a real-only setup day and must be skipped.'], CHAN{k});
+  end
 end
 [Nt, Nx] = size(S.hh);
 fprintf('%d samples x %d traces\n', Nt, Nx);
-if isfield(P, 'ref')
+if ~qlook_mode && isfield(P, 'ref')
   A = P.ref; if isstruct(A), A = A.Data; end
   if isequal(size(A), size(S.hh))
     rel = max(abs(A(:) - S.hh(:))) / max(abs(A(:)));
@@ -120,9 +221,52 @@ if isfield(P, 'ref')
   end
 end
 
+%% 2b. cull the traces the traverse stopped for, BEFORE anything else
+% A third of the EastGRIP traces have no along-track step. Coregistration
+% tiles and every along-track block would otherwise average a stationary
+% dwell as though it were distance, which both inflates the apparent
+% coherence and puts blocks in the wrong place. Culling first keeps Data,
+% the coordinates and the block geometry on one trace axis. Same rule as
+% negis_interferogram.m: a trace whose predecessor has no position has no
+% measurable step and is kept rather than called stopped.
+if qlook_mode
+  MIN_STEP_M = 0.5;
+  la_all = P.Latitude(:).'; lo_all = P.Longitude(:).';
+  Re = 6371e3;
+  ph = deg2rad(la_all); dlo = diff(deg2rad(lo_all)); dph = diff(ph);
+  aa = sin(dph/2).^2 + cos(ph(1:end-1)).*cos(ph(2:end)).*sin(dlo/2).^2;
+  step = [Inf, 2*Re*asin(sqrt(aa))];
+  located = isfinite(la_all) & isfinite(lo_all);
+  stopped = located & [false, located(1:end-1)] & step < MIN_STEP_M;
+  keep_tr = located & ~stopped;
+  fprintf('stationary cull: %d of %d traces dropped (%d stopped, %d unlocated)\n', ...
+    nnz(~keep_tr), Nx, nnz(stopped), nnz(~located));
+  if nnz(keep_tr) < 64
+    error('run_quadpol_pipeline:tooFewTraces', ...
+      'only %d traces survive the cull', nnz(keep_tr));
+  end
+  for k = 1:4, S.(CHAN{k}) = S.(CHAN{k})(:, keep_tr); end
+  P.Latitude = la_all(keep_tr); P.Longitude = lo_all(keep_tr);
+  Nx = nnz(keep_tr);
+  if nblk_auto
+    % Match the block LENGTH to Ridge A's ~125 m, not its trace count: at
+    % this season's ~9 m spacing 125 traces is a 1.1 km block, which
+    % averages genuinely different ice at a shear margin (the first
+    % validation frame: block-to-block dlam spread 7.2x vs Ridge A's 1.1x).
+    sp = step(keep_tr); sp = median(sp(isfinite(sp) & sp < 100));
+    NBLK_TR = max(8, round(125 / max(sp, 0.5)));
+    fprintf('qlook block size: %d traces (~%.0f m at %.1f m spacing)\n', ...
+      NBLK_TR, NBLK_TR * sp, sp);
+  end
+end
+
 %% depth axis
 C0 = 299792458; C_ICE = C0/sqrt(3.171);
-st = median(P.Surface(:), 'omitnan');
+if qlook_mode
+  st = surf_t;              % picked above; Surface is NaN in these products
+else
+  st = median(P.Surface(:), 'omitnan');
+end
 z = (Tv(:) - st) * C_ICE / 2;
 keep = z >= 0 & z <= Z_MAX;
 for k = 1:4, S.(CHAN{k}) = S.(CHAN{k})(keep, :); end
@@ -286,7 +430,8 @@ PSI_STEP_FIT = 2;
 PSI_FIT = (0:PSI_STEP_FIT:180-PSI_STEP_FIT) * pi/180;
 
 if ~curved
-  lsq = ptt.quadpolFabricLS(T, z, struct('fc', FC, 'deramped', true));
+  lsq = ptt.quadpolFabricLS(T, z, struct('fc', FC, ...
+    'deramped', true, 'dlam_max', DLAM_MAX));
   ped_ant = lsq.pedestal;
   th_geo_raw = lsq.theta0 + deg2rad(track_az);
 else
@@ -294,7 +439,7 @@ else
   % pedestal estimate is CLEANER than on a straight line (fabric smears,
   % instrument adds coherently)
   lsa = ptt.quadpolFabricLS(T, z, struct('fc', FC, 'deramped', true, ...
-    'pedestal', 'window'));
+    'pedestal', 'window', 'dlam_max', DLAM_MAX));
   ped_ant = lsa.pedestal;
   if ~all(isfinite(ped_ant)), ped_ant = [0 0 0]; end
   Mg = [];
@@ -321,7 +466,8 @@ else
     * (c2h*sin(2*PSI_FIT(:)) - s2h*cos(2*PSI_FIT(:))) ...
     + ped_ant(3) * (0.5 - 0.5*(c4h*cos(4*PSI_FIT(:)) + s4h*sin(4*PSI_FIT(:))));
   lsq = ptt.quadpolFabricLS(struct('M', Mg), z, struct('fc', FC, ...
-    'deramped', true, 'psi_step_deg', PSI_STEP_FIT, 'pedestal', pfld));
+    'deramped', true, 'psi_step_deg', PSI_STEP_FIT, 'pedestal', pfld, ...
+    'dlam_max', DLAM_MAX));
   th_geo_raw = lsq.theta0;   % the geographic fit reports geographically
 end
 
@@ -377,7 +523,12 @@ sec_lat = nan(1, nb); sec_lon = nan(1, nb); sec_az = nan(1, nb);
 for b = 1:nb
   j0 = (b-1)*NBLK_TR + 1;
   j1 = min(b*NBLK_TR, Nx);
-  if j1 - j0 < 16, continue; end
+  % Minimum traces per block, scaled: the fixed 16 predates small blocks
+  % and would silently skip EVERY block of a 14-trace section, writing an
+  % all-NaN product that looks like abstention. For NBLK_TR >= 17 this is
+  % exactly the old guard; below that it keeps full blocks and drops only
+  % sub-full tails.
+  if j1 - j0 < min(16, NBLK_TR - 1), continue; end
   Tb = struct();
   for k = 1:4, Tb.(CHAN{k}) = T.(CHAN{k})(:, j0:j1); end
   ob = ptt.ershadiFabric(Tb, z, struct('fc', FC, ...
@@ -394,7 +545,7 @@ for b = 1:nb
     th_b = [];
   end
   ob_ls = ptt.quadpolFabricLS(Tb, z, struct('fc', FC, 'deramped', true, ...
-    'theta0', th_b, 'pedestal', blk_ped));
+    'theta0', th_b, 'pedestal', blk_ped, 'dlam_max', DLAM_MAX));
   sec_dlam_ls(:, b) = ob_ls.dlam_z;
   sec_resid_ls(:, b) = interp1(ob_ls.zw, ob_ls.resid, z, 'linear');
   sec_lat(b) = mean(la(j0:j1));
