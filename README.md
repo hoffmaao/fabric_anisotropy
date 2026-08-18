@@ -158,8 +158,9 @@ units).
     coherence scale), so the axis comes from the coherence field the
     co-pol channels dominate, the nulls are modelled rather than gated,
     dlam is signed with no folded-noise floor, and theta0 abstains where
-    the birefringence is unresolvable. Two-pass use: frame-level theta0,
-    then per-block dlam with theta0 pinned.
+    the birefringence is unresolvable. Two-pass use: a frame theta0
+    pass, laterally segmented (`ptt.quadpolFrameTheta` below), then
+    per-block dlam with theta0 pinned.
     KNOWN SYSTEMATIC (measured 11 Aug 2026, unresolved, and CONFIRMED not
     to be the heading-wrap bug - see below): dlam carries a
     heading-family bias of order 0.01 (~17%) - same-ice crossing
@@ -206,6 +207,19 @@ units).
     the resweep ran 03:09-10:40 CDT, so the fixed code was in place for
     all of it and every 2025-series member of the mirror (9 Aug 23:40 to
     10 Aug 02:09) is pre-fix.
+  - `ptt.quadpolFrameTheta` - the frame pass of that two-pass use,
+    laterally segmented: one antenna-frame pedestal per frame (an
+    instrument constant) plus a geographic theta0(z) profile re-fitted
+    per ~2 km along-track segment, because one pooled theta0 handoff is
+    the two-pass design's single point of failure on laterally-varying
+    frames. Curving frames take the geographic sub-block machinery
+    validated on a 90-deg arc; the header owns the detail, and
+    `opr_fabric/test/test_quadpol_segmented.m` /
+    `test_quadpol_curved.m` are its regressions.
+  - `ptt.thetaProfileAt` - the per-block handoff from that frame pass:
+    the segment profiles interpolated at a block's along-track position
+    on the doubled-angle phasor, with robust q-weighted end rows because
+    the estimator clamps out-of-range depth windows to the terminal row.
   - `ptt.coregisterChannels` - aligns every channel onto the reference by
     CALLING the OPR toolbox `coregistration`, deliberately with no
     implementation of its own (it errors if the toolbox is absent), so the

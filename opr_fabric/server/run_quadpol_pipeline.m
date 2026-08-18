@@ -10,8 +10,9 @@
 %   4. invert the COREGISTERED channels twice: ptt.ershadiFabric (the
 %      published chain, evaluated at the cross-pol minimum, which on this
 %      system is antenna-locked) and ptt.quadpolFabricLS (the model fit
-%      that takes the axis from the coherence field; frame-level theta0,
-%      then per-block dlam with theta0 held)
+%      that takes the axis from the coherence field; a laterally-segmented
+%      frame theta0 pass via ptt.quadpolFrameTheta, then per-block dlam
+%      with the block's segment theta0 held via ptt.thetaProfileAt)
 %   5. report against the LS frame fit - the two-azimuth solve is printed
 %      as context only, not as a standard - and save
 %
@@ -400,7 +401,7 @@ out_raw = ptt.ershadiFabric(S, z, struct('fc', FC, ...
   'coh_min', 0.4, 'deramped', true));
 fprintf('\nershadi inversion %.1f min\n', toc(t0)/60);
 
-%% 4a. the LS inversion: frame-level theta0, then dlam with theta0 fixed
+%% 4a. the LS inversion: segmented frame theta0, then dlam with theta0 fixed
 % ershadiFabric evaluates Psi at the cross-polarized minimum, which on
 % this system is antenna-locked (89.6 +- 1.9 deg over 1790 blocks) by the
 % flat -3.6 dB cross-pol pedestal, i.e. ~25 deg off the true axis. That is
