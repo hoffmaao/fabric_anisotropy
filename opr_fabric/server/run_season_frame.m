@@ -24,7 +24,9 @@ end
 if ~exist('day_seg', 'var') || ~exist('frm', 'var')
   error('run_season_frame:noFrame', 'set day_seg and frm at the call site');
 end
-site_root = season.site_root;
+if ~exist('site_root', 'var')
+  site_root = season.site_root;
+end
 if isfield(season, 'z_max') && ~exist('z_max', 'var')
   z_max = season.z_max;
 end

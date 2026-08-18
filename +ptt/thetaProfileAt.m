@@ -52,7 +52,9 @@ wp = den(ok);
 % window of every block. Replace each end value with the q-weighted
 % phasor mean of the outermost min(5, n) rows.
 K = min(5, numel(tp));
-tp(end) = 0.5 * angle(sum(wp(end-K+1:end) .* exp(2i*tp(end-K+1:end))));
-tp(1) = 0.5 * angle(sum(wp(1:K) .* exp(2i*tp(1:K))));
+t_bot = 0.5 * angle(sum(wp(end-K+1:end) .* exp(2i*tp(end-K+1:end))));
+t_top = 0.5 * angle(sum(wp(1:K) .* exp(2i*tp(1:K))));
+tp(end) = t_bot;
+tp(1) = t_top;
 prof = struct('z', zp, 'theta', tp);
 end
