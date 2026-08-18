@@ -99,12 +99,15 @@ for ci = 1:size(cases, 1)
   end
 
   % --- block pass twice: OLD handoff (pooled frame profile) and NEW
-  okf = isfinite(fp.th_frame);
-  th_prof_old = struct('z', fp.zw(okf), 'theta', fp.th_frame(okf));
-  % the OLD path is the faithful pre-change-pipeline emulation: the
-  % SMOOTHED pooled frame theta0 (fp.th_frame, already geographic) AND
-  % the pooled frame pedestal; the NEW path takes both from the
-  % segmented pass (fp.ped_ant may be segment-derived)
+  okf = isfinite(fp.lsq.theta0);
+  th_prof_old = struct('z', fp.lsq.zw(okf), 'theta', ...
+    fp.lsq.theta0(okf) + deg2rad(FOPTS.track_az));
+  % the OLD path hands blocks the UNSMOOTHED pooled frame theta0 plus the
+  % pooled frame pedestal - the test_egrip_blocks.m killer convention, so
+  % gate b reproduces the documented failure (the q-weighted smoothing of
+  % fp.th_frame bridges this synthetic ramp and would hide it); the NEW
+  % path takes both from the segmented pass (fp.ped_ant may be
+  % segment-derived)
   ped_old = fp.lsq.pedestal;
   ped_new = fp.ped_ant;
   nblk = floor(Nx / NBLK);
