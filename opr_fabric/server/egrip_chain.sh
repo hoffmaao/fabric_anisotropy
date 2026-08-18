@@ -17,23 +17,32 @@ cd $F
 mkdir -p invert_logs
 echo "=== egrip chain start $(date)"
 
-# --- step 1: revalidation of 20240619_01_001 (coreg cache exists, ~25 min)
-$ML -batch "maxNumCompThreads(8); site_root='$R'; day_seg='20240619_01'; frm=1; run_quadpol_pipeline" > egrip_reval.log 2>&1
+# --- step 1: gate on the ALREADY-REVALIDATED section (seg_reval.sh, 17 Aug:
+# section resid 0.562 -> 0.476 with the segmented first pass, dlam 0.229 =
+# the domain median, finite 0.91). The residual floor was diagnosed as the
+# 2psi-dominant chan_equal-family calibration signature - the same term
+# Ridge A carries at a third the amplitude - so the gate is RE-STATED per
+# the author's 18 Aug decision: finite fraction + block self-consistency;
+# resid is RECORDED as the documented site floor, not gated on.
 gate=$(python3 - <<'PY'
 import h5py, numpy as np
 try:
     fn = "/kucresis/scratch/hoffmana_sta/fabric/stages/quadpol/quadpol_section_20240619_01_001.mat"
     with h5py.File(fn) as f:
         r = f["res"]
-        zw = np.array(r["ls_zw"]).ravel()
-        rs = np.array(r["ls_resid"]).ravel()
-        dl = np.array(r["ls_dlam"]).ravel()
-    m = (zw > 300) & (zw < 1100)
-    med = float(np.nanmedian(rs[m]))
-    fin = float(np.mean(np.isfinite(dl[m])))
-    dlm = float(np.nanmedian(dl[m]))
-    ok = "PASS" if (med < 0.40 and fin > 0.60) else "FAIL"
-    print("%s resid=%.3f finite=%.2f dlam=%.3f" % (ok, med, fin, dlm))
+        z = np.array(r["z"]).ravel()
+        dl = np.array(r["sec_dlam_ls"]); rs = np.array(r["sec_resid_ls"])
+    if dl.shape[0] == z.size:
+        dl = dl.T; rs = rs.T
+    m = (z > 300) & (z < 1100)
+    med = np.array([np.nanmedian(dl[b, m]) for b in range(dl.shape[0])])
+    fin = float(np.mean(np.isfinite(dl[:, m])))
+    resid = float(np.nanmedian(rs[:, m]))
+    ok = np.isfinite(med[:-1]) & np.isfinite(med[1:])
+    adj = float(np.nanmedian(np.abs(med[1:][ok] - med[:-1][ok])))
+    verdict = "PASS" if (fin > 0.60 and adj < 0.05) else "FAIL"
+    print("%s finite=%.2f adj_ddlam=%.3f resid_floor=%.3f dlam=%.3f" % (
+        verdict, fin, adj, resid, float(np.nanmedian(med))))
 except Exception as exc:
     print("FAIL error=%s" % exc)
 PY
