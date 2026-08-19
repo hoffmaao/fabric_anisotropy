@@ -133,6 +133,58 @@ if qlook_mode
       'neither a polarimetric product nor %s', qfn);
   end
   P = load(qfn, 'Time', 'Surface', 'Latitude', 'Longitude', 'GPS_time');
+  % THE QLOOK COORDINATES ARE NOT USABLE and must be rebuilt from the
+  % season's reference trajectory. The 2024 Greenland qlook products carry
+  % a Latitude/Longitude pair that is not the geographic position of the
+  % traverse: frame 20240619_01_001 reads 0.196..0.229 N, 1.738..1.915 E -
+  % the Gulf of Guinea - where CSARP_reference_trajectory/ref_<seg>.mat
+  % puts the same GPS times at 75.507..75.628 N, -35.967..-35.603 E on
+  % 2700 m of ice, which is EastGRIP. Everything geometric is computed
+  % from these numbers, so using them as shipped is not a cosmetic error:
+  % measured on that frame, the along-track length inflates 3.3x (20.0 km
+  % against a true 6.1 km, so the trace spacing reads 9.07 m instead of
+  % 2.83 m and the auto block length, the stationary cull and the segment
+  % boundaries all scale with it), and because a degree of longitude
+  % subtends 111 km at the equator against 27.6 km at 75.6 N, the track
+  % azimuth comes out 98.8 deg instead of 127.1 - a 28 deg error carried
+  % straight into every theta0_geo this season reports.
+  %
+  % The rebuild is an interpolation of the reference trajectory onto the
+  % frame's own GPS_time. It is NOT optional and NOT silently skipped: a
+  % missing reference file, or a frame whose GPS times fall outside it,
+  % errors out, because the alternative is a product that looks fine and
+  % is wrong by tens of degrees.
+  ref_fn = fullfile(site_root, 'CSARP_reference_trajectory', ...
+    sprintf('ref_%s.mat', day_seg));
+  if exist(ref_fn, 'file') ~= 2
+    error('run_quadpol_pipeline:noRefTraj', ...
+      ['qlook coordinates are unusable and %s is missing; the frame ' ...
+      'cannot be positioned'], ref_fn);
+  end
+  RT = load(ref_fn, 'gps_time', 'lat', 'lon');
+  [rt_gps, rt_ord] = sort(RT.gps_time(:));
+  rt_lat = RT.lat(:); rt_lat = rt_lat(rt_ord);
+  rt_lon = RT.lon(:); rt_lon = rt_lon(rt_ord);
+  q_gps = P.GPS_time(:);
+  if min(q_gps) < rt_gps(1) - 1 || max(q_gps) > rt_gps(end) + 1
+    error('run_quadpol_pipeline:refTrajRange', ...
+      ['frame GPS times %.1f..%.1f fall outside the reference trajectory ' ...
+      '%.1f..%.1f'], min(q_gps), max(q_gps), rt_gps(1), rt_gps(end));
+  end
+  la_qk = P.Latitude(:).'; lo_qk = P.Longitude(:).';
+  P.Latitude = interp1(rt_gps, rt_lat, q_gps, 'linear').';
+  P.Longitude = interp1(rt_gps, rt_lon, q_gps, 'linear').';
+  if any(~isfinite(P.Latitude)) || any(~isfinite(P.Longitude))
+    error('run_quadpol_pipeline:refTrajGap', ...
+      'reference trajectory left %d traces unpositioned', ...
+      nnz(~isfinite(P.Latitude) | ~isfinite(P.Longitude)));
+  end
+  fprintf(['trajectory rebuilt from %s: shipped %.3f..%.3f N %.3f..%.3f E ' ...
+    '-> %.3f..%.3f N %.3f..%.3f E\n'], ...
+    sprintf('ref_%s.mat', day_seg), min(la_qk), max(la_qk), min(lo_qk), ...
+    max(lo_qk), min(P.Latitude), max(P.Latitude), min(P.Longitude), ...
+    max(P.Longitude));
+  clear RT rt_gps rt_lat rt_lon rt_ord q_gps la_qk lo_qk;
   % Coregistration defaults, copied from what the Antarctic products
   % recorded (Ridge A frame 20250108_02_009), so both families are aligned
   % by the same tiling and search rather than by whatever a toolbox default
@@ -301,18 +353,28 @@ cache_fn = fullfile(out_dir, 'coreg_cache', ...
 from_cache = false;
 if exist(cache_fn, 'file') == 2
   try
-    % Nx (the post-cull trace count) is part of the key so a changed cull
-    % rule can never reuse a cache whose trace axis no longer matches the
-    % freshly culled coordinates. Caches written before the field existed
-    % lack it; a MISSING Nx counts as valid when everything else matches,
-    % so the existing Antarctic and EastGRIP caches are not invalidated.
-    if ismember('Nx', who('-file', cache_fn))
-      cq = load(cache_fn, 'z', 'CO', 'r0', 'r1', 'Nx');
-      nx_ok = isequal(double(cq.Nx), double(Nx));
-    else
-      cq = load(cache_fn, 'z', 'CO', 'r0', 'r1');
-      nx_ok = true;
+    % The post-cull trace count is part of the key, so a changed cull rule
+    % can never reuse a cache whose trace axis no longer matches the
+    % freshly culled coordinates. It is read from the CACHED CHANNEL
+    % ITSELF rather than from a stored Nx field: the array's own second
+    % dimension is the trace axis the cache actually has, it exists in
+    % every cache ever written, and it cannot drift from the data the way
+    % a separately-saved scalar can. The earlier stored-field version had
+    % a compatibility escape hatch - a missing Nx counted as valid - and
+    % that hatch is exactly what let a 2058-trace EastGRIP cache load
+    % against a corrected 2055-trace cull, indexing past the coordinate
+    % arrays inside the frame pass. Nx is still written for provenance.
+    cq = load(cache_fn, 'z', 'CO', 'r0', 'r1');
+    cache_nx = NaN;
+    try
+      wi = whos('-file', cache_fn, 'hh');
+      if ~isempty(wi) && numel(wi(1).size) >= 2
+        cache_nx = wi(1).size(2);
+      end
+    catch
+      cache_nx = NaN;
     end
+    nx_ok = isfinite(cache_nx) && isequal(double(cache_nx), double(Nx));
     if isequal(cq.CO, CO) && cq.r0 == r0 && cq.r1 == r1 && nx_ok ...
         && numel(cq.z) == numel(z) && max(abs(cq.z(:) - z(:))) < 1e-6
       cq = load(cache_fn, 'hh', 'vv', 'hv', 'vh');
