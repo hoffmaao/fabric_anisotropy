@@ -28,10 +28,13 @@
 % WHAT THIS GUARDS. Running it showed something sharper than the block
 % question it was written for: a 0.10 along-frame ramp kills the FRAME
 % pass itself (pooled coherence dies by ~100 m depth; theta0 lands ~90 deg
-% off), and because the two-pass design hands the frame theta0 to every
-% block, NO block size rescues the section. That single point of failure
-% is the property asserted here, so a future change to the handoff that
-% silently re-couples blocks to a dead frame fit fails this test. (The
+% off), and because a POOLED two-pass design hands the frame theta0 to
+% every block, NO block size rescues the section. That single point of
+% failure is the property asserted here, so a future change to the
+% handoff that silently re-couples blocks to a dead frame fit fails this
+% test; the laterally-segmented frame pass (ptt.quadpolFrameTheta) is
+% the fix, and test_quadpol_segmented.m asserts its rescue of exactly
+% this ramp while this test keeps the pooled baseline pinned. (The
 % dlam CAP - the actual EastGRIP culprit - is guarded separately by
 % test_egrip_cap.m; the cap is raised here so it cannot mask the ramp.)
 %
