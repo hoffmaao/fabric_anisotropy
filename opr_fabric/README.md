@@ -224,7 +224,8 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     could resolve.
   - `run_quadpol_pipeline.m` - coregistration and both inversions
     (`ptt.ershadiFabric` and `ptt.quadpolFabricLS`, the second as a
-    frame-level theta0 pass and a per-block section with theta0 pinned)
+    laterally-segmented frame theta0 pass and a per-block section with
+    theta0 pinned to the block's segment profile)
     for one profile in a single pass. Deliberately one script: the
     coregistered images are ~370 MB a frame, so a split would cost more in
     I/O than the inversion, and would invite the halves disagreeing about
@@ -236,19 +237,26 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     and the 2022/2023 seasons - which shipped the polarimetric product
     only in its SNAPHU-unwrapped form - fall back to
     `CSARP_polarimetric_unwrap` for the window and coregistration
-    settings. On a CURVING frame the fabric rotates through the antennas,
-    so antenna-frame moment averaging smears it (dlam collapses, theta0
-    and track_az stop meaning anything): when the per-trace heading's p95
-    deviation exceeds 5 deg, the LS theta0/dlam fit runs instead in the
-    GEOGRAPHIC frame, from 200-trace sub-block moments rotated
-    north-referenced via `ptt.rotateMoments`, while the antenna-fixed
-    pedestal is still calibrated from the antenna-frame pass (a curve
-    smears fabric but adds the instrument coherently) and enters the
-    geographic fit as a precomputed field mixed over the measured heading
-    distribution; each section block then converts theta0 through its OWN
-    heading. The threshold trips on GPS heading jitter by design, so most
-    frames take the geographic path - a validated superset of the straight
-    case, not a bug; `test/test_quadpol_curved.m` is its regression.
+    settings. The FRAME PASS - the antenna-frame pedestal (an
+    instrument constant, one estimate per frame), the frame-pooled
+    theta0(z) profile, and the geographic-frame machinery for CURVING
+    frames (on a curve the fabric rotates through the antennas, so
+    antenna-frame moment averaging smears it; the p95 heading-spread
+    dispatch trips on GPS jitter by design, so most frames take the
+    geographic path, and `test/test_quadpol_curved.m` is its
+    regression) - lives in `ptt.quadpolFrameTheta`, whose header owns
+    the detail. It re-fits theta0 per ~2 km along-track segment
+    (`seg_len_m` overridable, default 2000 m; frames shorter than two
+    segments keep the single frame fit) so lateral fabric variation is
+    resolved instead of pooled away - the pooled handoff was the
+    two-pass design's single point of failure on laterally-varying
+    frames (`test/test_egrip_blocks.m` pins the failure,
+    `test/test_quadpol_segmented.m` the rescue). Each section block
+    inherits its segment's geographic profile through
+    `ptt.thetaProfileAt` and converts it through its OWN heading; the
+    per-segment fits are saved beside the frame fields as
+    `ls_theta_seg`/`ls_q_seg`/`ls_dlam_seg`/`ls_resid_seg`/`ls_seg_x`/
+    `ls_nseg`.
     `z_max` (default 1500 m) is overridable like `day_seg`/`frm` for
     special runs that need the full record; any non-default depth gets a
     `_z<depth>` suffix on both the coreg cache and the section output
@@ -270,6 +278,16 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     overridable, and qlook mode auto-defaults it to Ridge A's ~125 m
     block LENGTH from the measured trace spacing, because 125 TRACES at
     this season's ~9 m spacing would be a 1.1 km block.
+  - `run_season_*.m` over `run_season_frame.m` - declarative per-season
+    fact sheets for that pipeline: each season script declares what is
+    different about its acquisition (site root, plus the overrides
+    auto-detection cannot know, like EastGRIP's `dlam_max` 0.45) and
+    carries the hard-won season knowledge in its header - pedestal sign
+    family, real-only setup days, product quirks. The deliberately
+    behavior-free `run_season_frame.m` applies the declaration to the
+    pipeline's variable interface; variables set at the call site
+    always win, so special runs stay one-liners
+    (`z_max=4000; run_season_ridge_a`).
   - `coreg_batch.sh` / `coreg_one.sh` and `invert_batch.sh` /
     `invert_one.sh` - survey-scale drivers for that pipeline on the
     shared node: the coreg batch builds the caches (the one genuinely
@@ -289,9 +307,12 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     complex frame of the season with the same idempotent lock/retry
     discipline as the other drivers. The gate stopping the batch is the
     feature: a failing estimator must not burn days of compute. The
-    revalidated frame currently stops there (resid 0.485 with dlam and
-    finite fraction recovered), so the season is deliberately unbatched
-    until the remaining misfit is diagnosed.
+    revalidated frame currently stops there (resid 0.476 with the
+    segmented frame pass, from 0.485 pooled, with dlam 0.229 - the
+    honest domain median - and the finite fraction recovered), so the
+    season is deliberately unbatched: the remaining residual floor is
+    un-modeled site physics/calibration (the chan_equal family), a
+    separate decision from the frame pass.
   - `extract_sweep_egrip.m` - pulls the measured C(psi,z) and P(psi,z)
     azimuth sweeps for that validation frame, for exactly that open
     diagnosis: the suspect is anisotropic reflectivity from the EGRIP
@@ -463,13 +484,22 @@ the same way:
   abstains on 100% of windows, and at the pipeline's qlook-mode 0.45 it
   is recovered exactly at both 125- and 14-trace blocks. This is the
   regression for the site-aware `DLAM_MAX` in `run_quadpol_pipeline.m`.
-- `test_egrip_blocks.m` - the two-pass coupling. The pipeline hands the
-  frame-level theta0 to every section block, so a frame pass killed by
+- `test_egrip_blocks.m` - the two-pass coupling. A POOLED frame pass
+  hands one theta0 to every section block, so a frame pass killed by
   along-track dlam structure (a 0.10 ramp on an EastGRIP-like column)
   poisons every block size; the test asserts small blocks do NOT rescue
-  it, and fails if that single point of failure silently changes. Its
+  it, keeping that single point of failure pinned as the baseline the
+  segmented frame pass (`ptt.quadpolFrameTheta`) exists to fix. Its
   header records why it was reframed from the block-size hypothesis it
   was written for.
+- `test_quadpol_segmented.m` - the segmented frame pass
+  (`ptt.quadpolFrameTheta` + `ptt.thetaProfileAt`) against the two
+  properties the design must have: a SUPERSET (a laterally-uniform frame
+  reproduces the pooled architecture's block dlam) and the RESCUE (the
+  `test_egrip_blocks.m` killer ramp recovers - block dlam error
+  0.225 -> 0.002, correlation 1.00 - and a mid-frame 45 deg axis step,
+  the shear-margin case, resolves to under 3 deg in the pure segments
+  with block dlam unbiased).
 
 `test/test_copol_surface.m` covers the co-polarized chain's surface
 reference at the solver level: the OLD surface-anchored call must

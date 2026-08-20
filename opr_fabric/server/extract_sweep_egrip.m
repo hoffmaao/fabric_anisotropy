@@ -1,7 +1,8 @@
 %EXTRACT_SWEEP_EGRIP Measured C(psi,z) and P(psi,z) for the EastGRIP frame.
 % Same idea as extract_sweep_band.m for Ridge A frame 009, but the whole
 % usable column rather than two bands: with the dlam cap fixed the frame
-% still misfits at resid 0.485, and the suspect - anisotropic reflectivity
+% still misfits (resid 0.485 pooled, 0.476 with the segmented frame
+% pass), and the suspect - anisotropic reflectivity
 % from the EGRIP girdle - is an EVEN cos-2psi structure in the CO-POL POWER
 % aligned with theta0, which the LS nuisance basis cannot absorb. That
 % hypothesis is testable by looking at Phh(psi) directly.
