@@ -124,6 +124,23 @@ PSI_FIT = (0:PSI_STEP_SEG:180-PSI_STEP_SEG) * pi/180;
 if ~curved
   lsq = ptt.quadpolFabricLS(T, z, base);
   ped_ant = lsq.pedestal;
+  % The frame-mode pedestal is NaN whenever fewer than five windows gave a
+  % finite coefficient - and quadpolFabricLS still returns a populated
+  % theta0 in that case, so the frame pass looks healthy. Left unguarded a
+  % NaN pedestal would enter H_ped_field, poison every segment's coherence
+  % field, kill every segment fit on the MIN_SEG_W test, and drop the whole
+  % pass back onto the frame profile: nseg > 1 and ls_theta_seg populated,
+  % yet bit-identical to the pooled handoff. That silent no-op would hit
+  % exactly the degraded frames segmentation exists for, so it is guarded
+  % here as it already is on the curved branch. The substituted EXACT zeros
+  % are the audit signal - a real fit never lands on them - and the warning
+  % puts it in the frame log.
+  if ~all(isfinite(ped_ant))
+    warning('ptt:quadpolFrameTheta:pedestalFailed', ...
+      ['frame pedestal did not converge; segments fit with a zero ' ...
+      'pedestal (saved ls_pedestal is exactly [0 0 0] to mark it)']);
+    ped_ant = [0 0 0];
+  end
   th_geo_raw = lsq.theta0 + deg2rad(track_az);
 else
   % antenna-frame single pass: theta/dlam are junk on a curve, but the
