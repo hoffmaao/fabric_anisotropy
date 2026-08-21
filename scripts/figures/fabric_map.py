@@ -65,8 +65,9 @@ from matplotlib.colors import TwoSlopeNorm          # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import scar_style as sty                  # noqa: E402
 from scar_style import DATA, INK   # noqa: E402
+from scar_style import FIGS  # noqa: E402
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
+OUT = sys.argv[1] if len(sys.argv) > 1 else FIGS
 
 # name -> (title, staged survey file). The file is what
 # opr_fabric/server/run_survey_fabric.m writes for that site.

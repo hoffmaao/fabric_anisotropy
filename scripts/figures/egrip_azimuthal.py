@@ -45,8 +45,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import scar_style as sty                 # noqa: E402
 from scar_style import (DATA, INK, MUTED, cumdist_km,  # noqa: E402
                         track_azimuth)
+from scar_style import FIGS  # noqa: E402
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
+OUT = sys.argv[1] if len(sys.argv) > 1 else FIGS
 # The EastGRIP core table is data, not code: Weikusat et al. (2022),
 # PANGAEA.949248, CC-BY-4.0, mirrored beside the other staged inputs.
 CORE = os.path.join(DATA, 'egrip_fabric_949248.tab')

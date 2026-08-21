@@ -34,8 +34,9 @@ import matplotlib.pyplot as plt          # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scar_style import DATA, INK  # noqa: E402
+from scar_style import FIGS  # noqa: E402
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
+OUT = sys.argv[1] if len(sys.argv) > 1 else FIGS
 SITE = sys.argv[2] if len(sys.argv) > 2 else 'ridge_a'
 FN = os.path.join(DATA, 'ershadi_%s.mat' % SITE)
 
