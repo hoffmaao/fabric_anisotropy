@@ -54,8 +54,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import antarctic_basemap as ab                         # noqa: E402
 import quadpol_sites as qs                             # noqa: E402
 from scar_style import DATA, INK, MUTED                # noqa: E402
+from scar_style import FIGS  # noqa: E402
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
+OUT = sys.argv[1] if len(sys.argv) > 1 else FIGS
 SITE = sys.argv[2] if len(sys.argv) > 2 else 'ridge_a'
 
 FPS, HOLD = 25, 6
