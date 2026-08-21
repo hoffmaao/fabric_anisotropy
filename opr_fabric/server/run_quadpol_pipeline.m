@@ -251,6 +251,65 @@ else
   fprintf('=== %s_%03d ===\n', day_seg, frm);
   surf_t = [];
 end
+% --- FIT THE WINDOW AND THE TILING TO THE FRAME THAT ACTUALLY EXISTS.
+% Both are read from the product, and on short frames both can exceed it,
+% which cost 21 of the 61 frames in the 20 Aug Antarctic run.
+%
+% The channel sizes are taken from the file headers rather than by
+% loading, so this costs nothing on the frames where it changes nothing.
+navail = inf; nx_avail = inf;
+for k = 1:4
+  fnk = fullfile(site_root, sprintf(CHAN_DIR, upper(CHAN{k})), day_seg, name);
+  if exist(fnk, 'file') ~= 2
+    error('run_quadpol_pipeline:missing', 'missing %s channel', CHAN{k});
+  end
+  wi = whos('-file', fnk, 'Data');
+  if ~isempty(wi) && numel(wi(1).size) >= 2
+    navail = min(navail, wi(1).size(1));
+    nx_avail = min(nx_avail, wi(1).size(2));
+  end
+end
+% (1) RANGE. The thin-ice seasons (Eastwind, McMurdo: 200-300 m of ice)
+% record a max_rbin from a deeper configuration than their own data - e.g.
+% 20240202_01_001 asks for 11000 samples and holds 4151. Clamping keeps
+% every sample that exists instead of discarding a 19 km line over a
+% bookkeeping mismatch; only a window starting past the end is fatal.
+if isfinite(navail) && r0 >= navail
+  error('run_quadpol_pipeline:window', ...
+    'window starts at %d but only %d samples exist', r0, navail);
+end
+if isfinite(navail) && r1 > navail
+  warning('run_quadpol_pipeline:windowClamped', ...
+    'recorded window %d:%d exceeds the %d samples present; clamped to %d:%d', ...
+    r0, r1, navail, r0, navail);
+  r1 = navail;
+end
+% (2) ALONG TRACK. coregistration() interpolates its per-tile offsets and
+% needs at least FOUR tiles along track, i.e. 3*(Tx - overlap_x) + Tx <=
+% Nx. That threshold is measured, not assumed: on this survey 773-trace
+% frames coregister and 744-trace ones die indexing row_offset_full, and
+% 3*151 + 301 = 754 falls exactly between them. Short frames therefore
+% get a proportionally finer tiling - more, smaller tiles - rather than
+% failing. Frames that already satisfy the condition are untouched, so
+% every previously-processed frame is bit-identical.
+if isfinite(nx_avail)
+  need_x = 3*(CO.Tx - CO.overlap_x) + CO.Tx;
+  if nx_avail < need_x
+    Tx0 = CO.Tx; ov0 = CO.overlap_x;
+    while (3*(CO.Tx - CO.overlap_x) + CO.Tx) > nx_avail && CO.Tx > 16
+      CO.Tx = floor(CO.Tx * 0.9);
+      CO.overlap_x = floor(CO.Tx / 2);
+    end
+    if (3*(CO.Tx - CO.overlap_x) + CO.Tx) > nx_avail
+      error('run_quadpol_pipeline:tooShort', ...
+        ['%d traces cannot carry four coregistration tiles even at the ' ...
+        'minimum tile width; frame is too short to coregister'], nx_avail);
+    end
+    warning('run_quadpol_pipeline:tilingAdapted', ...
+      ['%d traces is short for tiling Tx %d ov %d (needs %d); adapted to ' ...
+      'Tx %d ov %d'], nx_avail, Tx0, ov0, need_x, CO.Tx, CO.overlap_x);
+  end
+end
 fprintf('window rbin %d:%d, tiling Tt %d Tx %d ov %d/%d\n', r0, r1, ...
   CO.Tt, CO.Tx, CO.overlap_t, CO.overlap_x);
 
