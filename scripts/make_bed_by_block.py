@@ -20,22 +20,45 @@ are consistent to within the ~10 m documented in docs/method.md.
 THE TWO LAYERS ARE CHOSEN BY NAME, never by position. These files routinely
 carry internal reflectors beyond the surface/bottom pair, and differencing
 whatever happens to be layer 2 would give a systematically shallow bed - a
-600 m "bed" in EastGRIP's 2700 m column - that no plausibility filter can
-catch and that retires blocks from the movie hundreds of metres above the
-real ice base. An exact name wins; a merely-containing name is taken only
-when it is the sole candidate; the OPR layer id (1 surface, 2 bottom) is the
-last resort for files carrying ids but no names. Anything ambiguous or
-unnamed is skipped with a line in the log instead: not masking is
-recoverable, masking wrongly is not. Which layers a frame's bed was actually
-differenced from is recorded per frame in the output, so a wrong binding is
-auditable after the run rather than invisible.
+600 m "bed" in EastGRIP's 2700 m column - that retires blocks from the movie
+hundreds of metres above the real ice base. Anything ambiguous or unnamed is
+skipped with a line in the log instead: not masking is recoverable, masking
+wrongly is not. Which layers a frame's bed was actually differenced from is
+recorded per frame in the output, so a wrong binding is auditable after the
+run rather than invisible.
+
+BED-PICK PREFERENCE, most trustworthy first:
+
+  1. the per-trace median of whichever of bottom_HH, bottom_VV, bottom_HV
+     and bottom_VH the file carries,
+  2. `bottom`,
+  3. `bottom_mc`,
+  4. a uniquely bottom-named layer, then OPR layer id 2.
+
+bottom_mc RANKS LAST because it is measurably biased shallow, not because it
+is a fallback in name only. Over all 9 frames of 2022_Antarctica_Ground and
+2023_Antarctica_Ground carrying both, bottom_mc sits a median 44.6 m ABOVE
+the polarimetric bed (per frame -5.3 to -76.4 m) while bottom_mc_bot sits
+44.4 m below it: the pair brackets a basal zone rather than picking it, and
+the polarimetric pick lands almost exactly midway. The four polarimetric
+layers agree with each other to under a metre, which is what a real
+interface looks like and what bottom_mc does not. Preferring bottom_mc would
+grey out ~45 m of real ice at Eastwind and McMurdo - precisely the two
+seasons where it is the only non-polarimetric option.
+
+THE PICKS THEMSELVES PASS THROUGH UNTOUCHED. There is no thickness
+plausibility filter and no substitution of frame medians for suspect picks:
+thin ice is real at these sites and a small pick is not evidence of a bad
+one. At Eastwind the thin blocks correlate -0.62/-0.64 with lat/lon toward
+the terminus, and at McMurdo the thin blocks are non-overlapping in
+longitude with the thick ones (+0.80 lat, +0.91 lon). The only judgement
+this script makes is which named layer to difference.
 
 MATCHING IS BY POSITION, PER FRAME. A section block's centre is matched to
 the nearest pick within the SAME frame's layer file and within MAX_MATCH_M;
 the trace axes differ (the qlook frames are culled before they are blocked),
-so an index-for-index match would be wrong. A block with no pick near it,
-or whose pick gives an implausible thickness, is written as null - the movie
-draws those blocks unmasked rather than guessing.
+so an index-for-index match would be wrong. A block with no pick near it is
+written as null - the movie draws those blocks unmasked rather than guessing.
 
 FORMAT: one JSON object keyed by frame tag (`20250108_02_009`, matching
 `quadpol_section_<tag>.mat`), each value a list of bed depths in metres below
@@ -43,8 +66,9 @@ the surface, one per section block IN BLOCK ORDER, with null where there is
 no usable pick. The list length must equal that frame's block count; the
 movie warns and skips masking for any frame where it does not, which is the
 signal to rerun this script after a block size change. One reserved key,
-`_layers`, maps each frame tag to the surface and bottom layer names its bed
-came from; it cannot collide with a tag, and the movie never looks it up.
+`_layers`, maps each frame tag to the surface and bottom layer its bed came
+from (the bottom reads `median(bottom_hh,bottom_vv,...)` where tier 1 won);
+it cannot collide with a tag, and the movie never looks it up.
 
 Usage: python scripts/make_bed_by_block.py <site_root> [<site_root> ...]
 
@@ -56,10 +80,12 @@ import glob
 import json
 import os
 import sys
+import warnings
 
 import h5py
 import numpy as np
 from scipy.io import loadmat
+from scipy.io.matlab import MatReadError
 
 DATA = os.path.expanduser(os.environ.get('SCAR_DATA', '~/data/opr/scar'))
 OUT_FN = os.path.join(DATA, 'bed_by_block.json')
@@ -79,11 +105,12 @@ C_ICE = C0 / np.sqrt(EPS_ICE)
 # where a block borrows its bed from two blocks away, which at Taylor Dome's
 # 200 m of within-frame thickness variation would be the wrong ice.
 MAX_MATCH_M = 62.5
-# Thicknesses outside this range are a mispick, not ice: the shallowest
-# sounding here is the ~200 m McMurdo shelf and the deepest column is
-# EastGRIP's ~2700 m.
-MIN_BED_M, MAX_BED_M = 40.0, 4500.0
 R_E = 6371000.0
+# The bed layers that agree with each other to under a metre, combined per
+# trace rather than ranked among themselves. See the preference order in the
+# module docstring for why bottom_mc is not one of them.
+POLAR_BOTTOMS = ('bottom_hh', 'bottom_vv', 'bottom_hv', 'bottom_vh')
+BOTTOM_NAMES = ('bottom', 'bottom_mc')
 
 
 def _deref(f, v):
@@ -157,10 +184,10 @@ def _find_layer(names, ids, wanted_name, wanted_id):
     Exact name first. A layer whose name merely CONTAINS the wanted word is
     accepted only when it is the ONLY candidate: binding 'sub-surface debris'
     as the surface would give a bed shallow by the depth of an internal
-    reflector, which the plausibility filter cannot catch and which masks the
-    movie above the real ice base. Ambiguity is unidentifiable, not a
-    first-wins race. The OPR layer id (1 surface, 2 bottom) is the last
-    resort, for files that carry ids but no names. Never by position.
+    reflector, and nothing downstream could catch it. Ambiguity is
+    unidentifiable, not a first-wins race. The OPR layer id (1 surface,
+    2 bottom) is the last resort, for files that carry ids but no names.
+    Never by position.
     """
     for cand in ([i for i, nm in enumerate(names) if nm == wanted_name],
                  [i for i, nm in enumerate(names) if wanted_name in nm],
@@ -168,6 +195,47 @@ def _find_layer(names, ids, wanted_name, wanted_id):
         if cand:
             return cand[0] if len(cand) == 1 else None
     return None
+
+
+def _label(names, i, fallback):
+    """Name of layer `i`, or `fallback` where the file did not name it.
+
+    `i` may have come from the id tier, which is bounded by len(ids) and has
+    no length relation to `names` - a partially named file resolves a bottom
+    off an id it never named.
+    """
+    return names[i] if i < len(names) and names[i] else fallback
+
+
+def _bottom_layer(layers, names, ids):
+    """(bed twtt, label) under the preference order in the module docstring.
+
+    Returns (None, None) where no bottom can be named unambiguously. The
+    polarimetric tier is combined per trace rather than ranked internally:
+    those four picks agree to under a metre, so their median is any one of
+    them, robust to whichever the file happens to omit.
+    """
+    polar = [i for i, nm in enumerate(names) if nm in POLAR_BOTTOMS]
+    if polar:
+        n = min(layers[i].size for i in polar)
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', RuntimeWarning)
+            tw = np.nanmedian(np.vstack([layers[i][:n] for i in polar]),
+                              axis=0)
+        return tw, 'median(%s)' % ','.join(names[i] for i in polar)
+    for want in BOTTOM_NAMES:
+        hit = [i for i, nm in enumerate(names) if nm == want]
+        if hit:
+            return (layers[hit[0]], names[hit[0]]) if len(hit) == 1 \
+                else (None, None)
+    part = [i for i, nm in enumerate(names) if 'bottom' in nm]
+    if part:
+        return (layers[part[0]], names[part[0]]) if len(part) == 1 \
+            else (None, None)
+    by_id = [i for i, v in enumerate(ids) if v == 2]
+    if len(by_id) == 1:
+        return layers[by_id[0]], _label(names, by_id[0], 'id 2')
+    return None, None
 
 
 def layer_picks(d):
@@ -218,20 +286,18 @@ def layer_picks(d):
     names = names[:len(layers)]
     ids = ids[:len(layers)]
     i_s = _find_layer(names, ids, 'surface', 1)
-    i_b = _find_layer(names, ids, 'bottom', 2)
-    if i_s is None or i_b is None:
+    tw_b, lbl_b = _bottom_layer(layers, names, ids)
+    if i_s is None or tw_b is None:
         raise LayerFormatError(
             'cannot unambiguously identify %s among %d layers named %s; '
             'refusing to difference layers by position'
-            % (' and '.join(w for w, i in (('surface', i_s), ('bottom', i_b))
+            % (' and '.join(w for w, i in (('surface', i_s), ('bottom', tw_b))
                             if i is None),
                len(layers), names if names else '<unnamed>'))
-    n = min(lat.size, lon.size, layers[i_s].size, layers[i_b].size)
-    bed = (layers[i_b][:n] - layers[i_s][:n]) * C_ICE / 2.0
+    n = min(lat.size, lon.size, layers[i_s].size, tw_b.size)
+    bed = (tw_b[:n] - layers[i_s][:n]) * C_ICE / 2.0
     bed[~np.isfinite(bed)] = np.nan
-    bed[(bed < MIN_BED_M) | (bed > MAX_BED_M)] = np.nan
-    bound = {'surface': names[i_s] if names and names[i_s] else 'id 1',
-             'bottom': names[i_b] if names and names[i_b] else 'id 2'}
+    bound = {'surface': _label(names, i_s, 'id 1'), 'bottom': lbl_b}
     return lat[:n], lon[:n], bed, bound
 
 
@@ -301,7 +367,7 @@ def main():
             continue
         try:
             d = load_mat(lfn)
-        except (OSError, ValueError) as err:
+        except (OSError, ValueError, MatReadError) as err:
             print('  %s: %s unreadable (%s)'
                   % (tag, os.path.basename(lfn), err))
             continue
