@@ -48,8 +48,21 @@ gitignored - see the "Figure inputs and outputs" section at the end.
   whatever happens to be layer 2 would give a systematically shallow bed.
   The bed preference is (1) the per-trace median of whichever of
   `bottom_HH`/`bottom_VV`/`bottom_HV`/`bottom_VH` the file carries,
-  (2) `bottom`, (3) `bottom_mc`, (4) a uniquely bottom-named layer or OPR
-  layer id 2. `bottom_mc` ranks LAST on measurement, not taste: over the 9
+  (2) `bottom`, (3) `bottom_mc`, (4) a uniquely bottom-named layer. There
+  is no positional tier at all: `lyr_id` is the row's ordinal, so `id 2` is
+  `bottom_mc` at McMurdo and `surface_dem` at Eastwind, and binding it
+  differenced a 224 m Eastwind shelf against a 0.6 m DEM and wrote a 1 m
+  bed. THE NAMES COME FROM A DIFFERENT FILE THAN THE PICKS: the per-frame
+  `Data_<seg>_<frm>.mat` carries `twtt` but no `lyr_name`, and the
+  catalogue sits once per segment in `layer_<seg>.mat`, so row i of `twtt`
+  is joined to entry i of `lyr_name` after checking the two counts agree.
+  With that catalogue in hand the ROWS of `twtt` are its layers, never
+  whichever axis is longer: a frame with fewer traces than layers - the
+  2022 sites are 13 soundings at one spot - would otherwise read as one
+  bogus layer per trace. A frame whose layers cannot be named, or whose row
+  count does not match the catalogue, is SKIPPED with a line in the log,
+  never bound by position and never transposed until the counts agree. `bottom_mc` ranks LAST on
+  measurement, not taste: over the 9
   frames of 2022/2023_Antarctica_Ground carrying both, it sits a median
   44.6 m ABOVE the polarimetric bed while `bottom_mc_bot` sits 44.4 m
   below, so the pair brackets a basal zone rather than picking it - and
@@ -85,7 +98,15 @@ gitignored - see the "Figure inputs and outputs" section at the end.
   that frame's block count; the movie warns and skips masking for any
   frame where the length disagrees, which is the signal to rerun this
   after a block-size change. Input sections and the output file both live
-  under `SCAR_DATA`.
+  under `SCAR_DATA`. The write is a full replacement and REFUSES to drop a
+  season: sections are globbed from all of `SCAR_DATA` while layer files
+  are only sought under the roots given, so a one-site rerun would leave
+  every other season's frames out - and an absent tag is drawn unmasked, so
+  those movies would quietly stop masking. If the existing file carries
+  frames this run produced none for, the script exits non-zero naming how
+  many and which segments; rerun with every site root, or pass `--replace`
+  to write this run's frames alone. Stale entries are never merged forward,
+  which would hide which run produced what.
 - `scripts/figures/` - Python (matplotlib + scipy; cartopy required by
   the map figures) figure scripts that reproduce the analysis figures
   from the `opr_fabric/server/run_fabric_scratch.m` and
