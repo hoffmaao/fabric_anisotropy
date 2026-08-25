@@ -103,10 +103,15 @@ gitignored - see the "Figure inputs and outputs" section at the end.
   are only sought under the roots given, so a one-site rerun would leave
   every other season's frames out - and an absent tag is drawn unmasked, so
   those movies would quietly stop masking. If the existing file carries
-  frames this run produced none for, the script exits non-zero naming how
-  many and which segments; rerun with every site root, or pass `--replace`
-  to write this run's frames alone. Stale entries are never merged forward,
-  which would hide which run produced what.
+  frames this run produced none for, the script exits non-zero listing them
+  with the reason it logged for each - no layer file under the roots given,
+  an unreadable one, a catalogue that does not align - or noting that the
+  frame was never reached. It does not assert a cause: a narrowed root list
+  is only one explanation, and the stricter name/row alignment can
+  legitimately skip a frame an older, looser run bound. Rerun with every
+  site root, or pass `--replace` to write this run's frames alone. Stale
+  entries are never merged forward, which would hide which run produced
+  what.
 - `scripts/figures/` - Python (matplotlib + scipy; cartopy required by
   the map figures) figure scripts that reproduce the analysis figures
   from the `opr_fabric/server/run_fabric_scratch.m` and
