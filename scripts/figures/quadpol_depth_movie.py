@@ -89,15 +89,26 @@ GREY_RGB = (0.88, 0.88, 0.89)
 # frame tag. Without it a frame keeps drawing fabric colour at depths where
 # its ice has already ended - and the ice varies enormously WITHIN a survey,
 # 566-996 m across Taylor Dome and by 200 m inside single frames, so a
-# per-site depth cut cannot express it. A block fades in proportion to how
-# much of the current window still sits in ice, so a frame retires from the
-# movie as its own bed comes up. Frames with no pick are drawn unchanged.
+# per-site depth cut cannot express it. A block DROPS OUT of the movie for
+# good once the bed enters its window - not proportionally, see the rule at
+# the draw call - so a frame retires block by block as its own bed comes up.
+# Blocks with no pick are drawn unchanged.
+#
+# Built by scripts/make_bed_by_block.py; the format is documented there and
+# in docs/scripts.md. A MISSING file is legitimate - it means no picks were
+# staged for this survey - and only says so. A file that is present but
+# unreadable is not: it would silently render the pre-bed-masking movie, so
+# it raises.
 BED_FILE = os.path.join(DATA, 'bed_by_block.json')
-try:
+if os.path.exists(BED_FILE):
     with open(BED_FILE) as _fh:
         BEDS = json.load(_fh)
-except Exception:
+    if not isinstance(BEDS, dict):
+        raise SystemExit('%s must hold an object keyed by frame tag, got %s'
+                         % (BED_FILE, type(BEDS).__name__))
+else:
     BEDS = {}
+    print('no %s; blocks are drawn without bed masking' % BED_FILE)
 
 T = Transformer.from_crs('EPSG:4326', 'EPSG:3031', always_xy=True)
 
@@ -143,11 +154,19 @@ def load():
         # bed depth per block, filtered by the same mask as the positions so
         # index j means the same block in both
         bed = BEDS.get(tag)
-        if bed is not None and len(bed) == ok.size:
+        if bed is None:
+            bedv = np.full(int(ok.sum()), np.nan)
+        elif len(bed) != ok.size:
+            # a stale bed file cut against a different block size masks the
+            # wrong ice; say so rather than quietly dropping to no masking
+            print('WARNING: %s lists %d bed values for %d blocks in %s; '
+                  'bed masking skipped for this frame - rebuild it with '
+                  'scripts/make_bed_by_block.py'
+                  % (os.path.basename(BED_FILE), len(bed), ok.size, tag))
+            bedv = np.full(int(ok.sum()), np.nan)
+        else:
             bedv = np.array([np.nan if b is None else b for b in bed],
                             dtype=float)[ok]
-        else:
-            bedv = np.full(int(ok.sum()), np.nan)
         frames.append(dict(tag=tag, z=z, sec=secl[:, ok], res=resl[:, ok],
                            bed=bedv, pts=np.column_stack([bx, by]),
                            zw=zw, th_geo=th_geo, lat=lat, lon=lon,
@@ -236,10 +255,13 @@ def main():
                 # co-polarized sections use. Without it a badly-fit window is
                 # painted at full saturation and reads exactly like a measured
                 # one - and at every site except Ridge A that is most of the
-                # map: tightening the residual gate collapses the displayed
-                # p95 from 0.119 to 0.075 at Taylor Dome and from 0.181 to
-                # 0.040 at Thwaites, while Ridge A barely moves (0.083 ->
-                # 0.077). The bright tail was the fit failing, not the ice.
+                # map: gating at the RESID_GOOD level used here, resid<0.25,
+                # drops the displayed p95 from 0.119 to 0.108 at Taylor Dome
+                # and from 0.181 to 0.126 at Thwaites, while Ridge A barely
+                # moves (0.083 -> 0.079). Those are the same numbers the
+                # ceilings in quadpol_sites.py are measured from, so what the
+                # ceiling scales is what the map shows at full colour. The
+                # bright tail was the fit failing, not the ice.
                 rgb = cmap(norm(np.asarray(vals)))[:, :3]
                 w = np.clip((RESID_BAD - np.asarray(wts, float))
                             / (RESID_BAD - RESID_GOOD), 0.0, 1.0)
@@ -280,11 +302,27 @@ def main():
         gl.xlabel_style = {'size': 8.5, 'color': INK}
         gl.ylabel_style = {'size': 8.5, 'color': INK}
 
-        cax = ax.inset_axes([0.36, 0.045, 0.28, 0.022])
+        cax = ax.inset_axes([0.28, 0.045, 0.28, 0.022])
         fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cax,
                      orientation='horizontal')
         cax.set_title(r'$\Delta\lambda$', fontsize=8.5, color=INK, pad=3)
         cax.tick_params(labelsize=7.5)
+
+        # Grey is OFF this ramp, not at the bottom of it: it is what a
+        # segment is blended toward when its LS residual is poor or when the
+        # bed has entered the depth window. Against the pale end of Blues
+        # the two are otherwise indistinguishable, which is the whole point
+        # of the fade - hence a swatch, as fabric_sections.py carries a
+        # two-dimensional key for the same reason.
+        gax = ax.inset_axes([0.615, 0.045, 0.030, 0.022])
+        gax.set_facecolor(GREY_RGB)
+        gax.set_xticks([])
+        gax.set_yticks([])
+        for s in gax.spines.values():
+            s.set_linewidth(0.6)
+            s.set_color('0.4')
+        gax.text(1.25, 0.5, 'unresolved', transform=gax.transAxes,
+                 ha='left', va='center', fontsize=7.5, color=INK)
 
         sb_m = ab._nice_length(0.22 * max(span_x, span_y))
         xb = xs[1] - 0.06 * (xs[1] - xs[0]) - sb_m
@@ -308,9 +346,12 @@ def main():
                 '%.0f - %.0f m' % (lo, hi), fontsize=13, color=INK,
                 ha='left', va='center', transform=proj)
 
-        ax.set_title('%s: fabric contrast through the column\n'
-                     r'track colour: $\Delta\lambda$ per block; '
-                     r'bars: fabric axis $\theta_0$ at this depth' % TITLE,
+        ax.set_title(('%s: fabric contrast through the column\n' % TITLE)
+                     + r'track colour: $\Delta\lambda$ per block; '
+                     + r'bars: fabric axis $\theta_0$ at this depth'
+                     + '\n'
+                     + ('grey: LS residual above %.2f, or the bed inside '
+                        'this window' % RESID_GOOD),
                      fontsize=10.5, color=INK)
         png = os.path.join(fdir, 'd%04d.png' % k)
         fig.savefig(png, dpi=150, facecolor='white')

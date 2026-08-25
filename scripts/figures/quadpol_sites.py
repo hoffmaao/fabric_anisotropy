@@ -39,6 +39,7 @@ T3031 = Transformer.from_crs('EPSG:4326', 'EPSG:3031', always_xy=True)
 # Measured per 150 m window over every frame at each site:
 #
 #   taylor_dome  0.025 0.032 0.027 0.018 | 0.006 0.007 0.010 ...  cut 650 m
+#                                          SUPERSEDED: cut 850 m, from the bed
 #   thwaites     0.033 .. 0.012 at 900-1050 | 0.008 0.005 0.004   cut 1050 m
 #   wais_divide  0.011 0.007 0.009 0.022 | 0.005 0.001 ...        cut 700 m
 #   mcmurdo      0.012 | 0.004 0.002 0.0004 0.0003                cut 450 m
@@ -74,17 +75,17 @@ SITES = {
     'ridge_a': dict(lat=-86.65, lon=69.35, title='Ridge A grid',
                     z_band=(200.0, 1200.0), z_deep=(1150.0, 1500.0),
                     vmax=0.08, movie=(200.0, 1050.0), win=150.0, step=20.0),
-    'taylor_dome': dict(lat=-77.78, lon=158.68, title='Taylor Dome',
-                        z_band=(200.0, 1200.0), z_deep=(1150.0, 1500.0),
-                        vmax=0.11, movie=(200.0, 850.0), win=150.0, step=20.0),
-    # Movie floor set from the BED, not from where dlam crosses the
-    # abstention threshold. CSARP_layer picks the bottom on 51 of these
-    # frames and puts the ice at 566-996 m, median 830 - so the old
-    # 650 m cut, chosen where median dlam fell under 0.01, was reading a
-    # FABRIC limit off real ice and discarding the most interesting part
+    # TAYLOR DOME's movie floor is set from the BED, not from where dlam
+    # crosses the abstention threshold. CSARP_layer picks the bottom on 51
+    # of these frames and puts the ice at 566-996 m, median 830 - so the
+    # old 650 m cut, chosen where median dlam fell under 0.01, was reading
+    # a FABRIC limit off real ice and discarding the most interesting part
     # of the column: the contrast peaks near z/H 0.5 and decays back
     # toward zero by z/H 0.85, at residuals of 0.10-0.32 throughout, which
     # is what a dome should do as its fabric becomes axisymmetric.
+    'taylor_dome': dict(lat=-77.78, lon=158.68, title='Taylor Dome',
+                        z_band=(200.0, 1200.0), z_deep=(1150.0, 1500.0),
+                        vmax=0.11, movie=(200.0, 850.0), win=150.0, step=20.0),
     'thwaites': dict(lat=-76.45, lon=-107.67, title='Thwaites margin',
                      z_band=(200.0, 1200.0), z_deep=(1000.0, 1450.0),
                      vmax=0.13, movie=(200.0, 1050.0), win=150.0, step=20.0),

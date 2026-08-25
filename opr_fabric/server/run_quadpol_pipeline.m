@@ -133,7 +133,7 @@ if qlook_mode
       'neither a polarimetric product nor %s', qfn);
   end
   P = load(qfn, 'Time', 'Surface', 'Latitude', 'Longitude', 'GPS_time');
-  % THE QLOOK COORDINATES ARE NOT USABLE and must be rebuilt from the
+  % QLOOK COORDINATES THAT ARE NOT ON THE ICE SHEET are rebuilt from the
   % season's reference trajectory. The 2024 Greenland qlook products carry
   % a Latitude/Longitude pair that is not the geographic position of the
   % traverse: frame 20240619_01_001 reads 0.196..0.229 N, 1.738..1.915 E -
@@ -149,42 +149,69 @@ if qlook_mode
   % azimuth comes out 98.8 deg instead of 127.1 - a 28 deg error carried
   % straight into every theta0_geo this season reports.
   %
-  % The rebuild is an interpolation of the reference trajectory onto the
-  % frame's own GPS_time. It is NOT optional and NOT silently skipped: a
-  % missing reference file, or a frame whose GPS times fall outside it,
-  % errors out, because the alternative is a product that looks fine and
-  % is wrong by tens of degrees.
-  ref_fn = fullfile(site_root, 'CSARP_reference_trajectory', ...
-    sprintf('ref_%s.mat', day_seg));
-  if exist(ref_fn, 'file') ~= 2
-    error('run_quadpol_pipeline:noRefTraj', ...
-      ['qlook coordinates are unusable and %s is missing; the frame ' ...
-      'cannot be positioned'], ref_fn);
-  end
-  RT = load(ref_fn, 'gps_time', 'lat', 'lon');
-  [rt_gps, rt_ord] = sort(RT.gps_time(:));
-  rt_lat = RT.lat(:); rt_lat = rt_lat(rt_ord);
-  rt_lon = RT.lon(:); rt_lon = rt_lon(rt_ord);
-  q_gps = P.GPS_time(:);
-  if min(q_gps) < rt_gps(1) - 1 || max(q_gps) > rt_gps(end) + 1
-    error('run_quadpol_pipeline:refTrajRange', ...
-      ['frame GPS times %.1f..%.1f fall outside the reference trajectory ' ...
-      '%.1f..%.1f'], min(q_gps), max(q_gps), rt_gps(1), rt_gps(end));
-  end
+  % THE TRIGGER IS THE DEFECT, NOT THE PRODUCT FAMILY. Every survey this
+  % code serves is polar, so shipped coordinates that put the frame below
+  % 60 deg of latitude - or that carry no position at all - are the
+  % failure described above and nothing else. Gating on qlook_mode instead
+  % would block a future qlook season whose coordinates are correct on a
+  % reference trajectory it has no need of.
+  %
+  % Where a rebuild IS required it is an interpolation of the reference
+  % trajectory onto the frame's own GPS_time, and it is NOT optional and
+  % NOT silently skipped: a missing reference file, or a frame whose GPS
+  % times fall outside it, errors out, because the alternative is a
+  % product that looks fine and is wrong by tens of degrees.
   la_qk = P.Latitude(:).'; lo_qk = P.Longitude(:).';
-  P.Latitude = interp1(rt_gps, rt_lat, q_gps, 'linear').';
-  P.Longitude = interp1(rt_gps, rt_lon, q_gps, 'linear').';
-  if any(~isfinite(P.Latitude)) || any(~isfinite(P.Longitude))
-    error('run_quadpol_pipeline:refTrajGap', ...
-      'reference trajectory left %d traces unpositioned', ...
-      nnz(~isfinite(P.Latitude) | ~isfinite(P.Longitude)));
+  POLAR_LAT_MIN = 60;
+  n_polar = nnz(isfinite(la_qk) & abs(la_qk) >= POLAR_LAT_MIN);
+  if n_polar >= 0.5 * numel(la_qk)
+    fprintf(['shipped qlook coordinates are polar (%.3f..%.3f N ' ...
+      '%.3f..%.3f E); kept as shipped\n'], min(la_qk), max(la_qk), ...
+      min(lo_qk), max(lo_qk));
+  else
+    ref_fn = fullfile(site_root, 'CSARP_reference_trajectory', ...
+      sprintf('ref_%s.mat', day_seg));
+    if exist(ref_fn, 'file') ~= 2
+      error('run_quadpol_pipeline:noRefTraj', ...
+        ['qlook coordinates place %d of %d traces off any ice sheet and ' ...
+        '%s is missing; the frame cannot be positioned'], ...
+        numel(la_qk) - n_polar, numel(la_qk), ref_fn);
+    end
+    RT = load(ref_fn, 'gps_time', 'lat', 'lon');
+    [rt_gps, rt_ord] = sort(RT.gps_time(:));
+    rt_lat = RT.lat(:); rt_lat = rt_lat(rt_ord);
+    rt_lon = RT.lon(:); rt_lon = rt_lon(rt_ord);
+    % interp1 rejects repeated sample points outright, so a reference
+    % trajectory that logged one GPS time twice would abort the frame with
+    % a generic grid-vector message instead of one of the checks here.
+    [rt_gps, rt_uniq] = unique(rt_gps, 'stable');
+    rt_lat = rt_lat(rt_uniq); rt_lon = rt_lon(rt_uniq);
+    if numel(rt_gps) < 2
+      error('run_quadpol_pipeline:refTrajShort', ...
+        '%s holds %d distinct GPS times; it cannot position a frame', ...
+        ref_fn, numel(rt_gps));
+    end
+    q_gps = P.GPS_time(:);
+    if min(q_gps) < rt_gps(1) - 1 || max(q_gps) > rt_gps(end) + 1
+      error('run_quadpol_pipeline:refTrajRange', ...
+        ['frame GPS times %.1f..%.1f fall outside the reference trajectory ' ...
+        '%.1f..%.1f'], min(q_gps), max(q_gps), rt_gps(1), rt_gps(end));
+    end
+    P.Latitude = interp1(rt_gps, rt_lat, q_gps, 'linear').';
+    P.Longitude = interp1(rt_gps, rt_lon, q_gps, 'linear').';
+    if any(~isfinite(P.Latitude)) || any(~isfinite(P.Longitude))
+      error('run_quadpol_pipeline:refTrajGap', ...
+        'reference trajectory left %d traces unpositioned', ...
+        nnz(~isfinite(P.Latitude) | ~isfinite(P.Longitude)));
+    end
+    fprintf(['trajectory rebuilt from %s: shipped %.3f..%.3f N %.3f..%.3f E ' ...
+      '-> %.3f..%.3f N %.3f..%.3f E\n'], ...
+      sprintf('ref_%s.mat', day_seg), min(la_qk), max(la_qk), min(lo_qk), ...
+      max(lo_qk), min(P.Latitude), max(P.Latitude), min(P.Longitude), ...
+      max(P.Longitude));
+    clear RT rt_gps rt_lat rt_lon rt_ord rt_uniq q_gps;
   end
-  fprintf(['trajectory rebuilt from %s: shipped %.3f..%.3f N %.3f..%.3f E ' ...
-    '-> %.3f..%.3f N %.3f..%.3f E\n'], ...
-    sprintf('ref_%s.mat', day_seg), min(la_qk), max(la_qk), min(lo_qk), ...
-    max(lo_qk), min(P.Latitude), max(P.Latitude), min(P.Longitude), ...
-    max(P.Longitude));
-  clear RT rt_gps rt_lat rt_lon rt_ord q_gps la_qk lo_qk;
+  clear la_qk lo_qk;
   % Coregistration defaults, copied from what the Antarctic products
   % recorded (Ridge A frame 20250108_02_009), so both families are aligned
   % by the same tiling and search rather than by whatever a toolbox default
@@ -251,13 +278,16 @@ else
   fprintf('=== %s_%03d ===\n', day_seg, frm);
   surf_t = [];
 end
-% --- FIT THE WINDOW AND THE TILING TO THE FRAME THAT ACTUALLY EXISTS.
-% Both are read from the product, and on short frames both can exceed it,
-% which cost 21 of the 61 frames in the 20 Aug Antarctic run.
+% --- FIT THE WINDOW TO THE FRAME THAT ACTUALLY EXISTS.
+% The window and the coregistration tiling are both read from the product
+% and on short frames both can exceed it, which cost 21 of the 61 frames
+% in the 20 Aug Antarctic run. The window is settled here because r0/r1
+% are needed to read Data at all; the tiling waits for section 2c, where
+% the trace axis is final.
 %
 % The channel sizes are taken from the file headers rather than by
 % loading, so this costs nothing on the frames where it changes nothing.
-navail = inf; nx_avail = inf;
+navail = inf;
 for k = 1:4
   fnk = fullfile(site_root, sprintf(CHAN_DIR, upper(CHAN{k})), day_seg, name);
   if exist(fnk, 'file') ~= 2
@@ -266,7 +296,6 @@ for k = 1:4
   wi = whos('-file', fnk, 'Data');
   if ~isempty(wi) && numel(wi(1).size) >= 2
     navail = min(navail, wi(1).size(1));
-    nx_avail = min(nx_avail, wi(1).size(2));
   end
 end
 % (1) RANGE. The thin-ice seasons (Eastwind, McMurdo: 200-300 m of ice)
@@ -284,34 +313,12 @@ if isfinite(navail) && r1 > navail
     r0, r1, navail, r0, navail);
   r1 = navail;
 end
-% (2) ALONG TRACK. coregistration() interpolates its per-tile offsets and
-% needs at least FOUR tiles along track, i.e. 3*(Tx - overlap_x) + Tx <=
-% Nx. That threshold is measured, not assumed: on this survey 773-trace
-% frames coregister and 744-trace ones die indexing row_offset_full, and
-% 3*151 + 301 = 754 falls exactly between them. Short frames therefore
-% get a proportionally finer tiling - more, smaller tiles - rather than
-% failing. Frames that already satisfy the condition are untouched, so
-% every previously-processed frame is bit-identical.
-if isfinite(nx_avail)
-  need_x = 3*(CO.Tx - CO.overlap_x) + CO.Tx;
-  if nx_avail < need_x
-    Tx0 = CO.Tx; ov0 = CO.overlap_x;
-    while (3*(CO.Tx - CO.overlap_x) + CO.Tx) > nx_avail && CO.Tx > 16
-      CO.Tx = floor(CO.Tx * 0.9);
-      CO.overlap_x = floor(CO.Tx / 2);
-    end
-    if (3*(CO.Tx - CO.overlap_x) + CO.Tx) > nx_avail
-      error('run_quadpol_pipeline:tooShort', ...
-        ['%d traces cannot carry four coregistration tiles even at the ' ...
-        'minimum tile width; frame is too short to coregister'], nx_avail);
-    end
-    warning('run_quadpol_pipeline:tilingAdapted', ...
-      ['%d traces is short for tiling Tx %d ov %d (needs %d); adapted to ' ...
-      'Tx %d ov %d'], nx_avail, Tx0, ov0, need_x, CO.Tx, CO.overlap_x);
-  end
-end
-fprintf('window rbin %d:%d, tiling Tt %d Tx %d ov %d/%d\n', r0, r1, ...
-  CO.Tt, CO.Tx, CO.overlap_t, CO.overlap_x);
+% (2) ALONG TRACK is fitted further down, once the trace axis is final:
+% the tiling has to match the traces coregistration is actually handed,
+% and in qlook mode the stationary cull below removes about a third of
+% them. Only the range clamp can be settled here, because r0/r1 are
+% needed to read Data at all.
+fprintf('window rbin %d:%d\n', r0, r1);
 
 S = struct();
 for k = 1:4
@@ -373,6 +380,42 @@ if qlook_mode
   Nx = nnz(keep_tr);
 end
 
+%% 2c. FIT THE TILING TO THE TRACE AXIS COREGISTRATION WILL ACTUALLY SEE.
+% coregistration() interpolates its per-tile offsets and needs at least
+% FOUR tiles along track, i.e. 3*(Tx - overlap_x) + Tx <= Nx. That
+% threshold is measured, not assumed: on this survey 773-trace frames
+% coregister and 744-trace ones die indexing row_offset_full, and
+% 3*151 + 301 = 754 falls exactly between them. Short frames therefore get
+% a proportionally finer tiling - more, smaller tiles - rather than
+% failing. Frames that already satisfy the condition are untouched, so
+% every previously-processed frame is bit-identical.
+%
+% THIS RUNS AFTER THE CULL, and must. The count that matters is the width
+% of the S handed to ptt.coregisterChannels, not the width recorded in the
+% channel file headers: the cull above drops about a third of the EastGRIP
+% traces, so a raw 900-trace qlook frame clears 754 on its header and then
+% arrives at coregistration with ~600 - precisely the failure this guard
+% exists to prevent. Outside qlook mode there is no cull and the two counts
+% are the same, which is why the Antarctic run never exposed the gap.
+need_x = 3*(CO.Tx - CO.overlap_x) + CO.Tx;
+if Nx < need_x
+  Tx0 = CO.Tx; ov0 = CO.overlap_x;
+  while (3*(CO.Tx - CO.overlap_x) + CO.Tx) > Nx && CO.Tx > 16
+    CO.Tx = floor(CO.Tx * 0.9);
+    CO.overlap_x = floor(CO.Tx / 2);
+  end
+  if (3*(CO.Tx - CO.overlap_x) + CO.Tx) > Nx
+    error('run_quadpol_pipeline:tooShort', ...
+      ['%d traces cannot carry four coregistration tiles even at the ' ...
+      'minimum tile width; frame is too short to coregister'], Nx);
+  end
+  warning('run_quadpol_pipeline:tilingAdapted', ...
+    ['%d traces is short for tiling Tx %d ov %d (needs %d); adapted to ' ...
+    'Tx %d ov %d'], Nx, Tx0, ov0, need_x, CO.Tx, CO.overlap_x);
+end
+fprintf('tiling Tt %d Tx %d ov %d/%d over %d traces\n', CO.Tt, CO.Tx, ...
+  CO.overlap_t, CO.overlap_x, Nx);
+
 %% depth axis
 C0 = 299792458; C_ICE = C0/sqrt(3.171);
 if qlook_mode
@@ -388,13 +431,27 @@ z = z(keep);
 % fixed 200-1200 m was written for the deep Antarctic sites; at the thin-ice
 % seasons it reaches past the end of the sounding - Eastwind holds 561 m and
 % McMurdo 998 - so every console figure quoted from it was averaging in
-% depths the frame does not have. Only the printed report used this; the
-% saved arrays and the figures carry their own per-site bands.
-if z(end) < Z_BAND(2)
-  Z_BAND(2) = z(end);
-  fprintf('report band clamped to the record: %.0f-%.0f m\n', Z_BAND(1), Z_BAND(2));
+% depths the frame does not have. The saved arrays and the figures carry
+% their own per-site bands, but this one is not report-only: `band` also
+% selects the samples the before/after coregistration coherences are
+% measured over, and those are saved into res. So it is clamped at BOTH
+% ends - a record shallower than the 200 m floor would otherwise leave the
+% band empty and write NaN coherences without a word - and a record that
+% cannot carry any band at all is an error rather than a page of NaN.
+z_band_asked = Z_BAND;
+if z(end) < Z_BAND(2), Z_BAND(2) = z(end); end
+if Z_BAND(1) >= Z_BAND(2), Z_BAND(1) = z(1); end
+if ~isequal(Z_BAND, z_band_asked)
+  fprintf('report band %.0f-%.0f m clamped to the record: %.0f-%.0f m\n', ...
+    z_band_asked(1), z_band_asked(2), Z_BAND(1), Z_BAND(2));
 end
 band = z > Z_BAND(1) & z < Z_BAND(2);
+if ~any(band)
+  error('run_quadpol_pipeline:reportBand', ...
+    ['the %.0f..%.0f m record holds no sample inside the reporting band ' ...
+    '%.0f-%.0f m; every coherence and reported figure would be NaN'], ...
+    z(1), z(end), Z_BAND(1), Z_BAND(2));
+end
 kr = ones(NRW,1)/NRW;
 % Positions, needed by the section loop below as well as by the reporting,
 % so they are defined once here rather than after the first use.
