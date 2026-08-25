@@ -371,16 +371,6 @@ if qlook_mode
   for k = 1:4, S.(CHAN{k}) = S.(CHAN{k})(:, keep_tr); end
   P.Latitude = la_all(keep_tr); P.Longitude = lo_all(keep_tr);
   Nx = nnz(keep_tr);
-  if nblk_auto
-    % Match the block LENGTH to Ridge A's ~125 m, not its trace count: at
-    % this season's ~9 m spacing 125 traces is a 1.1 km block, which
-    % averages genuinely different ice at a shear margin (the first
-    % validation frame: block-to-block dlam spread 7.2x vs Ridge A's 1.1x).
-    sp = step(keep_tr); sp = median(sp(isfinite(sp) & sp < 100));
-    NBLK_TR = max(8, round(125 / max(sp, 0.5)));
-    fprintf('qlook block size: %d traces (~%.0f m at %.1f m spacing)\n', ...
-      NBLK_TR, NBLK_TR * sp, sp);
-  end
 end
 
 %% depth axis
@@ -399,6 +389,45 @@ kr = ones(NRW,1)/NRW;
 % Positions, needed by the section loop below as well as by the reporting,
 % so they are defined once here rather than after the first use.
 la = P.Latitude(:); lo = P.Longitude(:);
+
+% --- BLOCK SIZE IS A LENGTH, AND IS SET FOR EVERY SEASON.
+% A section block must cover the same ice everywhere or block-level
+% quantities are not comparable between surveys. 125 traces is ~125 m only
+% where traces sit ~1 m apart; this sizing used to run in qlook mode alone,
+% so EastGRIP was corrected to 122 m while EASTWIND - an Antarctic season
+% at 2.43 m spacing - silently kept 125 traces and produced 304 m blocks,
+% 2.4x every other site, which is exactly the lateral averaging the
+% segmented pass exists to avoid. Deriving it from the measured spacing
+% covers both paths with one rule; an explicit nblk_tr at the call site
+% still wins.
+BLK_TARGET_M = 125;      % Ridge A's block, the length every site matches
+BLK_TOL = 0.25;          % how far off before it is worth re-cutting
+if nblk_auto
+  R_E = 6371000;
+  dph_s = deg2rad(diff(la(:)));
+  dlo_s = deg2rad(diff(lo(:)));
+  aa_s = sin(dph_s/2).^2 ...
+    + cos(deg2rad(la(1:end-1))) .* cos(deg2rad(la(2:end))) .* sin(dlo_s/2).^2;
+  sp = 2 * R_E * asin(min(1, sqrt(aa_s)));
+  sp = median(sp(isfinite(sp) & sp > 0 & sp < 100));
+  % Only RE-CUT when the default count spans materially the wrong length.
+  % Without the tolerance this rounds 125 to 126 at every ~1 m site - the
+  % measured spacing is 0.996 m, not exactly 1 - which would rewrite the
+  % block boundaries of 107 of 130 finished frames to move a block by one
+  % metre. That is churn, not a correction: it would invalidate the Ridge A
+  % control and the Thwaites dose-response to no purpose. A quarter is wide
+  % enough to leave every ~1 m season exactly as it was and still catch
+  % Eastwind's 304 m and EastGRIP's 346 m.
+  if isfinite(sp) && sp > 0 && abs(nblk_tr*sp - BLK_TARGET_M) > BLK_TOL*BLK_TARGET_M
+    NBLK_TR = max(8, round(BLK_TARGET_M / max(sp, 0.5)));
+    fprintf(['block size RE-CUT: %d traces (~%.0f m at %.2f m spacing); ' ...
+      'the default %d would span %.0f m\n'], NBLK_TR, NBLK_TR*sp, sp, ...
+      nblk_tr, nblk_tr*sp);
+  elseif isfinite(sp) && sp > 0
+    fprintf('block size: %d traces (~%.0f m at %.2f m spacing)\n', ...
+      NBLK_TR, NBLK_TR * sp, sp);
+  end
+end
 fprintf('depth window %.0f..%.0f m (%d samples)\n', z(1), z(end), numel(z));
 
 %% 3. coregistration, or the cache of a previous run
