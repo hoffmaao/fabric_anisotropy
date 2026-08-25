@@ -384,6 +384,16 @@ z = (Tv(:) - st) * C_ICE / 2;
 keep = z >= 0 & z <= Z_MAX;
 for k = 1:4, S.(CHAN{k}) = S.(CHAN{k})(keep, :); end
 z = z(keep);
+% The reporting band is clamped to the record that actually exists. The
+% fixed 200-1200 m was written for the deep Antarctic sites; at the thin-ice
+% seasons it reaches past the end of the sounding - Eastwind holds 561 m and
+% McMurdo 998 - so every console figure quoted from it was averaging in
+% depths the frame does not have. Only the printed report used this; the
+% saved arrays and the figures carry their own per-site bands.
+if z(end) < Z_BAND(2)
+  Z_BAND(2) = z(end);
+  fprintf('report band clamped to the record: %.0f-%.0f m\n', Z_BAND(1), Z_BAND(2));
+end
 band = z > Z_BAND(1) & z < Z_BAND(2);
 kr = ones(NRW,1)/NRW;
 % Positions, needed by the section loop below as well as by the reporting,
