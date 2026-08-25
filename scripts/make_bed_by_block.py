@@ -115,10 +115,14 @@ THE WRITE REFUSES TO DROP A SEASON. Sections are globbed from all of
 rerun for one site would replace the file with one holding that site alone -
 and an absent tag is drawn UNMASKED, so those movies would quietly stop
 masking. If the existing `bed_by_block.json` carries frames this run did not
-produce, the run exits non-zero naming how many and which segments. Rerun
-with every site root, or pass `--replace` to write this run's frames alone.
-Stale entries are never merged forward: that would hide which run produced
-what.
+produce, the run exits non-zero listing them with the reason it logged for
+each - a missing layer file, an unreadable one, a catalogue that does not
+align - or noting that the frame was never reached at all. It does NOT
+diagnose the cause: a narrowed root list is only one explanation, and this
+script's name/row alignment is stricter than older runs', so a frame an
+earlier file bound can legitimately be skipped now. Rerun with every site
+root, or pass `--replace` to write this run's frames alone. Stale entries
+are never merged forward: that would hide which run produced what.
 """
 import glob
 import json
@@ -136,6 +140,12 @@ OUT_FN = os.path.join(DATA, 'bed_by_block.json')
 # Reserved key in the output, holding the layer names bound per frame. It
 # cannot collide with a frame tag, which is always <day_seg>_<frm>.
 LAYERS_KEY = '_layers'
+# How many dropped frames the write refusal names one by one before it
+# summarises the rest; enough to see a pattern without burying the remedy.
+MAX_REPORTED = 12
+# What is known about a dropped frame this run never reached: its section
+# file is not under $SCAR_DATA, so no layer file was even looked for.
+NOT_ATTEMPTED = 'no quadpol_section_*.mat for it under $SCAR_DATA this run'
 
 C0 = 299792458.0
 EPS_ICE = 3.171
@@ -491,6 +501,35 @@ def dropped_tags(beds):
     return sorted(t for t in prev if t != LAYERS_KEY and t not in beds)
 
 
+def refusal_message(gone, why_missing):
+    """Why the run will not replace a file holding frames it did not produce.
+
+    It states only what is known: these tags are in the existing file and not
+    in this run's output, each with whatever reason this run logged for it.
+    The CAUSE is not knowable here and is deliberately not asserted - a site
+    root may have been left off the command line, a layer file may have been
+    re-staged or emptied, or the name/row alignment may now skip a frame an
+    older, looser run bound. Naming one of those as the cause would send the
+    operator to a remedy that cannot clear it.
+    """
+    segs = {t.rsplit('_', 1)[0] for t in gone}
+    lines = ['refusing to write %s: it already carries %d frame(s) that this '
+             'run produced no bed for, across %d segment(s):'
+             % (OUT_FN, len(gone), len(segs))]
+    for t in gone[:MAX_REPORTED]:
+        lines.append('  %s: %s' % (t, why_missing.get(t, NOT_ATTEMPTED)))
+    if len(gone) > MAX_REPORTED:
+        lines.append('  ... and %d more' % (len(gone) - MAX_REPORTED))
+    lines.append(
+        'Being listed does not say why: the site root may not have been given,'
+        ' the layer file may have been re-staged or emptied, or this run may '
+        'have skipped a frame an older run bound - the name/row alignment is '
+        'stricter than it was. Read the reasons above, rerun with every site '
+        "root if one is missing, or pass --replace to write this run's frames "
+        'alone.')
+    return '\n'.join(lines)
+
+
 def main():
     argv = sys.argv[1:]
     replace = '--replace' in argv
@@ -508,6 +547,16 @@ def main():
         raise SystemExit('no quadpol_section_*.mat under %s' % DATA)
 
     beds, bound_by_tag, n_picked, n_frames = {}, {}, 0, 0
+    # Why each frame this run reached produced no bed, kept for the write
+    # refusal below: a dropped tag with a reason here was attempted and
+    # skipped, one without was never reached at all, and the two need
+    # different remedies.
+    why_missing = {}
+
+    def skip(tag, why):
+        print('  %s: %s' % (tag, why))
+        why_missing[tag] = why
+
     for fn in sections:
         tag = os.path.basename(fn)[len('quadpol_section_'):-len('.mat')]
         day_seg, frm_s = tag.rsplit('_', 1)
@@ -516,13 +565,12 @@ def main():
         blat, blon = section_blocks(fn)
         lfn = find_layer_file(roots, day_seg, int(frm_s))
         if lfn is None:
-            print('  %s: no CSARP_layer file' % tag)
+            skip(tag, 'no CSARP_layer file under the site roots given')
             continue
         try:
             d = load_mat(lfn)
         except (OSError, ValueError, MatReadError) as err:
-            print('  %s: %s unreadable (%s)'
-                  % (tag, os.path.basename(lfn), err))
+            skip(tag, '%s unreadable (%s)' % (os.path.basename(lfn), err))
             continue
         # The frame file carries the picks; the segment file carries their
         # names. Join them here rather than in layer_picks, which takes one
@@ -530,40 +578,37 @@ def main():
         if 'lyr_name' not in d and 'layerData' not in d:
             nfn = find_names_file(roots, day_seg)
             if nfn is None:
-                print('  %s: no layer_%s.mat naming its layers; skipped '
-                      '(a positional bind means a different layer per '
-                      'season)' % (tag, day_seg))
+                skip(tag, 'no layer_%s.mat naming its layers; skipped (a '
+                          'positional bind means a different layer per '
+                          'season)' % day_seg)
                 continue
             try:
                 nd = load_mat(nfn)
             except (OSError, ValueError, MatReadError) as err:
-                print('  %s: %s unreadable (%s)'
-                      % (tag, os.path.basename(nfn), err))
+                skip(tag, '%s unreadable (%s)' % (os.path.basename(nfn), err))
                 continue
             names = _name_list(nd.get('lyr_name'))
             try:
                 nrow = (len(twtt_layers(d['twtt'], len(names)))
                         if 'twtt' in d else 0)
             except (TypeError, ValueError) as err:
-                print('  %s: %s holds no readable twtt array (%s)'
-                      % (tag, os.path.basename(lfn), err))
+                skip(tag, '%s holds no readable twtt array (%s)'
+                          % (os.path.basename(lfn), err))
                 continue
             if nrow and len(names) != nrow:
                 # Names are matched to picks BY POSITION, so a catalogue of a
                 # different length cannot be aligned and must not be guessed
                 # at - one row of slip renames every layer after it.
-                print('  %s: %s names %d layers but the frame has %d rows; '
-                      'skipped rather than mis-aligned'
-                      % (tag, os.path.basename(nfn), len(names), nrow))
+                skip(tag, '%s names %d layers but the frame has %d rows; '
+                          'skipped rather than mis-aligned'
+                          % (os.path.basename(nfn), len(names), nrow))
                 continue
             d = dict(d)
             d['lyr_name'] = nd.get('lyr_name')
-            if 'lyr_id' in nd:
-                d['lyr_id'] = nd['lyr_id']
         try:
             plat, plon, bed, bound, n_bad = layer_picks(d)
         except LayerFormatError as err:
-            print('  %s: %s unusable (%s)' % (tag, os.path.basename(lfn), err))
+            skip(tag, '%s unusable (%s)' % (os.path.basename(lfn), err))
             continue
         if n_bad:
             print('  WARNING: %s: %d pick(s) put the bottom at or above the '
@@ -587,15 +632,7 @@ def main():
             'no frame matched a CSARP_layer file; nothing written')
     gone = [] if replace else dropped_tags(beds)
     if gone:
-        segs = sorted({t.rsplit('_', 1)[0] for t in gone})
-        shown = ', '.join(segs[:8]) + (', ...' if len(segs) > 8 else '')
-        raise SystemExit(
-            'refusing to write %s: it already carries %d frame(s) this run '
-            'produced no bed for, across %d segment(s) (%s). Their site roots '
-            'were not on the command line, so writing now would drop those '
-            'seasons and their movies would silently stop masking. Rerun with '
-            'every site root, or pass --replace to write this run alone.'
-            % (OUT_FN, len(gone), len(segs), shown))
+        raise SystemExit(refusal_message(gone, why_missing))
     # The layers each frame's bed was differenced from, so a shallow bed off
     # an internal reflector is auditable in the product rather than only in
     # a run log that nobody kept.
