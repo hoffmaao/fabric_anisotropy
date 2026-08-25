@@ -17,6 +17,14 @@ fabric it masks would cut the column in the wrong place. No firn correction,
 for the same reason: the quad-pol depth axis carries none either, so the two
 are consistent to within the ~10 m documented in docs/method.md.
 
+THE TWO LAYERS ARE CHOSEN BY NAME, never by position. These files routinely
+carry internal reflectors beyond the surface/bottom pair, and differencing
+whatever happens to be layer 2 would give a systematically shallow bed - a
+600 m "bed" in EastGRIP's 2700 m column - that no plausibility filter can
+catch and that retires blocks from the movie hundreds of metres above the
+real ice base. A file that exposes no identifiable bottom is skipped with a
+line in the log instead: not masking is recoverable, masking wrongly is not.
+
 MATCHING IS BY POSITION, PER FRAME. A section block's centre is matched to
 the nearest pick within the SAME frame's layer file and within MAX_MATCH_M;
 the trace axes differ (the qlook frames are culled before they are blocked),
@@ -54,8 +62,13 @@ EPS_ICE = 3.171
 C_ICE = C0 / np.sqrt(EPS_ICE)
 
 # A pick further than this from a block centre is describing different ice.
-# Blocks are 125 m long, so half a block is the natural scale.
-MAX_MATCH_M = 250.0
+# Blocks are 125 m long, so half a block is the natural scale. The radius
+# costs nothing measurable: over 56 Taylor Dome blocks the nearest pick sits
+# a median 0.7 m from the block centre, p95 1.5 m, max 1.7 m, so 62.5 m and
+# 250 m both match 100% of blocks - and the tighter one removes the case
+# where a block borrows its bed from two blocks away, which at Taylor Dome's
+# 200 m of within-frame thickness variation would be the wrong ice.
+MAX_MATCH_M = 62.5
 # Thicknesses outside this range are a mispick, not ice: the shallowest
 # sounding here is the ~200 m McMurdo shelf and the deepest column is
 # EastGRIP's ~2700 m.
@@ -89,12 +102,39 @@ def _flat(v):
     return np.atleast_1d(np.asarray(v, float)).ravel()
 
 
+def _as_name(v):
+    """One layer name as a lowercase string, from either .mat flavour."""
+    if isinstance(v, np.ndarray) and v.dtype.kind in 'iuf':
+        v = ''.join(chr(int(c)) for c in v.ravel() if int(c) > 0)
+    return str(v).strip().lower()
+
+
+def _find_layer(names, ids, wanted_name, wanted_id):
+    """Index of the layer identified as `wanted_name`, or None.
+
+    By NAME first, exact then substring; by the OPR layer id (1 surface,
+    2 bottom) only where the file carries one. Never by position - a file
+    whose second layer is an internal reflector would otherwise yield a
+    systematically shallow bed that the plausibility filter cannot catch
+    and that masks the movie hundreds of metres above the real ice base.
+    """
+    for match in (lambda nm: nm == wanted_name,
+                  lambda nm: wanted_name in nm):
+        for i, nm in enumerate(names):
+            if match(nm):
+                return i
+    for i, v in enumerate(ids):
+        if v == wanted_id:
+            return i
+    return None
+
+
 def layer_picks(d):
     """(lat, lon, bed depth) arrays from one CSARP_layer file.
 
     Handles both layer formats in use: the OPR layerdata one (`lat`, `lon`,
-    `twtt` with layer 1 the surface and layer 2 the bottom) and the legacy
-    CReSIS one (`Latitude`, `Longitude`, `layerData` cells).
+    `twtt`, `lyr_name`/`lyr_id`) and the legacy CReSIS one (`Latitude`,
+    `Longitude`, `layerData` cells, each carrying its own `name`).
     """
     if 'twtt' in d and 'lat' in d:
         lat, lon = _flat(d['lat']), _flat(d['lon'])
@@ -106,9 +146,14 @@ def layer_picks(d):
             if tw.shape[0] > tw.shape[1]:
                 tw = tw.T
             layers = [tw[i] for i in range(tw.shape[0])]
+        raw_names = d.get('lyr_name', d.get('name'))
+        names = ([] if raw_names is None
+                 else [_as_name(v) for v in np.atleast_1d(raw_names)])
+        raw_ids = d.get('lyr_id', d.get('id'))
+        ids = [] if raw_ids is None else list(_flat(raw_ids))
     elif 'layerData' in d and 'Latitude' in d:
         lat, lon = _flat(d['Latitude']), _flat(d['Longitude'])
-        layers = []
+        layers, names, ids = [], [], []
         for lay in np.atleast_1d(d['layerData']):
             val = np.atleast_1d(getattr(lay, 'value', None))
             if val.size == 0:
@@ -116,14 +161,29 @@ def layer_picks(d):
             # value{2}.data carries the pick; value{1} is the manual layer
             entry = val[-1] if val.size > 1 else val[0]
             data = getattr(entry, 'data', None)
-            if data is not None:
-                layers.append(_flat(data))
+            if data is None:
+                continue
+            layers.append(_flat(data))
+            names.append(_as_name(getattr(lay, 'name', '')))
+            ids.append(float(np.atleast_1d(
+                np.asarray(getattr(lay, 'id', np.nan), float)).ravel()[0]))
     else:
         raise ValueError('no recognised layer fields')
     if len(layers) < 2:
         raise ValueError('fewer than two layers (need surface and bottom)')
-    n = min(lat.size, lon.size, layers[0].size, layers[1].size)
-    bed = (layers[1][:n] - layers[0][:n]) * C_ICE / 2.0
+    names = names[:len(layers)]
+    ids = ids[:len(layers)]
+    i_s = _find_layer(names, ids, 'surface', 1)
+    i_b = _find_layer(names, ids, 'bottom', 2)
+    if i_s is None or i_b is None:
+        raise ValueError(
+            'cannot identify %s among %d layers named %s; refusing to '
+            'difference layers by position'
+            % (' and '.join(w for w, i in (('surface', i_s), ('bottom', i_b))
+                            if i is None),
+               len(layers), names if names else '<unnamed>'))
+    n = min(lat.size, lon.size, layers[i_s].size, layers[i_b].size)
+    bed = (layers[i_b][:n] - layers[i_s][:n]) * C_ICE / 2.0
     bed[~np.isfinite(bed)] = np.nan
     bed[(bed < MIN_BED_M) | (bed > MAX_BED_M)] = np.nan
     return lat[:n], lon[:n], bed
@@ -210,8 +270,14 @@ def main():
 
     if not beds:
         raise SystemExit('no frame matched a CSARP_layer file; nothing written')
-    with open(OUT_FN, 'w') as fh:
+    # Write to a temp name in the same directory and rename into place, the
+    # pattern run_quadpol_pipeline.m uses for its coreg cache: the movie is
+    # fatal on a present-but-unreadable file, so a run killed mid-write would
+    # otherwise leave a truncated JSON that breaks every later movie run.
+    tmp_fn = OUT_FN + '.tmp'
+    with open(tmp_fn, 'w') as fh:
         json.dump(beds, fh, indent=1, sort_keys=True)
+    os.replace(tmp_fn, OUT_FN)
     print('wrote %s: %d frames, %d blocks with a bed'
           % (OUT_FN, n_frames, n_picked))
 

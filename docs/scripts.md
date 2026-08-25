@@ -43,11 +43,20 @@ gitignored - see the "Figure inputs and outputs" section at the end.
   `(twtt_bottom - twtt_surface) * c / (2*sqrt(3.171))` - the SAME
   permittivity the pipeline's depth axis uses, so the mask and the fabric
   it masks sit on one ice model, and with no firn correction for the same
-  reason. Each section block takes the nearest pick WITHIN ITS OWN FRAME
-  and within 250 m, because the trace axes differ once the qlook frames
-  are culled and an index-for-index match would be wrong. Implausible
-  thicknesses (under 40 m, over 4500 m) and unmatched blocks are written
-  as null and drawn unmasked. The output is a JSON object keyed by frame
+  reason. The surface and bottom layers are chosen BY NAME, never by
+  position: these files carry internal reflectors too, and differencing
+  whatever happens to be layer 2 would give a systematically shallow bed
+  that no plausibility filter catches, so a file exposing no identifiable
+  bottom is skipped with a line in the log instead. Each section block
+  takes the nearest pick WITHIN ITS OWN FRAME and within half a block
+  (62.5 m), because the trace axes differ once the qlook frames are culled
+  and an index-for-index match would be wrong; measured over 56 Taylor
+  Dome blocks the nearest pick sits a median 0.7 m away, so the radius
+  turns nothing away. Implausible thicknesses (under 40 m, over 4500 m)
+  and unmatched blocks are written as null and drawn unmasked. The JSON is
+  written to a temp name and renamed into place, as the pipeline does for
+  its coreg cache, so a killed run cannot leave a truncated file that the
+  movie then treats as fatal. The output is a JSON object keyed by frame
   tag (`20250108_02_009`, matching `quadpol_section_<tag>.mat`), each
   value a list of metres below the surface in block order whose length is
   that frame's block count; the movie warns and skips masking for any
