@@ -350,8 +350,8 @@ def main():
                      + r'track colour: $\Delta\lambda$ per block; '
                      + r'bars: fabric axis $\theta_0$ at this depth'
                      + '\n'
-                     + ('grey: LS residual above %.2f, or the bed inside '
-                        'this window' % RESID_GOOD),
+                     + ('grey: LS residual fading %.2f to %.2f, or the bed '
+                        'inside this window' % (RESID_GOOD, RESID_BAD)),
                      fontsize=10.5, color=INK)
         png = os.path.join(fdir, 'd%04d.png' % k)
         fig.savefig(png, dpi=150, facecolor='white')

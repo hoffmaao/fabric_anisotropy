@@ -151,10 +151,17 @@ if qlook_mode
   %
   % THE TRIGGER IS THE DEFECT, NOT THE PRODUCT FAMILY. Every survey this
   % code serves is polar, so shipped coordinates that put the frame below
-  % 60 deg of latitude - or that carry no position at all - are the
-  % failure described above and nothing else. Gating on qlook_mode instead
-  % would block a future qlook season whose coordinates are correct on a
-  % reference trajectory it has no need of.
+  % 60 deg of latitude are the failure described above and nothing else.
+  % Gating on qlook_mode instead would block a future qlook season whose
+  % coordinates are correct on a reference trajectory it has no need of.
+  %
+  % THE FRACTION IS TAKEN OVER POSITIONED TRACES ONLY. "Placed somewhere
+  % wrong" and "not placed at all" are different faults with different
+  % owners: an unpositioned trace is the stationary cull's business - it
+  % drops them and reports the count - and a frame that is mostly NaN but
+  % correctly polar where it is located needs no reference trajectory. Only
+  % a frame with no position at all, or whose located traces are mostly
+  % sub-polar, is the defect this rebuild answers.
   %
   % Where a rebuild IS required it is an interpolation of the reference
   % trajectory onto the frame's own GPS_time, and it is NOT optional and
@@ -163,19 +170,27 @@ if qlook_mode
   % product that looks fine and is wrong by tens of degrees.
   la_qk = P.Latitude(:).'; lo_qk = P.Longitude(:).';
   POLAR_LAT_MIN = 60;
-  n_polar = nnz(isfinite(la_qk) & abs(la_qk) >= POLAR_LAT_MIN);
-  if n_polar >= 0.5 * numel(la_qk)
-    fprintf(['shipped qlook coordinates are polar (%.3f..%.3f N ' ...
-      '%.3f..%.3f E); kept as shipped\n'], min(la_qk), max(la_qk), ...
-      min(lo_qk), max(lo_qk));
+  located_qk = isfinite(la_qk) & isfinite(lo_qk);
+  n_located = nnz(located_qk);
+  n_polar = nnz(located_qk & abs(la_qk) >= POLAR_LAT_MIN);
+  if n_located > 0 && n_polar >= 0.5 * n_located
+    fprintf(['shipped qlook coordinates are polar on %d of %d positioned ' ...
+      'traces (%.3f..%.3f N %.3f..%.3f E); kept as shipped\n'], ...
+      n_polar, n_located, min(la_qk(located_qk)), max(la_qk(located_qk)), ...
+      min(lo_qk(located_qk)), max(lo_qk(located_qk)));
   else
+    if n_located == 0
+      why = sprintf('none of its %d traces carries a position', numel(la_qk));
+    else
+      why = sprintf(['%d of its %d positioned traces sit below %d deg of ' ...
+        'latitude'], n_located - n_polar, n_located, POLAR_LAT_MIN);
+    end
     ref_fn = fullfile(site_root, 'CSARP_reference_trajectory', ...
       sprintf('ref_%s.mat', day_seg));
     if exist(ref_fn, 'file') ~= 2
       error('run_quadpol_pipeline:noRefTraj', ...
-        ['qlook coordinates place %d of %d traces off any ice sheet and ' ...
-        '%s is missing; the frame cannot be positioned'], ...
-        numel(la_qk) - n_polar, numel(la_qk), ref_fn);
+        ['qlook coordinates are unusable (%s) and %s is missing; the frame ' ...
+        'cannot be positioned'], why, ref_fn);
     end
     RT = load(ref_fn, 'gps_time', 'lat', 'lon');
     [rt_gps, rt_ord] = sort(RT.gps_time(:));
@@ -209,9 +224,9 @@ if qlook_mode
       sprintf('ref_%s.mat', day_seg), min(la_qk), max(la_qk), min(lo_qk), ...
       max(lo_qk), min(P.Latitude), max(P.Latitude), min(P.Longitude), ...
       max(P.Longitude));
-    clear RT rt_gps rt_lat rt_lon rt_ord rt_uniq q_gps;
+    clear RT rt_gps rt_lat rt_lon rt_ord rt_uniq q_gps why;
   end
-  clear la_qk lo_qk;
+  clear la_qk lo_qk located_qk;
   % Coregistration defaults, copied from what the Antarctic products
   % recorded (Ridge A frame 20250108_02_009), so both families are aligned
   % by the same tiling and search rather than by whatever a toolbox default
