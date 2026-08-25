@@ -35,6 +35,7 @@ own answer rather than as a cross-validated one.
 Usage: python quadpol_depth_movie.py <out_dir> [site]
 """
 import glob
+import json
 import os
 import re
 import shutil
@@ -75,6 +76,28 @@ Z_FIRST, Z_LAST = CFG['movie']
 WIN_M = CFG.get('win', 150.0)
 STEP_M = CFG.get('step', 20.0)
 MIN_CELLS = 3 if WIN_M < 80.0 else 5
+# Fit-quality fade. A window at RESID_GOOD or better draws at full colour; by
+# RESID_BAD it has gone to grey. The bounds are the LS residual, measured
+# across these surveys: Ridge A sits at 0.20-0.26 through its whole column
+# and its displayed values are stable under gating, so 0.25 is what a
+# healthy fit looks like here and 0.45 is where the value stops meaning
+# anything.
+RESID_GOOD, RESID_BAD = 0.25, 0.45
+GREY_RGB = (0.88, 0.88, 0.89)
+
+# Bed depth per along-track block, from the CSARP_layer bottom pick, keyed by
+# frame tag. Without it a frame keeps drawing fabric colour at depths where
+# its ice has already ended - and the ice varies enormously WITHIN a survey,
+# 566-996 m across Taylor Dome and by 200 m inside single frames, so a
+# per-site depth cut cannot express it. A block fades in proportion to how
+# much of the current window still sits in ice, so a frame retires from the
+# movie as its own bed comes up. Frames with no pick are drawn unchanged.
+BED_FILE = os.path.join(DATA, 'bed_by_block.json')
+try:
+    with open(BED_FILE) as _fh:
+        BEDS = json.load(_fh)
+except Exception:
+    BEDS = {}
 
 T = Transformer.from_crs('EPSG:4326', 'EPSG:3031', always_xy=True)
 
@@ -99,6 +122,7 @@ def load():
             r = f['res']
             z = np.array(r['z']).ravel()
             secl = np.array(r['sec_dlam_ls']).T
+            resl = np.array(r['sec_resid_ls']).T
             blat = np.array(r['sec_lat']).ravel()
             blon = np.array(r['sec_lon']).ravel()
             zw = np.array(r['ls_zw']).ravel()
@@ -116,8 +140,16 @@ def load():
             continue
         bx, by = T.transform(blon[ok], blat[ok])
         ex, ey = T.transform([lon0, lon1], [lat0, lat1])
-        frames.append(dict(tag=tag, z=z, sec=secl[:, ok],
-                           pts=np.column_stack([bx, by]),
+        # bed depth per block, filtered by the same mask as the positions so
+        # index j means the same block in both
+        bed = BEDS.get(tag)
+        if bed is not None and len(bed) == ok.size:
+            bedv = np.array([np.nan if b is None else b for b in bed],
+                            dtype=float)[ok]
+        else:
+            bedv = np.full(int(ok.sum()), np.nan)
+        frames.append(dict(tag=tag, z=z, sec=secl[:, ok], res=resl[:, ok],
+                           bed=bedv, pts=np.column_stack([bx, by]),
                            zw=zw, th_geo=th_geo, lat=lat, lon=lon,
                            ex=ex, ey=ey))
     if not frames:
@@ -174,18 +206,50 @@ def main():
             bd = np.where(np.isfinite(sub).sum(axis=0) >= MIN_CELLS,
                           np.nanmedian(np.where(np.isfinite(sub), sub,
                                                 np.nan), axis=0), np.nan)
+            # Fit quality per block-window, on the same footing as the value.
+            subr = fr['res'][mz]
+            br = np.where(np.isfinite(subr).sum(axis=0) >= MIN_CELLS,
+                          np.nanmedian(np.where(np.isfinite(subr), subr,
+                                                np.nan), axis=0), np.nan)
             cov += int(np.isfinite(bd).sum())
-            segs, vals = [], []
+            # Grey the whole interval as soon as the bed enters it, rather
+            # than fading in proportion to how much ice is left. The bed is a
+            # strong specular reflector: a window that contains it has its
+            # coherence dominated by the bed echo throughout, so the fabric
+            # estimate is contaminated across the whole window, not partially.
+            # A block therefore draws while the window sits entirely in ice
+            # and drops out for good once the bed appears in it.
+            bedf = fr['bed']
+            with np.errstate(invalid='ignore'):
+                icef = (hi <= bedf).astype(float)
+            icef = np.where(np.isfinite(bedf), icef, 1.0)
+            segs, vals, wts, ice = [], [], [], []
             for j in range(len(bd) - 1):
                 v = 0.5 * (bd[j] + bd[j + 1])
                 if np.isfinite(v):
                     segs.append([fr['pts'][j], fr['pts'][j + 1]])
                     vals.append(v)
+                    wts.append(np.nanmean([br[j], br[j + 1]]))
+                    ice.append(min(icef[j], icef[j + 1]))
             if segs:
-                lc = LineCollection(segs, cmap=cmap, norm=norm,
-                                    linewidths=4.2, capstyle='round',
-                                    zorder=2, transform=proj)
-                lc.set_array(np.asarray(vals))
+                # Blend toward neutral grey by fit quality, the same rule the
+                # co-polarized sections use. Without it a badly-fit window is
+                # painted at full saturation and reads exactly like a measured
+                # one - and at every site except Ridge A that is most of the
+                # map: tightening the residual gate collapses the displayed
+                # p95 from 0.119 to 0.075 at Taylor Dome and from 0.181 to
+                # 0.040 at Thwaites, while Ridge A barely moves (0.083 ->
+                # 0.077). The bright tail was the fit failing, not the ice.
+                rgb = cmap(norm(np.asarray(vals)))[:, :3]
+                w = np.clip((RESID_BAD - np.asarray(wts, float))
+                            / (RESID_BAD - RESID_GOOD), 0.0, 1.0)
+                w[~np.isfinite(w)] = 0.0
+                # below the bed there is no fabric to report, whatever the
+                # fit residual says, so the ice fraction gates the colour
+                w = w * np.asarray(ice, float)
+                rgb = rgb * w[:, None] + np.array(GREY_RGB) * (1 - w[:, None])
+                lc = LineCollection(segs, colors=rgb, linewidths=4.2,
+                                    capstyle='round', zorder=2, transform=proj)
                 ax.add_collection(lc)
 
         # Orientation AT THIS DEPTH, not the frame average: theta0 comes

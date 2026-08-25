@@ -53,19 +53,44 @@ T3031 = Transformer.from_crs('EPSG:4326', 'EPSG:3031', always_xy=True)
 # reaches only 200-300 m: it would smear the whole profile into two
 # independent windows and animate almost nothing. Thin-ice sites get 40 m
 # windows at a 5 m step, which the 1.12 m sample spacing easily supports.
+# COLOUR CEILINGS ARE MEASURED, NOT CHOSEN. vmax is the 95th percentile of
+# the quantity the movie actually draws - the per-block median dlam over one
+# depth window - taken over WELL-FIT windows only (LS residual < 0.25, the
+# level Ridge A holds through its whole column).
+#
+# They were previously set from each site's per-window MEDIAN dlam, which
+# clips half the map by construction: 49% of cells at Taylor Dome, 57% at
+# Thwaites, 47% at McMurdo. Ridge A escaped only because its value happened
+# to sit at its p95, and the rule below reproduces that 0.08 exactly, which
+# is why it is trusted for the others.
+#
+# The well-fit restriction matters as much as the percentile. Over ALL
+# windows the tail is the fit failing rather than the ice: gating from
+# resid<1.0 to resid<0.25 drops the displayed p95 from 0.119 to 0.108 at
+# Taylor Dome and from 0.181 to 0.126 at Thwaites, while Ridge A holds at
+# 0.083 -> 0.079. quadpol_depth_movie.py fades toward grey on the same
+# residual, so what the ceiling scales is what the map shows at full colour.
 SITES = {
     'ridge_a': dict(lat=-86.65, lon=69.35, title='Ridge A grid',
                     z_band=(200.0, 1200.0), z_deep=(1150.0, 1500.0),
                     vmax=0.08, movie=(200.0, 1050.0), win=150.0, step=20.0),
     'taylor_dome': dict(lat=-77.78, lon=158.68, title='Taylor Dome',
                         z_band=(200.0, 1200.0), z_deep=(1150.0, 1500.0),
-                        vmax=0.03, movie=(200.0, 650.0), win=150.0, step=20.0),
+                        vmax=0.11, movie=(200.0, 850.0), win=150.0, step=20.0),
+    # Movie floor set from the BED, not from where dlam crosses the
+    # abstention threshold. CSARP_layer picks the bottom on 51 of these
+    # frames and puts the ice at 566-996 m, median 830 - so the old
+    # 650 m cut, chosen where median dlam fell under 0.01, was reading a
+    # FABRIC limit off real ice and discarding the most interesting part
+    # of the column: the contrast peaks near z/H 0.5 and decays back
+    # toward zero by z/H 0.85, at residuals of 0.10-0.32 throughout, which
+    # is what a dome should do as its fabric becomes axisymmetric.
     'thwaites': dict(lat=-76.45, lon=-107.67, title='Thwaites margin',
                      z_band=(200.0, 1200.0), z_deep=(1000.0, 1450.0),
-                     vmax=0.02, movie=(200.0, 1050.0), win=150.0, step=20.0),
+                     vmax=0.13, movie=(200.0, 1050.0), win=150.0, step=20.0),
     'wais_divide': dict(lat=-79.22, lon=-111.59, title='WAIS Divide',
                         z_band=(200.0, 1200.0), z_deep=(1000.0, 1450.0),
-                        vmax=0.02, movie=(200.0, 700.0), win=150.0, step=20.0),
+                        vmax=0.06, movie=(200.0, 700.0), win=150.0, step=20.0),
     # Eastwind and McMurdo sit within 200 m of each other but are DIFFERENT
     # EXPERIMENTS, so they are separated by season as well as position: the
     # 2022 frames are 13 soundings all at one spot (a rotation experiment),
@@ -88,7 +113,7 @@ SITES = {
     'mcmurdo': dict(lat=-77.74, lon=167.84, title='McMurdo Ice Shelf',
                     years=('2024',),
                     z_band=(60.0, 280.0), z_deep=(200.0, 300.0),
-                    vmax=0.02, movie=(50.0, 300.0), win=40.0, step=5.0),
+                    vmax=0.04, movie=(50.0, 300.0), win=40.0, step=5.0),
 }
 SITE_RADIUS_DEG = 2.0
 
