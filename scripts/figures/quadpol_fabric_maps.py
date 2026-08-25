@@ -267,7 +267,7 @@ def main():
 
     sub = {
         'principal': (r'bars: axis $\theta_0$; track colour: '
-                      r'$\Delta\lambda$ per 125-trace block'),
+                      r'$\Delta\lambda$ per ~125 m block'),
         'gridnorth': (r'bars: axis $\theta_0$; track colour: '
                       r'$\Delta\lambda\,\cos 2(\alpha_{\rm gridN}-\theta_0)$ '
                       r'per block'),
