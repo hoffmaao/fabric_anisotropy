@@ -27,6 +27,17 @@ wrongly is not. Which layers a frame's bed was actually differenced from is
 recorded per frame in the output, so a wrong binding is auditable after the
 run rather than invisible.
 
+THE NAMES COME FROM A DIFFERENT FILE THAN THE PICKS. Per-frame
+`Data_<seg>_<frm>.mat` carries `twtt` but no `lyr_name`; the catalogue sits
+once per segment in `layer_<seg>.mat`, and row i of `twtt` is entry i of
+`lyr_name`. Reading only the frame file leaves every layer unnamed, and the
+consequence is not a graceful fallback: layer ORDER varies by season -
+`surface_dem` is row 1 at Eastwind and row 4 at McMurdo - so binding by
+position binds a different quantity per site. It differenced a 224 m
+Eastwind shelf against a 0.6 m DEM and wrote a 1 m bed, which would have
+greyed that survey's fabric away entirely. There is therefore no positional
+tier at all: a frame whose layers cannot be named is skipped.
+
 BED-PICK PREFERENCE, most trustworthy first:
 
   1. the per-trace median of whichever of bottom_HH, bottom_VV, bottom_HV
@@ -193,18 +204,12 @@ def _name_list(raw):
     return [_as_name(raw)]
 
 
-def _scalar(v, default=np.nan):
-    """First element of `v` as a float, or `default` where there is none."""
-    a = np.atleast_1d(np.asarray(v, float)).ravel()
-    return float(a[0]) if a.size else default
-
-
 def _label(names, i, fallback):
     """Name of layer `i`, or `fallback` where the file did not name it.
 
-    `i` may have come from the id tier, which is bounded by len(ids) and has
-    no length relation to `names` - a partially named file resolves a bottom
-    off an id it never named.
+    Every surviving tier is name-driven, so `i` indexes `names` directly;
+    the guard remains because a tier may still match on a name list shorter
+    than the pick list.
     """
     return names[i] if i < len(names) and names[i] else fallback
 
@@ -222,8 +227,12 @@ def _contains(names, want):
             if want in nm and not any(x in nm for x in NOT_A_PICK)]
 
 
-def _by_id(ids, want):
-    return [i for i, v in enumerate(ids) if v == want]
+# There is deliberately NO last-resort tier binding layer 1 and layer 2.
+# `lyr_id` is the row's ordinal, not a semantic key - it runs 1..N in file
+# order - so `id 2` is `bottom_mc` at McMurdo and `surface_dem` at Eastwind.
+# Binding it differenced a 224 m Eastwind shelf against a 0.6 m DEM and wrote
+# a 1 m bed, masking a whole survey's fabric away. An unnamed file is skipped
+# instead: not masking is recoverable, masking wrongly is not.
 
 
 def _resolve(layers, names, tiers):
@@ -255,7 +264,7 @@ def _resolve(layers, names, tiers):
     return None, None
 
 
-def _surface_layer(layers, names, ids):
+def _surface_layer(layers, names):
     """(surface twtt, label) - EXACT `surface` outranks the per-channel tier.
 
     The reverse of the bed order, deliberately: every layer file in these
@@ -266,18 +275,16 @@ def _surface_layer(layers, names, ids):
     return _resolve(layers, names, [
         (_exact(names, 'surface'), False, 'surface'),
         (_channels(names, POLAR_SURFACES), True, None),
-        (_contains(names, 'surface'), False, 'surface'),
-        (_by_id(ids, 1), False, 'id 1')])
+        (_contains(names, 'surface'), False, 'surface')])
 
 
-def _bottom_layer(layers, names, ids):
+def _bottom_layer(layers, names):
     """(bed twtt, label) under the preference order in the module docstring."""
     return _resolve(layers, names, [
         (_channels(names, POLAR_BOTTOMS), True, None),
         (_exact(names, 'bottom'), False, 'bottom'),
         (_exact(names, 'bottom_mc'), False, 'bottom_mc'),
-        (_contains(names, 'bottom'), False, 'bottom'),
-        (_by_id(ids, 2), False, 'id 2')])
+        (_contains(names, 'bottom'), False, 'bottom')])
 
 
 def layer_picks(d):
@@ -302,12 +309,12 @@ def layer_picks(d):
             if tw.shape[0] > tw.shape[1]:
                 tw = tw.T
             layers = [tw[i] for i in range(tw.shape[0])]
+        # `d.get('id')` is NOT a name source here: in a per-frame file it is
+        # the trace record id, not a layer key.
         names = _name_list(d.get('lyr_name', d.get('name')))
-        raw_ids = d.get('lyr_id', d.get('id'))
-        ids = [] if raw_ids is None else list(_flat(raw_ids))
     elif 'layerData' in d and 'Latitude' in d:
         lat, lon = _flat(d['Latitude']), _flat(d['Longitude'])
-        layers, names, ids = [], [], []
+        layers, names = [], []
         for lay in np.atleast_1d(d['layerData']):
             val = np.atleast_1d(getattr(lay, 'value', None))
             if val.size == 0:
@@ -319,16 +326,14 @@ def layer_picks(d):
                 continue
             layers.append(_flat(data))
             names.append(_as_name(getattr(lay, 'name', '')))
-            ids.append(_scalar(getattr(lay, 'id', np.nan)))
     else:
         raise LayerFormatError('no recognised layer fields')
     if len(layers) < 2:
         raise LayerFormatError(
             'holds %d layer(s); needs a surface and a bottom' % len(layers))
     names = names[:len(layers)]
-    ids = ids[:len(layers)]
-    tw_s, lbl_s = _surface_layer(layers, names, ids)
-    tw_b, lbl_b = _bottom_layer(layers, names, ids)
+    tw_s, lbl_s = _surface_layer(layers, names)
+    tw_b, lbl_b = _bottom_layer(layers, names)
     if tw_s is None or tw_b is None:
         raise LayerFormatError(
             'cannot unambiguously identify %s among %d layers named %s; '
@@ -353,6 +358,29 @@ def find_layer_file(roots, day_seg, frm):
             fn = os.path.join(seg_dir, pat % (day_seg, frm))
             if os.path.exists(fn):
                 return fn
+    return None
+
+
+def find_names_file(roots, day_seg):
+    """The per-segment `layer_<seg>.mat`, which is where the NAMES live.
+
+    The per-frame `Data_<seg>_<frm>.mat` carries `twtt` but NO `lyr_name`:
+    the name catalogue sits once per segment beside it. Reading only the
+    frame file leaves every layer unnamed, so selection silently drops to
+    the last resort - and that is not a graceful degradation here, because
+    layer ORDER varies by season. `surface_dem` is row 1 at Eastwind and row
+    4 at McMurdo, `bottom_mc` row 2 and row 1 respectively, so a positional
+    bind means a different quantity per site. Measured: it differenced
+    Eastwind against `surface_dem` and reported a 224 m shelf as 1 m.
+
+    Row i of `twtt` is entry i of `lyr_name`; verified against 9-layer and
+    13-layer segments, whose name lists match their row counts exactly.
+    """
+    for root in roots:
+        fn = os.path.join(root, 'CSARP_layer', day_seg,
+                          'layer_%s.mat' % day_seg)
+        if os.path.exists(fn):
+            return fn
     return None
 
 
@@ -416,6 +444,37 @@ def main():
             print('  %s: %s unreadable (%s)'
                   % (tag, os.path.basename(lfn), err))
             continue
+        # The frame file carries the picks; the segment file carries their
+        # names. Join them here rather than in layer_picks, which takes one
+        # already-complete dict and must stay independent of file layout.
+        if 'lyr_name' not in d and 'layerData' not in d:
+            nfn = find_names_file(roots, day_seg)
+            if nfn is None:
+                print('  %s: no layer_%s.mat naming its layers; skipped '
+                      '(a positional bind means a different layer per '
+                      'season)' % (tag, day_seg))
+                continue
+            try:
+                nd = load_mat(nfn)
+            except (OSError, ValueError, MatReadError) as err:
+                print('  %s: %s unreadable (%s)'
+                      % (tag, os.path.basename(nfn), err))
+                continue
+            names = _name_list(nd.get('lyr_name'))
+            nrow = int(np.atleast_2d(np.asarray(d['twtt'])).shape[0]) \
+                if 'twtt' in d else 0
+            if nrow and len(names) != nrow:
+                # Names are matched to picks BY POSITION, so a catalogue of a
+                # different length cannot be aligned and must not be guessed
+                # at - one row of slip renames every layer after it.
+                print('  %s: %s names %d layers but the frame has %d rows; '
+                      'skipped rather than mis-aligned'
+                      % (tag, os.path.basename(nfn), len(names), nrow))
+                continue
+            d = dict(d)
+            d['lyr_name'] = nd.get('lyr_name')
+            if 'lyr_id' in nd:
+                d['lyr_id'] = nd['lyr_id']
         try:
             plat, plon, bed, bound, n_bad = layer_picks(d)
         except LayerFormatError as err:
