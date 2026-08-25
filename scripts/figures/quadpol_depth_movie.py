@@ -103,7 +103,9 @@ HALO = [mpe.withStroke(linewidth=3.0, foreground='white')]
 # in docs/scripts.md. A MISSING file is legitimate - it means no picks were
 # staged for this survey - and only says so. A file that is present but
 # unreadable is not: it would silently render the pre-bed-masking movie, so
-# it raises.
+# it raises. A file that is present but does not name this frame warns per
+# frame: that frame draws unmasked, which is indistinguishable from a survey
+# with no bed to mask unless it is said out loud.
 BED_FILE = os.path.join(DATA, 'bed_by_block.json')
 if os.path.exists(BED_FILE):
     with open(BED_FILE) as _fh:
@@ -160,6 +162,15 @@ def load():
         # index j means the same block in both
         bed = BEDS.get(tag)
         if bed is None:
+            # a bed file that does not name this frame is NOT the same as no
+            # bed file at all: it means the run that wrote it did not cover
+            # this survey, and an unnamed frame draws unmasked, which looks
+            # exactly like a survey with no bed to mask
+            if BEDS:
+                print('WARNING: %s carries no bed for %s; its blocks are '
+                      'drawn unmasked - rerun scripts/make_bed_by_block.py '
+                      "with this survey's site root"
+                      % (os.path.basename(BED_FILE), tag))
             bedv = np.full(int(ok.sum()), np.nan)
         elif len(bed) != ok.size:
             # a stale bed file cut against a different block size masks the

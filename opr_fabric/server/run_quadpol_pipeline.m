@@ -207,25 +207,53 @@ if qlook_mode
         '%s holds %d distinct GPS times; it cannot position a frame', ...
         ref_fn, numel(rt_gps));
     end
-    q_gps = P.GPS_time(:);
-    if min(q_gps) < rt_gps(1) - 1 || max(q_gps) > rt_gps(end) + 1
+    % THE TOLERANCE IS HONOURED, NOT MERELY TESTED FOR. interp1 returns
+    % NaN outside the reference span, so a frame that starts half a second
+    % before it - inside the slop this check accepts - would pass here and
+    % then abort on the gap test below with a message about a gap that does
+    % not exist. Queries within RT_TOL_S of an end are therefore clamped
+    % onto it: a second of a traverse is under 3 m, and refusing the frame
+    % over it is the outcome the tolerance was written to avoid.
+    %
+    % TRACES WITH NO GPS TIME ARE NOT THE RANGE'S BUSINESS. They cannot be
+    % interpolated and stay NaN, which is the stationary cull's affair as
+    % above; only the timed traces are ranged, and a gap is only a gap
+    % where there was a time to fill it.
+    RT_TOL_S = 1;
+    q_gps = P.GPS_time(:).';
+    q_ok = isfinite(q_gps);
+    if ~any(q_ok)
+      error('run_quadpol_pipeline:refTrajNoGPS', ...
+        ['qlook coordinates are unusable (%s) and no trace carries a GPS ' ...
+        'time, so %s cannot position the frame'], why, ref_fn);
+    end
+    q_min = min(q_gps(q_ok)); q_max = max(q_gps(q_ok));
+    if q_min < rt_gps(1) - RT_TOL_S || q_max > rt_gps(end) + RT_TOL_S
       error('run_quadpol_pipeline:refTrajRange', ...
         ['frame GPS times %.1f..%.1f fall outside the reference trajectory ' ...
-        '%.1f..%.1f'], min(q_gps), max(q_gps), rt_gps(1), rt_gps(end));
+        '%.1f..%.1f by more than %g s'], q_min, q_max, rt_gps(1), ...
+        rt_gps(end), RT_TOL_S);
     end
-    P.Latitude = interp1(rt_gps, rt_lat, q_gps, 'linear').';
-    P.Longitude = interp1(rt_gps, rt_lon, q_gps, 'linear').';
-    if any(~isfinite(P.Latitude)) || any(~isfinite(P.Longitude))
+    q_cl = min(max(q_gps(q_ok), rt_gps(1)), rt_gps(end));
+    P.Latitude = nan(1, numel(q_gps));
+    P.Longitude = nan(1, numel(q_gps));
+    P.Latitude(q_ok) = interp1(rt_gps, rt_lat, q_cl, 'linear');
+    P.Longitude(q_ok) = interp1(rt_gps, rt_lon, q_cl, 'linear');
+    n_gap = nnz(~isfinite(P.Latitude(q_ok)) | ~isfinite(P.Longitude(q_ok)));
+    if n_gap > 0
       error('run_quadpol_pipeline:refTrajGap', ...
-        'reference trajectory left %d traces unpositioned', ...
-        nnz(~isfinite(P.Latitude) | ~isfinite(P.Longitude)));
+        'reference trajectory left %d GPS-timed traces unpositioned', n_gap);
+    end
+    if any(~q_ok)
+      fprintf(['%d of %d traces carry no GPS time and stay unpositioned; ' ...
+        'the stationary cull drops them\n'], nnz(~q_ok), numel(q_gps));
     end
     fprintf(['trajectory rebuilt from %s: shipped %.3f..%.3f N %.3f..%.3f E ' ...
       '-> %.3f..%.3f N %.3f..%.3f E\n'], ...
       sprintf('ref_%s.mat', day_seg), min(la_qk), max(la_qk), min(lo_qk), ...
       max(lo_qk), min(P.Latitude), max(P.Latitude), min(P.Longitude), ...
       max(P.Longitude));
-    clear RT rt_gps rt_lat rt_lon rt_ord rt_uniq q_gps why;
+    clear RT rt_gps rt_lat rt_lon rt_ord rt_uniq q_gps q_ok q_cl why;
   end
   clear la_qk lo_qk located_qk;
   % Coregistration defaults, copied from what the Antarctic products
@@ -709,17 +737,23 @@ end
 okt = isfinite(th_geo_raw);
 % Blocks inherit the ANTENNA-frame pedestal (an instrument constant, so it
 % is the same in every block's own frame) and their segment's geographic
-% axis through ptt.thetaProfileAt below.
-if all(isfinite(ped_ant))
-  blk_ped = ped_ant;
-else
+% axis through ptt.thetaProfileAt below. A frame whose pedestal fit did not
+% converge carries the marker instead of a measurement, and the marker is
+% finite, so the test is ptt.pedestalFailed and not isfinite: anchoring the
+% blocks to it would fit every block at a pedestal of exactly zero on
+% precisely the degraded frames the fallback exists for. Those frames drop
+% to 'frame', where each block estimates its own.
+if ptt.pedestalFailed(ped_ant)
   blk_ped = 'frame';
+else
+  blk_ped = ped_ant;
 end
 fprintf(['LS frame pass %.1f min (%s, heading p95 spread %.1f deg): ' ...
-  'theta0 constrained on %d of %d windows, pedestal [%.3f %+.3fi %.3f], ' ...
+  'theta0 constrained on %d of %d windows, pedestal [%.3f %+.3fi %.3f]%s, ' ...
   '%d segment(s) of ~%.1f km\n'], ...
   toc(t0)/60, H_tag(curved, 'GEOGRAPHIC frame', 'antenna frame'), hspread, ...
   nnz(okt), numel(th_geo_raw), ped_ant(1), ped_ant(2), ped_ant(3), ...
+  H_tag(ischar(blk_ped), ' (FAILED marker; blocks fit their own)', ''), ...
   fp.nseg, (x_along(end) - x_along(1)) / max(fp.nseg, 1) / 1000);
 
 %% 4b. the SECTION: both estimators, per along-track block

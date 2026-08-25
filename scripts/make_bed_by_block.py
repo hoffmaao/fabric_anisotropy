@@ -44,7 +44,15 @@ BED-PICK PREFERENCE, most trustworthy first:
      and bottom_VH the file carries,
   2. `bottom`,
   3. `bottom_mc`,
-  4. a uniquely bottom-named layer, then OPR layer id 2.
+  4. a uniquely bottom-named layer.
+
+There is no fifth, positional tier: a frame whose layers cannot be named is
+skipped. The same refusal settles how many layers a frame even has. With a
+name catalogue in hand the ROWS of `twtt` are its layers, never whichever
+axis is longer, because the 2022 sites are 13 soundings at one spot and a
+frame with fewer traces than layers would otherwise read as one bogus
+"layer" per trace; rows that do not match the catalogue are skipped rather
+than transposed until the counts agree.
 
 bottom_mc RANKS LAST because it is measurably biased shallow, not because it
 is a fallback in name only. Over all 9 frames of 2022_Antarctica_Ground and
@@ -96,11 +104,21 @@ signal to rerun this script after a block size change. One reserved key,
 from (the bottom reads `median(bottom_hh,bottom_vv,...)` where tier 1 won);
 it cannot collide with a tag, and the movie never looks it up.
 
-Usage: python scripts/make_bed_by_block.py <site_root> [<site_root> ...]
+Usage: python scripts/make_bed_by_block.py [--replace] <site_root> ...
 
 `site_root` is a season directory holding `CSARP_layer/<day_seg>/`. Sections
 are read from, and the JSON written to, `$SCAR_DATA` (default
 `~/data/opr/scar`), beside the rest of the mirrored products.
+
+THE WRITE REFUSES TO DROP A SEASON. Sections are globbed from all of
+`$SCAR_DATA` but layer files are only sought under the roots given, so a
+rerun for one site would replace the file with one holding that site alone -
+and an absent tag is drawn UNMASKED, so those movies would quietly stop
+masking. If the existing `bed_by_block.json` carries frames this run did not
+produce, the run exits non-zero naming how many and which segments. Rerun
+with every site root, or pass `--replace` to write this run's frames alone.
+Stale entries are never merged forward: that would hide which run produced
+what.
 """
 import glob
 import json
@@ -204,6 +222,38 @@ def _name_list(raw):
     return [_as_name(raw)]
 
 
+def twtt_layers(tw, n_named=0):
+    """`twtt` split one row per layer - the module's ONE orientation rule.
+
+    Both the name/pick length check and the pick reader go through here, so
+    they cannot disagree about how many layers a frame holds; deciding that
+    twice is how a frame gets named by a catalogue it was never aligned to.
+
+    A ragged cell arrives as a list (v7.3) or an object array (v7), one entry
+    per layer, and needs no rule at all. For a rectangular array, ROWS ARE
+    LAYERS wherever a name catalogue is in hand: that is the orientation
+    these files ship (verified against the 9- and 13-layer segments) and the
+    shape cannot second-guess it, because the 2022 sites are 13 soundings at
+    one spot, so a 13-layer frame there has fewer traces than layers and a
+    bare rows > cols test would transpose it into one bogus "layer" per
+    trace - the exact mis-binding this module exists to refuse. Rows that do
+    not match the catalogue are LEFT AS READ so the caller's length check
+    skips the frame: transposing an array until its count agrees is a
+    positional bind wearing a name. Only with no catalogue at all does the
+    longer axis fall back to being the trace axis, as before - and such a
+    frame cannot name a layer, so it is skipped a step later regardless.
+    """
+    if isinstance(tw, (list, tuple)):
+        return [_flat(t) for t in tw]
+    a = np.asarray(tw)
+    if a.dtype == object:
+        return [_flat(t) for t in a.ravel()]
+    a = np.atleast_2d(np.asarray(a, float))
+    if not n_named and a.shape[0] > a.shape[1]:
+        a = a.T
+    return [a[i] for i in range(a.shape[0])]
+
+
 def _label(names, i, fallback):
     """Name of layer `i`, or `fallback` where the file did not name it.
 
@@ -301,17 +351,12 @@ def layer_picks(d):
     """
     if 'twtt' in d and 'lat' in d:
         lat, lon = _flat(d['lat']), _flat(d['lon'])
-        tw = d['twtt']
-        if isinstance(tw, (list, tuple)):
-            layers = [_flat(t) for t in tw]
-        else:
-            tw = np.atleast_2d(np.asarray(tw, float))
-            if tw.shape[0] > tw.shape[1]:
-                tw = tw.T
-            layers = [tw[i] for i in range(tw.shape[0])]
         # `d.get('id')` is NOT a name source here: in a per-frame file it is
-        # the trace record id, not a layer key.
+        # the trace record id, not a layer key. The names are read BEFORE the
+        # picks because their count is what settles the pick array's
+        # orientation - see twtt_layers.
         names = _name_list(d.get('lyr_name', d.get('name')))
+        layers = twtt_layers(d['twtt'], len(names))
     elif 'layerData' in d and 'Latitude' in d:
         lat, lon = _flat(d['Latitude']), _flat(d['Longitude'])
         layers, names = [], []
@@ -331,7 +376,15 @@ def layer_picks(d):
     if len(layers) < 2:
         raise LayerFormatError(
             'holds %d layer(s); needs a surface and a bottom' % len(layers))
-    names = names[:len(layers)]
+    # Names bind to picks BY ROW INDEX, so a count that does not agree is
+    # unalignable: one row of slip renames every layer after it. This is the
+    # single place the two meet, so it is refused here rather than trusted by
+    # each caller - truncating to the shorter list would be a positional bind
+    # wearing a name.
+    if names and len(names) != len(layers):
+        raise LayerFormatError(
+            '%d layer name(s) for %d pick row(s); refusing to align them by '
+            'truncation' % (len(names), len(layers)))
     tw_s, lbl_s = _surface_layer(layers, names)
     tw_b, lbl_b = _bottom_layer(layers, names)
     if tw_s is None or tw_b is None:
@@ -414,11 +467,38 @@ def section_blocks(fn):
     return blat, blon
 
 
+def dropped_tags(beds):
+    """Frame tags an existing bed_by_block.json holds that this run does not.
+
+    The output is a full replacement, but the sections are globbed from all
+    of $SCAR_DATA while the layer files are only looked up under the roots
+    given, so a rerun for one season would otherwise write a file that
+    silently loses every other season's beds - and the movie draws an absent
+    tag unmasked, which is the same failure as a wrong bed: a plausible
+    product that masks nothing where it should.
+    """
+    if not os.path.exists(OUT_FN):
+        return []
+    try:
+        with open(OUT_FN) as fh:
+            prev = json.load(fh)
+    except (OSError, ValueError) as err:
+        print('existing %s is unreadable (%s); it will be replaced'
+              % (OUT_FN, err))
+        return []
+    if not isinstance(prev, dict):
+        return []
+    return sorted(t for t in prev if t != LAYERS_KEY and t not in beds)
+
+
 def main():
-    roots = [os.path.expanduser(a) for a in sys.argv[1:]]
-    if not roots:
+    argv = sys.argv[1:]
+    replace = '--replace' in argv
+    roots = [os.path.expanduser(a) for a in argv if a != '--replace']
+    bad_flags = [a for a in roots if a.startswith('-')]
+    if not roots or bad_flags:
         raise SystemExit('usage: python scripts/make_bed_by_block.py '
-                         '<site_root> [<site_root> ...]')
+                         '[--replace] <site_root> [<site_root> ...]')
     missing = [r for r in roots if not os.path.isdir(r)]
     if missing:
         raise SystemExit('no such site root: %s' % ', '.join(missing))
@@ -461,8 +541,13 @@ def main():
                       % (tag, os.path.basename(nfn), err))
                 continue
             names = _name_list(nd.get('lyr_name'))
-            nrow = int(np.atleast_2d(np.asarray(d['twtt'])).shape[0]) \
-                if 'twtt' in d else 0
+            try:
+                nrow = (len(twtt_layers(d['twtt'], len(names)))
+                        if 'twtt' in d else 0)
+            except (TypeError, ValueError) as err:
+                print('  %s: %s holds no readable twtt array (%s)'
+                      % (tag, os.path.basename(lfn), err))
+                continue
             if nrow and len(names) != nrow:
                 # Names are matched to picks BY POSITION, so a catalogue of a
                 # different length cannot be aligned and must not be guessed
@@ -500,6 +585,17 @@ def main():
     if not beds:
         raise SystemExit(
             'no frame matched a CSARP_layer file; nothing written')
+    gone = [] if replace else dropped_tags(beds)
+    if gone:
+        segs = sorted({t.rsplit('_', 1)[0] for t in gone})
+        shown = ', '.join(segs[:8]) + (', ...' if len(segs) > 8 else '')
+        raise SystemExit(
+            'refusing to write %s: it already carries %d frame(s) this run '
+            'produced no bed for, across %d segment(s) (%s). Their site roots '
+            'were not on the command line, so writing now would drop those '
+            'seasons and their movies would silently stop masking. Rerun with '
+            'every site root, or pass --replace to write this run alone.'
+            % (OUT_FN, len(gone), len(segs), shown))
     # The layers each frame's bed was differenced from, so a shallow bed off
     # an internal reflector is auditable in the product rather than only in
     # a run log that nobody kept.

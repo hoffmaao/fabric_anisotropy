@@ -76,10 +76,13 @@ function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 %   seg_x     [1 x Nseg] segment centres in x_along coordinates
 %   seg_n     [1 x Nseg] traces per segment
 %   nseg, curved, hspread, track_az
-%   ped_ant   [1 x 3] antenna-frame pedestal. Exactly [0 0 0] MARKS a
-%             frame whose pedestal fit did not converge, whose segments
-%             were then fitted without one; it is an audit marker to drop,
-%             never a measurement (a real fit never lands on exact zeros).
+%   ped_ant   [1 x 3] antenna-frame pedestal. ptt.pedestalMarker() -
+%             exactly [0 0 0] - MARKS a frame whose pedestal fit did not
+%             converge, whose segments were then fitted without one; it is
+%             an audit marker to drop, never a measurement (a real fit
+%             never lands on exact zeros). Consumers test it with
+%             ptt.pedestalFailed rather than for finiteness, which the
+%             marker passes.
 %   lsq       the frame-pass LS output (report/save compatibility)
 %
 % The per-block handoff belongs to ptt.thetaProfileAt(fp, x), which
@@ -140,11 +143,11 @@ if ~curved
   % here as it already is on the curved branch. The substituted EXACT zeros
   % are the audit signal - a real fit never lands on them - and the warning
   % puts it in the frame log.
-  if ~all(isfinite(ped_ant))
+  if ptt.pedestalFailed(ped_ant)
     warning('ptt:quadpolFrameTheta:pedestalFailed', ...
       ['frame pedestal did not converge; segments fit with a zero ' ...
       'pedestal (saved ls_pedestal is exactly [0 0 0] to mark it)']);
-    ped_ant = [0 0 0];
+    ped_ant = ptt.pedestalMarker();
   end
   th_geo_raw = lsq.theta0 + deg2rad(track_az);
 else
@@ -154,7 +157,7 @@ else
   oa = base; oa.pedestal = 'window';
   lsa = ptt.quadpolFabricLS(T, z, oa);
   ped_ant = lsa.pedestal;
-  if ~all(isfinite(ped_ant)), ped_ant = [0 0 0]; end
+  if ptt.pedestalFailed(ped_ant), ped_ant = ptt.pedestalMarker(); end
   Mg = H_geo_moments(T, az_tr, 1:Nx, NBLK_ROT, CHAN);
   og = segbase;
   og.pedestal = H_ped_field(ped_ant, az_tr, 1:Nx, PSI_FIT);

@@ -275,4 +275,9 @@ re-litigated.
   chan_equal calibration input. One season spans a3 -0.264 to +0.438
   across its sites while one site inside it holds sd 0.011. A frame whose
   frame-pass pedestal did not converge saves `ls_pedestal` as exactly
-  `[0 0 0]`, which is the marker to drop, not a measurement.
+  `[0 0 0]`, which is the marker to drop, not a measurement. The marker is
+  `ptt.pedestalMarker()` and the test for it is `ptt.pedestalFailed`,
+  which every consumer uses instead of a finiteness check - the marker is
+  finite, so `isfinite` reads it as a measurement. The pipeline itself
+  tests it that way: a marked frame fits each section block's own
+  pedestal rather than anchoring every block at zero.
