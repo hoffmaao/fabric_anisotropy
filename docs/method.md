@@ -221,3 +221,57 @@ units).
     quad-pol path is aligned by the same code and defaults that built the
     shipped `CSARP_polarimetric` products. A hand-rolled global-delay fit
     was tried first and was worse on both pairs; the header has the numbers.
+
+## Cross-survey consistency
+
+Audited over 130 frames and seven surveys (24 Aug 2026), because
+block-level and depth-level quantities are only comparable between sites
+if every step is computed the same way. What follows is what that audit
+established - the checks that PASSED are recorded too, so they are not
+re-litigated.
+
+**Consistent, verified:**
+
+- **Depth axis.** One formula everywhere, `z = (t - t_surf)*c/(2*sqrt(3.171))`,
+  with the surface from the product's own `Surface` (or, in qlook mode
+  where that field is NaN, a leading-edge pick at 5% of the trace peak).
+- **Permittivity.** The 3.171 in that formula is the same `eps_bar` that
+  `ptt.constants` gives `ptt.quadpolFabricLS` for the phase-rate to dlam
+  conversion, so depth and contrast use one ice model. (Worth restating
+  because they are declared in different files and could drift apart.)
+- **Estimator settings.** Azimuth grid, short/fit windows, CRB weighting
+  and the two-pass structure take their defaults at every site.
+- **Segment length.** 2 km everywhere.
+- **Block length.** ~125 m everywhere, enforced by re-cutting the trace
+  count where the spacing demands it (see below).
+
+**Known differences, deliberate:**
+
+- **dlam search ceiling.** 0.45 in qlook mode against 0.25 elsewhere,
+  because the EGRIP core sits near 0.3. Checked for bias: no site rails
+  against its ceiling - p99.9 is below the cap at all seven, and under
+  0.1% of cells come within 2% of it - so the difference does not
+  distort any comparison.
+- **Coregistration tiling.** Each season is aligned with the settings its
+  own product recorded (Eastwind `Tt 51 Tx 101 ov 25/25`, the others
+  `101/301/50/150`), which is what reproduces the shipped `sec_reg`.
+  Short frames additionally get a finer tiling so they can be tiled at
+  all.
+
+**Caveats to carry:**
+
+- **No firn correction in the quad-pol depth axis.** It uses solid-ice
+  velocity from the surface down, so depths in the upper ~100 m are
+  compressed by roughly 10 m. This is consistent BETWEEN surveys, so it
+  biases no site comparison, but it does mean quad-pol depths and the
+  co-polarized chain - which models firn densification through
+  `ptt.columnProfiles` - disagree slightly near the surface. `z` is saved
+  per frame, so a remap is possible after the fact if the two ever need
+  to be overlaid precisely.
+- **The per-frame pedestal is unreliable on low-coherence frames**, so
+  the `ls_pedestal` record needs a quality cut before it is used as
+  chan_equal calibration input. One season spans a3 -0.264 to +0.438
+  across its sites while one site inside it holds sd 0.011.
+- **The frame report's console band is a fixed 200-1200 m**, which at the
+  thin-ice sites prints statistics from below the bed. The saved arrays
+  and every figure use per-site bands; only the printed line misleads.
