@@ -113,8 +113,10 @@ are read from, and the JSON written to, `$SCAR_DATA` (default
 THE WRITE REFUSES TO DROP A SEASON. Sections are globbed from all of
 `$SCAR_DATA` but layer files are only sought under the roots given, so a
 rerun for one site would replace the file with one holding that site alone -
-and an absent tag is drawn UNMASKED, so those movies would quietly stop
-masking. If the existing `bed_by_block.json` carries frames this run did not
+and an absent tag is drawn UNMASKED, so those movies would stop masking on
+nothing more than the per-frame warning the movie prints - a warning in a
+log is not a correct product, which is why the refusal sits here instead.
+If the existing `bed_by_block.json` carries frames this run did not
 produce, the run exits non-zero listing them with the reason it logged for
 each - a missing layer file, an unreadable one, a catalogue that does not
 align - or noting that the frame was never reached at all. It does NOT
@@ -429,12 +431,13 @@ def find_names_file(roots, day_seg):
 
     The per-frame `Data_<seg>_<frm>.mat` carries `twtt` but NO `lyr_name`:
     the name catalogue sits once per segment beside it. Reading only the
-    frame file leaves every layer unnamed, so selection silently drops to
-    the last resort - and that is not a graceful degradation here, because
-    layer ORDER varies by season. `surface_dem` is row 1 at Eastwind and row
-    4 at McMurdo, `bottom_mc` row 2 and row 1 respectively, so a positional
-    bind means a different quantity per site. Measured: it differenced
-    Eastwind against `surface_dem` and reported a 224 m shelf as 1 m.
+    frame file leaves every layer unnamed, which is why a frame with no
+    catalogue is skipped outright rather than bound by position: layer
+    ORDER varies by season. `surface_dem` is row 1 at Eastwind and row 4 at
+    McMurdo, `bottom_mc` row 2 and row 1 respectively, so a positional bind
+    means a different quantity per site. Measured, back when a positional
+    last resort still existed: it differenced Eastwind against
+    `surface_dem` and reported a 224 m shelf as 1 m.
 
     Row i of `twtt` is entry i of `lyr_name`; verified against 9-layer and
     13-layer segments, whose name lists match their row counts exactly.

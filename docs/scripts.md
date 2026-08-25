@@ -39,79 +39,77 @@ gitignored - see the "Figure inputs and outputs" section at the end.
 - `scripts/make_bed_by_block.py` - builds the `bed_by_block.json` that
   `quadpol_depth_movie.py` masks its blocks with, from the `CSARP_layer`
   picks, given one or more season roots holding `CSARP_layer/<day_seg>/`.
-  Bed depth is derived as
-  `(twtt_bottom - twtt_surface) * c / (2*sqrt(3.171))` - the SAME
-  permittivity the pipeline's depth axis uses, so the mask and the fabric
-  it masks sit on one ice model, and with no firn correction for the same
-  reason. The surface and bottom layers are chosen BY NAME, never by
-  position: these files carry internal reflectors too, and differencing
-  whatever happens to be layer 2 would give a systematically shallow bed.
-  The bed preference is (1) the per-trace median of whichever of
-  `bottom_HH`/`bottom_VV`/`bottom_HV`/`bottom_VH` the file carries,
-  (2) `bottom`, (3) `bottom_mc`, (4) a uniquely bottom-named layer. There
-  is no positional tier at all: `lyr_id` is the row's ordinal, so `id 2` is
-  `bottom_mc` at McMurdo and `surface_dem` at Eastwind, and binding it
-  differenced a 224 m Eastwind shelf against a 0.6 m DEM and wrote a 1 m
-  bed. THE NAMES COME FROM A DIFFERENT FILE THAN THE PICKS: the per-frame
-  `Data_<seg>_<frm>.mat` carries `twtt` but no `lyr_name`, and the
-  catalogue sits once per segment in `layer_<seg>.mat`, so row i of `twtt`
-  is joined to entry i of `lyr_name` after checking the two counts agree.
-  With that catalogue in hand the ROWS of `twtt` are its layers, never
-  whichever axis is longer: a frame with fewer traces than layers - the
-  2022 sites are 13 soundings at one spot - would otherwise read as one
-  bogus layer per trace. A frame whose layers cannot be named, or whose row
-  count does not match the catalogue, is SKIPPED with a line in the log,
-  never bound by position and never transposed until the counts agree. `bottom_mc` ranks LAST on
-  measurement, not taste: over the 9
+  Bed depth is derived as `(twtt_bottom - twtt_surface) * c /
+  (2*sqrt(3.171))` - the SAME permittivity the pipeline's depth axis uses,
+  so the mask and the fabric it masks sit on one ice model, and with no
+  firn correction for the same reason. The surface and bottom layers are
+  chosen BY NAME, never by position: these files carry internal reflectors
+  too, and differencing whatever happens to be layer 2 would give a
+  systematically shallow bed. The bed preference is (1) the per-trace
+  median of whichever of `bottom_HH`/`bottom_VV`/`bottom_HV`/`bottom_VH`
+  the file carries, (2) `bottom`, (3) `bottom_mc`, (4) a uniquely
+  bottom-named layer. There is no positional tier at all: `lyr_id` is the
+  row's ordinal, so `id 2` is `bottom_mc` at McMurdo and `surface_dem` at
+  Eastwind, and binding it differenced a 224 m Eastwind shelf against a
+  0.6 m DEM and wrote a 1 m bed. THE NAMES COME FROM A DIFFERENT FILE THAN
+  THE PICKS: the per-frame `Data_<seg>_<frm>.mat` carries `twtt` but no
+  `lyr_name`, and the catalogue sits once per segment in `layer_<seg>.mat`,
+  so row i of `twtt` is joined to entry i of `lyr_name` after checking the
+  two counts agree. With that catalogue in hand the ROWS of `twtt` are its
+  layers, never whichever axis is longer: a frame with fewer traces than
+  layers - the 2022 sites are 13 soundings at one spot - would otherwise
+  read as one bogus layer per trace. A frame whose layers cannot be named,
+  or whose row count does not match the catalogue, is SKIPPED with a line
+  in the log, never bound by position and never transposed until the counts
+  agree. `bottom_mc` ranks LAST on measurement, not taste: over the 9
   frames of 2022/2023_Antarctica_Ground carrying both, it sits a median
   44.6 m ABOVE the polarimetric bed while `bottom_mc_bot` sits 44.4 m
   below, so the pair brackets a basal zone rather than picking it - and
   preferring it would grey out ~45 m of real ice at Eastwind and McMurdo,
   the two seasons where it is the only non-polarimetric option. The SURFACE
-  order is the reverse - exact `surface` first, per-channel second - because
-  all 107 layer files across the three seasons carry a plain `surface` and
-  69 carry a `surface_dem` beside it that is a DEM, not a radar pick, and
-  must never win; `_dem` layers are barred from the fuzzy tier for the same
-  reason. Anything ambiguous or unnamed is skipped with a line in the log.
-  The layers each
-  frame's bed was differenced from are recorded under the output's reserved
-  `_layers` key, so a wrong binding is auditable after the run. Each
-  section block takes the nearest pick WITHIN ITS OWN FRAME and within half
-  a block (62.5 m), because the trace axes differ once the qlook frames are
-  culled and an index-for-index match would be wrong; measured over 56
-  Taylor Dome blocks the nearest pick sits a median 0.7 m away, so the
-  radius turns nothing away. The picks themselves pass through UNTOUCHED -
-  no thickness plausibility filter, no substituted frame medians, because
-  thin ice is real at these sites and a small pick is not evidence of a bad
-  one. The one validity check is on the SIGN: a bottom at or above the
-  surface is a malformed record rather than thin ice, and becomes null with
-  a warning naming the frame and the count, because a negative depth is
-  finite and would grey that block for the whole movie where null leaves it
-  drawn (measured, this fires on nothing - 0 of 66010 finite picks). Blocks
-  with no pick within the radius are written as null and drawn
-  unmasked. The JSON is
-  written to a temp name and renamed into place, as the pipeline does for
-  its coreg cache, so a killed run cannot leave a truncated file that the
-  movie then treats as fatal. The output is a JSON object keyed by frame
-  tag (`20250108_02_009`, matching `quadpol_section_<tag>.mat`), each
-  value a list of metres below the surface in block order whose length is
-  that frame's block count; the movie warns and skips masking for any
-  frame where the length disagrees, which is the signal to rerun this
-  after a block-size change. Input sections and the output file both live
-  under `SCAR_DATA`. The write is a full replacement and REFUSES to drop a
-  season: sections are globbed from all of `SCAR_DATA` while layer files
-  are only sought under the roots given, so a one-site rerun would leave
-  every other season's frames out - and an absent tag is drawn unmasked, so
-  those movies would quietly stop masking. If the existing file carries
-  frames this run produced none for, the script exits non-zero listing them
-  with the reason it logged for each - no layer file under the roots given,
-  an unreadable one, a catalogue that does not align - or noting that the
-  frame was never reached. It does not assert a cause: a narrowed root list
-  is only one explanation, and the stricter name/row alignment can
-  legitimately skip a frame an older, looser run bound. Rerun with every
-  site root, or pass `--replace` to write this run's frames alone. Stale
-  entries are never merged forward, which would hide which run produced
-  what.
+  order is the reverse - exact `surface` first, per-channel second -
+  because all 107 layer files across the three seasons carry a plain
+  `surface` and 69 carry a `surface_dem` beside it that is a DEM, not a
+  radar pick, and must never win; `_dem` layers are barred from the fuzzy
+  tier for the same reason. Anything ambiguous or unnamed is skipped with a
+  line in the log. The layers each frame's bed was differenced from are
+  recorded under the output's reserved `_layers` key, so a wrong binding is
+  auditable after the run. Each section block takes the nearest pick WITHIN
+  ITS OWN FRAME and within half a block (62.5 m), because the trace axes
+  differ once the qlook frames are culled and an index-for-index match
+  would be wrong; measured over 56 Taylor Dome blocks the nearest pick sits
+  a median 0.7 m away, so the radius turns nothing away. The picks
+  themselves pass through UNTOUCHED - no thickness plausibility filter, no
+  substituted frame medians, because thin ice is real at these sites and a
+  small pick is not evidence of a bad one. The one validity check is on the
+  SIGN: a bottom at or above the surface is a malformed record rather than
+  thin ice, and becomes null with a warning naming the frame and the count,
+  because a negative depth is finite and would grey that block for the
+  whole movie where null leaves it drawn (measured, this fires on nothing -
+  0 of 66010 finite picks). Blocks with no pick within the radius are
+  written as null and drawn unmasked. The JSON is written to a temp name
+  and renamed into place, as the pipeline does for its coreg cache, so a
+  killed run cannot leave a truncated file that the movie then treats as
+  fatal. The output is a JSON object keyed by frame tag (`20250108_02_009`,
+  matching `quadpol_section_<tag>.mat`), each value a list of metres below
+  the surface in block order whose length is that frame's block count; the
+  movie warns and skips masking for any frame where the length disagrees,
+  which is the signal to rerun this after a block-size change. Input
+  sections and the output file both live under `SCAR_DATA`. The write is a
+  full replacement and REFUSES to drop a season: sections are globbed from
+  all of `SCAR_DATA` while layer files are only sought under the roots
+  given, so a one-site rerun would leave every other season's frames out -
+  and an absent tag is drawn unmasked, so those movies would stop masking
+  on nothing more than the per-frame warning the movie prints. If the
+  existing file carries frames this run produced none for, the script
+  exits non-zero listing them with the reason it logged for
+  each - no layer file under the roots given, an unreadable one, a
+  catalogue that does not align - or noting that the frame was never
+  reached. It does not assert a cause: a narrowed root list is only one
+  explanation, and the stricter name/row alignment can legitimately skip a
+  frame an older, looser run bound. Rerun with every site root, or pass
+  `--replace` to write this run's frames alone. Stale entries are never
+  merged forward, which would hide which run produced what.
 - `scripts/figures/` - Python (matplotlib + scipy; cartopy required by
   the map figures) figure scripts that reproduce the analysis figures
   from the `opr_fabric/server/run_fabric_scratch.m` and

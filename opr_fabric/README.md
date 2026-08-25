@@ -279,10 +279,13 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     rebuilt by interpolating `CSARP_reference_trajectory/ref_<seg>.mat`
     onto the frame's own GPS times, because along-track distance and
     track azimuth - hence block geometry and every `theta0_geo` - are
-    computed from them. The rebuild is not optional: a missing or
-    out-of-range reference errors the frame rather than positioning it
-    wrongly. The trigger is the defect, not the product family, so a
-    qlook season whose coordinates are sound is left alone.
+    computed from them. The rebuild is not optional: a missing reference,
+    or one a frame overhangs by more than the one-second tolerance the
+    range check accepts, errors the frame rather than positioning it
+    wrongly - inside that tolerance the query is clamped onto the end, so
+    a second of slop cannot abort a frame on a gap that does not exist.
+    The trigger is the defect, not the product family, so a qlook season
+    whose coordinates are sound is left alone.
     The RANGE WINDOW and the coregistration TILING are both fitted to
     the frame that exists: a recorded `max_rbin` past the end of the
     data is clamped (the thin-ice seasons record windows from deeper

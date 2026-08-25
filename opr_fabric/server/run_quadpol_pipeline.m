@@ -167,8 +167,12 @@ if qlook_mode
   % Where a rebuild IS required it is an interpolation of the reference
   % trajectory onto the frame's own GPS_time, and it is NOT optional and
   % NOT silently skipped: a missing reference file, or a frame whose GPS
-  % times fall outside it, errors out, because the alternative is a
-  % product that looks fine and is wrong by tens of degrees.
+  % times fall outside it by more than RT_TOL_S, errors out, because the
+  % alternative is a product that looks fine and is wrong by tens of
+  % degrees. Inside that tolerance the query time is clamped onto the end
+  % it overhangs rather than being refused, and traces carrying no GPS
+  % time at all are left unpositioned for the stationary cull; both are
+  % argued at the checks themselves.
   la_qk = P.Latitude(:).'; lo_qk = P.Longitude(:).';
   POLAR_LAT_MIN = 60;
   located_qk = isfinite(la_qk) & isfinite(lo_qk);
