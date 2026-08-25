@@ -242,8 +242,10 @@ re-litigated.
 - **Estimator settings.** Azimuth grid, short/fit windows, CRB weighting
   and the two-pass structure take their defaults at every site.
 - **Segment length.** 2 km everywhere.
-- **Block length.** ~125 m everywhere, enforced by re-cutting the trace
-  count where the spacing demands it (see below).
+- **Block length.** ~125 m everywhere, enforced in every season by
+  re-cutting the trace count where the measured spacing demands it
+  (`opr_fabric/server/run_quadpol_pipeline.m` owns the rule and the
+  tolerance that keeps the ~1 m sites' existing block boundaries).
 
 **Known differences, deliberate:**
 
@@ -271,7 +273,6 @@ re-litigated.
 - **The per-frame pedestal is unreliable on low-coherence frames**, so
   the `ls_pedestal` record needs a quality cut before it is used as
   chan_equal calibration input. One season spans a3 -0.264 to +0.438
-  across its sites while one site inside it holds sd 0.011.
-- **The frame report's console band is a fixed 200-1200 m**, which at the
-  thin-ice sites prints statistics from below the bed. The saved arrays
-  and every figure use per-site bands; only the printed line misleads.
+  across its sites while one site inside it holds sd 0.011. A frame whose
+  frame-pass pedestal did not converge saves `ls_pedestal` as exactly
+  `[0 0 0]`, which is the marker to drop, not a measurement.

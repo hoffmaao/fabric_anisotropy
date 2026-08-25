@@ -11,7 +11,8 @@ function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 %
 % WHY. The two-pass design's single point of failure is the frame pass
 % pooling every trace into one theta0(z) handoff: an along-frame change in
-% the fabric (EastGRIP's 19.9 km frame crosses a shear margin mid-way)
+% the fabric (EastGRIP's 6.1 km frame crosses a shear margin mid-way -
+% 19.9 km before the pipeline rebuilt that season's trajectory)
 % decoheres the pooled fit, and every block then inherits its garbage
 % (test_egrip_blocks.m pins this: a 0.10 along-frame dlam ramp kills the
 % frame pass by ~100 m depth and NO block size rescues the section,
@@ -74,7 +75,11 @@ function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 %   resid_seg [Nw x Nseg]
 %   seg_x     [1 x Nseg] segment centres in x_along coordinates
 %   seg_n     [1 x Nseg] traces per segment
-%   nseg, curved, hspread, ped_ant ([1 x 3]), track_az,
+%   nseg, curved, hspread, track_az
+%   ped_ant   [1 x 3] antenna-frame pedestal. Exactly [0 0 0] MARKS a
+%             frame whose pedestal fit did not converge, whose segments
+%             were then fitted without one; it is an audit marker to drop,
+%             never a measurement (a real fit never lands on exact zeros).
 %   lsq       the frame-pass LS output (report/save compatibility)
 %
 % The per-block handoff belongs to ptt.thetaProfileAt(fp, x), which

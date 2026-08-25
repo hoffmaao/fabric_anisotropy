@@ -75,13 +75,14 @@ end
 % same along-track sampling and can be read against each other cell for
 % cell rather than approximately.
 %
-% OVERRIDABLE, because 125 traces is not a fixed LENGTH. Ridge A traces sit
-% ~1 m apart so a block is ~125 m; the EastGRIP qlook traces are ~9 m apart
-% so the same count is a 1.1 km block, and a whole frame becomes 16 of them.
+% This is only a DEFAULT COUNT, because 125 traces is not a fixed LENGTH.
+% Ridge A traces sit ~1 m apart so a block is ~125 m; EastGRIP's are ~2.8 m
+% and Eastwind's 2.43 m apart, where the same count spans 346 m and 304 m.
 % At a shear margin, where fabric varies over hundreds of metres, that
 % averages genuinely different ice into one block - which depresses dlam and
 % destabilises theta0 exactly as the first EastGRIP validation frame did.
-% Set nblk_tr at the call site to match the block LENGTH, not the count.
+% So unless nblk_tr is set at the call site (which always wins), the count
+% is re-cut from the measured trace spacing further down, for EVERY season.
 if ~exist('nblk_tr', 'var') || isempty(nblk_tr)
   nblk_tr = 125;            % Ridge A's count; ~125 m at ~1 m trace spacing
   nblk_auto = true;

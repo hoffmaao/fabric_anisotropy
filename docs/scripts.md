@@ -235,12 +235,19 @@ gitignored - see the "Figure inputs and outputs" section at the end.
     three sites on one axis - with Eastwind and McMurdo, which overlap
     spatially, split by SEASON (a 2022 single-spot rotation experiment vs
     a 2024 15 km transect). Each site carries its own depth bands, colour
-    ceiling, movie depth range (stopped where the site's median dlam
-    crosses the estimator's 0.01 abstention threshold; the measured
-    per-window tables are in its comments) and window/step (thin-ice
-    sites get 40 m windows at 5 m steps - 150 m is half the ice at a
-    300 m shelf, and McMurdo's earlier 450 m cut was detecting the ice
-    base, not a fabric limit).
+    ceiling, movie depth range and window/step, and the comments record
+    the measurement behind each. The COLOUR CEILING is measured, not
+    chosen: the p95 of the quantity the movie actually draws (per-block
+    median dlam over one depth window) over well-fit windows only, which
+    reproduces Ridge A's long-standing 0.08 and un-clips the sites where
+    a site-median ceiling was saturating half the map. The MOVIE RANGE
+    stops where the site stops being measurable - the estimator's 0.01
+    abstention threshold at most sites, but the BED where a `CSARP_layer`
+    pick puts it shallower than a fabric reading would suggest (Taylor
+    Dome), since a cut read off decaying dlam can end the movie inside
+    real ice. WINDOW/STEP are per site: thin-ice sites get 40 m windows
+    at 5 m steps - 150 m is half the ice at a 300 m shelf, and McMurdo's
+    earlier 450 m cut was detecting the ice base, not a fabric limit.
   - `quadpol_fabric_maps.py` - the multi-site quad-pol maps drawn from
     those definitions: one script, three modes (principal contrast; the
     eigenvalue difference projected onto GRID north; both horizontal
@@ -376,4 +383,6 @@ excludes, so figures live beside the code that made them without ever
 being pushed. Scripts take an `<out_dir>` argument and default to `figs/`,
 so `python scripts/figures/<name>.py` with no arguments does the right
 thing from anywhere in the tree; pass a path only when you deliberately
-want the output somewhere else.
+want the output somewhere else, or set `FABRIC_FIGS` to move that default
+for a whole session. The directory is resolved from `scar_style.py`'s own
+location and created on import, so nothing has to exist beforehand.
