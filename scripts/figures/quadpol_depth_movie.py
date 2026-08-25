@@ -10,7 +10,8 @@ colour scale on every frame, the same extent, the same graticule. A frame
 that autoscaled its colours would make every depth look equally
 anisotropic, which is the one thing this movie exists to disprove.
 
-The depth axis is the LS estimator's own sec_dlam_ls, per 125-trace block,
+The depth axis is the LS estimator's own sec_dlam_ls, per ~125 m block
+(a length, so the trace count behind it differs with the site's spacing),
 so a block enters a frame only where that window holds enough finite cells
 to support a median; blocks that fail leave the grey track showing rather
 than being interpolated.

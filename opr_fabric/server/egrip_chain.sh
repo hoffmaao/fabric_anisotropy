@@ -1,8 +1,8 @@
 #!/bin/bash
-# EGRIP chain: revalidate one frame with the raised dlam ceiling, gate on
-# its residuals, then batch every complex frame of the season. Launch once
-# with nohup and it runs unattended: the revalidation reuses the existing
-# coregistration cache, the gate stops a bad estimator from burning days of
+# EGRIP chain: gate on the revalidated frame's section, then batch every
+# complex frame of the season. Launch once with nohup and it runs
+# unattended: the gate reads the section left by the revalidation rather
+# than recomputing it, it stops a bad estimator from burning days of
 # compute, and the batch is idempotent - sections that exist are skipped,
 # failures get fail markers capped at 2 retries, mkdir locks arbitrate the
 # workers - so after ANY interruption the same launch command resumes

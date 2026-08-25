@@ -147,7 +147,7 @@ def _deref(f, v):
 
 
 def load_mat(fn):
-    """One .mat as a plain dict, whichever of the two formats it is saved in."""
+    """One .mat as a plain dict, whichever format it is saved in."""
     try:
         return loadmat(fn, squeeze_me=True, struct_as_record=False)
     except NotImplementedError:
@@ -439,7 +439,8 @@ def main():
                  bound['surface'], bound['bottom']))
 
     if not beds:
-        raise SystemExit('no frame matched a CSARP_layer file; nothing written')
+        raise SystemExit(
+            'no frame matched a CSARP_layer file; nothing written')
     # The layers each frame's bed was differenced from, so a shallow bed off
     # an internal reflector is auditable in the product rather than only in
     # a run log that nobody kept.
