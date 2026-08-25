@@ -45,19 +45,28 @@ gitignored - see the "Figure inputs and outputs" section at the end.
   it masks sit on one ice model, and with no firn correction for the same
   reason. The surface and bottom layers are chosen BY NAME, never by
   position: these files carry internal reflectors too, and differencing
-  whatever happens to be layer 2 would give a systematically shallow bed
-  that no plausibility filter catches. An exact name wins, a
-  merely-containing name only when it is the sole candidate, and the OPR
-  layer id (1 surface, 2 bottom) is the last resort; anything ambiguous or
-  unnamed is skipped with a line in the log. The names each frame's bed was
-  differenced from are recorded under the output's reserved `_layers` key,
-  so a wrong binding is auditable after the run. Each section block
-  takes the nearest pick WITHIN ITS OWN FRAME and within half a block
-  (62.5 m), because the trace axes differ once the qlook frames are culled
-  and an index-for-index match would be wrong; measured over 56 Taylor
-  Dome blocks the nearest pick sits a median 0.7 m away, so the radius
-  turns nothing away. Implausible thicknesses (under 40 m, over 4500 m)
-  and unmatched blocks are written as null and drawn unmasked. The JSON is
+  whatever happens to be layer 2 would give a systematically shallow bed.
+  The bed preference is (1) the per-trace median of whichever of
+  `bottom_HH`/`bottom_VV`/`bottom_HV`/`bottom_VH` the file carries,
+  (2) `bottom`, (3) `bottom_mc`, (4) a uniquely bottom-named layer or OPR
+  layer id 2. `bottom_mc` ranks LAST on measurement, not taste: over the 9
+  frames of 2022/2023_Antarctica_Ground carrying both, it sits a median
+  44.6 m ABOVE the polarimetric bed while `bottom_mc_bot` sits 44.4 m
+  below, so the pair brackets a basal zone rather than picking it - and
+  preferring it would grey out ~45 m of real ice at Eastwind and McMurdo,
+  the two seasons where it is the only non-polarimetric option. Anything
+  ambiguous or unnamed is skipped with a line in the log. The layers each
+  frame's bed was differenced from are recorded under the output's reserved
+  `_layers` key, so a wrong binding is auditable after the run. Each
+  section block takes the nearest pick WITHIN ITS OWN FRAME and within half
+  a block (62.5 m), because the trace axes differ once the qlook frames are
+  culled and an index-for-index match would be wrong; measured over 56
+  Taylor Dome blocks the nearest pick sits a median 0.7 m away, so the
+  radius turns nothing away. The picks themselves pass through UNTOUCHED -
+  no thickness plausibility filter, no substituted frame medians, because
+  thin ice is real at these sites and a small pick is not evidence of a bad
+  one. Blocks with no pick within the radius are written as null and drawn
+  unmasked. The JSON is
   written to a temp name and renamed into place, as the pipeline does for
   its coreg cache, so a killed run cannot leave a truncated file that the
   movie then treats as fatal. The output is a JSON object keyed by frame
