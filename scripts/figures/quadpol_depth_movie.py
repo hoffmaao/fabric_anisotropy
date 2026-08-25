@@ -47,6 +47,7 @@ import matplotlib
 import numpy as np
 
 matplotlib.use('Agg')
+import matplotlib.patheffects as mpe                   # noqa: E402
 import matplotlib.pyplot as plt                        # noqa: E402
 from matplotlib.collections import LineCollection      # noqa: E402
 from pyproj import Transformer                         # noqa: E402
@@ -84,6 +85,9 @@ MIN_CELLS = 3 if WIN_M < 80.0 else 5
 # anything.
 RESID_GOOD, RESID_BAD = 0.25, 0.45
 GREY_RGB = (0.88, 0.88, 0.89)
+# Halo for the annotations that must stay ON the map, where a track may run
+# under them at one site and not at the next.
+HALO = [mpe.withStroke(linewidth=3.0, foreground='white')]
 
 # Bed depth per along-track block, from the CSARP_layer bottom pick, keyed by
 # frame tag. Without it a frame keeps drawing fabric colour at depths where
@@ -203,8 +207,21 @@ def main():
     n = 0
     for k, zc in enumerate(centres):
         lo, hi = zc - WIN_M / 2, zc + WIN_M / 2
-        fig = plt.figure(figsize=(7.6, 7.6), layout='constrained')
-        ax = fig.add_subplot(1, 1, 1, projection=proj)
+        # The key lives in a strip of its OWN below the map, never on it.
+        # No spot inside the axes is safe to put it: square_extent pads the
+        # block positions to 1.18x, which leaves the blocks in the middle
+        # 84.7% and looks like a clear band underneath - but the orientation
+        # bars overhang their block by BAR_FRAC of the span, reaching down to
+        # axes fraction 0.047, and the frame end-lines are drawn from
+        # endpoints that are not in the block set bounding the extent at all.
+        # So a key position tuned until it clears one survey re-occludes on
+        # the next; that is how the track came to sit over the Taylor Dome
+        # colour-bar title. Outside the axes the geometry cannot follow.
+        fig = plt.figure(figsize=(7.6, 8.0), layout='constrained')
+        gs = fig.add_gridspec(2, 1, height_ratios=[1.0, 0.075])
+        ax = fig.add_subplot(gs[0, 0], projection=proj)
+        lax = fig.add_subplot(gs[1, 0])
+        lax.set_axis_off()
 
         def arm(lat, lon, th_deg, half_km=None, color=INK, lw=1.6):
             half_km = bar_km if half_km is None else half_km
@@ -302,10 +319,13 @@ def main():
         gl.xlabel_style = {'size': 8.5, 'color': INK}
         gl.ylabel_style = {'size': 8.5, 'color': INK}
 
-        cax = ax.inset_axes([0.28, 0.045, 0.28, 0.022])
+        cax = lax.inset_axes([0.30, 0.52, 0.26, 0.30])
         fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cax,
                      orientation='horizontal')
-        cax.set_title(r'$\Delta\lambda$', fontsize=8.5, color=INK, pad=3)
+        # label alongside the bar rather than above it: the strip is shallow
+        # and the map's rotated longitude labels come down to meet it
+        cax.text(-0.035, 0.5, r'$\Delta\lambda$', transform=cax.transAxes,
+                 ha='right', va='center', fontsize=9.5, color=INK)
         cax.tick_params(labelsize=7.5)
 
         # Grey is OFF this ramp, not at the bottom of it: it is what a
@@ -314,7 +334,7 @@ def main():
         # the two are otherwise indistinguishable, which is the whole point
         # of the fade - hence a swatch, as fabric_sections.py carries a
         # two-dimensional key for the same reason.
-        gax = ax.inset_axes([0.615, 0.045, 0.030, 0.022])
+        gax = lax.inset_axes([0.635, 0.52, 0.026, 0.30])
         gax.set_facecolor(GREY_RGB)
         gax.set_xticks([])
         gax.set_yticks([])
@@ -324,15 +344,19 @@ def main():
         gax.text(1.25, 0.5, 'unresolved', transform=gax.transAxes,
                  ha='left', va='center', fontsize=7.5, color=INK)
 
+        # The scale bar has to stay ON the map - it means nothing off it -
+        # so it gets the other half of the rule: drawn above every map
+        # artist, over a white halo, so a track crossing it cannot swallow
+        # it the way one swallowed the colour-bar title.
         sb_m = ab._nice_length(0.22 * max(span_x, span_y))
         xb = xs[1] - 0.06 * (xs[1] - xs[0]) - sb_m
         yb = ys[0] + 0.07 * (ys[1] - ys[0])
         ax.plot([xb, xb + sb_m], [yb, yb], '-', color=INK, lw=2.5,
-                transform=proj)
+                zorder=6, path_effects=HALO, transform=proj)
         ax.text(xb + sb_m / 2, yb - 0.028 * (ys[1] - ys[0]),
                 '%g km' % (sb_m / 1000.0) if sb_m >= 1000 else '%g m' % sb_m,
                 ha='center', va='top', fontsize=8.5, color=INK,
-                transform=proj)
+                zorder=6, path_effects=HALO, transform=proj)
 
         # Depth readout only. A survey-wide circular mean of theta0 was
         # drawn here too, and a bar tracking the window down the column;
@@ -344,7 +368,8 @@ def main():
         ax.text(xs[0] + 0.04 * (xs[1] - xs[0]),
                 ys[1] - 0.055 * (ys[1] - ys[0]),
                 '%.0f - %.0f m' % (lo, hi), fontsize=13, color=INK,
-                ha='left', va='center', transform=proj)
+                ha='left', va='center', zorder=6, path_effects=HALO,
+                transform=proj)
 
         ax.set_title(('%s: fabric contrast through the column\n' % TITLE)
                      + r'track colour: $\Delta\lambda$ per block; '
