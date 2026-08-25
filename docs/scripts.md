@@ -36,6 +36,24 @@ gitignored - see the "Figure inputs and outputs" section at the end.
   or lost a usable deep contrast. This is what measured the
   heading-wrap resweep above; it needs both product generations staged
   locally, so it re-makes that measurement only where they are.
+- `scripts/make_bed_by_block.py` - builds the `bed_by_block.json` that
+  `quadpol_depth_movie.py` masks its blocks with, from the `CSARP_layer`
+  picks, given one or more season roots holding `CSARP_layer/<day_seg>/`.
+  Bed depth is derived as
+  `(twtt_bottom - twtt_surface) * c / (2*sqrt(3.171))` - the SAME
+  permittivity the pipeline's depth axis uses, so the mask and the fabric
+  it masks sit on one ice model, and with no firn correction for the same
+  reason. Each section block takes the nearest pick WITHIN ITS OWN FRAME
+  and within 250 m, because the trace axes differ once the qlook frames
+  are culled and an index-for-index match would be wrong. Implausible
+  thicknesses (under 40 m, over 4500 m) and unmatched blocks are written
+  as null and drawn unmasked. The output is a JSON object keyed by frame
+  tag (`20250108_02_009`, matching `quadpol_section_<tag>.mat`), each
+  value a list of metres below the surface in block order whose length is
+  that frame's block count; the movie warns and skips masking for any
+  frame where the length disagrees, which is the signal to rerun this
+  after a block-size change. Input sections and the output file both live
+  under `SCAR_DATA`.
 - `scripts/figures/` - Python (matplotlib + scipy; cartopy required by
   the map figures) figure scripts that reproduce the analysis figures
   from the `opr_fabric/server/run_fabric_scratch.m` and
@@ -146,8 +164,8 @@ gitignored - see the "Figure inputs and outputs" section at the end.
     perpendicular, and those azimuths differ per site, which is why both
     figures name them.
 - The published-method comparison and quad-pol figures share those same
-  conventions (input staged under `SCAR_DATA`, output to the `<out_dir>`
-  argument rather than `figs/`) and import `scar_style.py` for them:
+  conventions (input staged under `SCAR_DATA`, output to `figs/` unless an
+  `<out_dir>` argument says otherwise) and import `scar_style.py` for them:
   - `egrip_method_compare.py` - our joint inversion against Zeising et al.
     (2023) and against our own bare fringe rate, all three on the SAME nine
     borehole-proximal EastGRIP lines, aperture, surface pick, depth bands and
@@ -207,7 +225,12 @@ gitignored - see the "Figure inputs and outputs" section at the end.
     fabric strengthening down the column rather than every depth
     autoscaling to look equally anisotropic; its docstring carries the
     measured Ridge A profile and the 100%-coverage fact that makes the
-    pale shallow frames measurements of weak fabric, not gaps.
+    pale shallow frames measurements of weak fabric, not gaps. Segments
+    are blended toward grey by their LS residual and drop out entirely
+    once the bed enters the window, so the key carries a grey swatch:
+    grey is OFF the ramp, not the bottom of it. The bed comes from
+    `bed_by_block.json` (below); with no such file the movie says so and
+    draws every block unmasked.
   - `ridge_a_ifg_movie.py` - the wrapped-phase movie: a fixed basemap
     (REMA over grey) with a walking segment marker beside that segment's
     wrapped interferogram, no panel titles and no zoom inset (either
