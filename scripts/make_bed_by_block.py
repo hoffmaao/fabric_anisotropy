@@ -22,8 +22,13 @@ carry internal reflectors beyond the surface/bottom pair, and differencing
 whatever happens to be layer 2 would give a systematically shallow bed - a
 600 m "bed" in EastGRIP's 2700 m column - that no plausibility filter can
 catch and that retires blocks from the movie hundreds of metres above the
-real ice base. A file that exposes no identifiable bottom is skipped with a
-line in the log instead: not masking is recoverable, masking wrongly is not.
+real ice base. An exact name wins; a merely-containing name is taken only
+when it is the sole candidate; the OPR layer id (1 surface, 2 bottom) is the
+last resort for files carrying ids but no names. Anything ambiguous or
+unnamed is skipped with a line in the log instead: not masking is
+recoverable, masking wrongly is not. Which layers a frame's bed was actually
+differenced from is recorded per frame in the output, so a wrong binding is
+auditable after the run rather than invisible.
 
 MATCHING IS BY POSITION, PER FRAME. A section block's centre is matched to
 the nearest pick within the SAME frame's layer file and within MAX_MATCH_M;
@@ -37,7 +42,9 @@ FORMAT: one JSON object keyed by frame tag (`20250108_02_009`, matching
 the surface, one per section block IN BLOCK ORDER, with null where there is
 no usable pick. The list length must equal that frame's block count; the
 movie warns and skips masking for any frame where it does not, which is the
-signal to rerun this script after a block size change.
+signal to rerun this script after a block size change. One reserved key,
+`_layers`, maps each frame tag to the surface and bottom layer names its bed
+came from; it cannot collide with a tag, and the movie never looks it up.
 
 Usage: python scripts/make_bed_by_block.py <site_root> [<site_root> ...]
 
@@ -56,6 +63,9 @@ from scipy.io import loadmat
 
 DATA = os.path.expanduser(os.environ.get('SCAR_DATA', '~/data/opr/scar'))
 OUT_FN = os.path.join(DATA, 'bed_by_block.json')
+# Reserved key in the output, holding the layer names bound per frame. It
+# cannot collide with a frame tag, which is always <day_seg>_<frm>.
+LAYERS_KEY = '_layers'
 
 C0 = 299792458.0
 EPS_ICE = 3.171
@@ -102,6 +112,10 @@ def _flat(v):
     return np.atleast_1d(np.asarray(v, float)).ravel()
 
 
+class LayerFormatError(Exception):
+    """This file was read, but its layers cannot be identified."""
+
+
 def _as_name(v):
     """One layer name as a lowercase string, from either .mat flavour."""
     if isinstance(v, np.ndarray) and v.dtype.kind in 'iuf':
@@ -109,32 +123,64 @@ def _as_name(v):
     return str(v).strip().lower()
 
 
+def _name_list(raw):
+    """Layer names as lowercase strings, decoded ONE ELEMENT AT A TIME.
+
+    A MATLAB cell of char reaches here from the v7.3 path as a LIST of
+    per-name uint16 code arrays, ragged because 'surface' is 7 codes and
+    'bottom' is 6. Stacking that - np.atleast_1d, np.asarray - raises on any
+    file whose layer names differ in length, i.e. every real one, so each
+    element is handed to _as_name on its own instead.
+    """
+    if raw is None:
+        return []
+    if isinstance(raw, (list, tuple)):
+        return [_as_name(v) for v in raw]
+    if isinstance(raw, np.ndarray):
+        if raw.dtype.kind in 'iuf':
+            # char codes: a flat run is ONE name, a 2-D block one per row
+            return ([_as_name(raw)] if raw.ndim <= 1
+                    else [_as_name(row) for row in raw])
+        return [_as_name(v) for v in raw.ravel()]
+    return [_as_name(raw)]
+
+
+def _scalar(v, default=np.nan):
+    """First element of `v` as a float, or `default` where there is none."""
+    a = np.atleast_1d(np.asarray(v, float)).ravel()
+    return float(a[0]) if a.size else default
+
+
 def _find_layer(names, ids, wanted_name, wanted_id):
     """Index of the layer identified as `wanted_name`, or None.
 
-    By NAME first, exact then substring; by the OPR layer id (1 surface,
-    2 bottom) only where the file carries one. Never by position - a file
-    whose second layer is an internal reflector would otherwise yield a
-    systematically shallow bed that the plausibility filter cannot catch
-    and that masks the movie hundreds of metres above the real ice base.
+    Exact name first. A layer whose name merely CONTAINS the wanted word is
+    accepted only when it is the ONLY candidate: binding 'sub-surface debris'
+    as the surface would give a bed shallow by the depth of an internal
+    reflector, which the plausibility filter cannot catch and which masks the
+    movie above the real ice base. Ambiguity is unidentifiable, not a
+    first-wins race. The OPR layer id (1 surface, 2 bottom) is the last
+    resort, for files that carry ids but no names. Never by position.
     """
-    for match in (lambda nm: nm == wanted_name,
-                  lambda nm: wanted_name in nm):
-        for i, nm in enumerate(names):
-            if match(nm):
-                return i
-    for i, v in enumerate(ids):
-        if v == wanted_id:
-            return i
+    for cand in ([i for i, nm in enumerate(names) if nm == wanted_name],
+                 [i for i, nm in enumerate(names) if wanted_name in nm],
+                 [i for i, v in enumerate(ids) if v == wanted_id]):
+        if cand:
+            return cand[0] if len(cand) == 1 else None
     return None
 
 
 def layer_picks(d):
-    """(lat, lon, bed depth) arrays from one CSARP_layer file.
+    """(lat, lon, bed depth, bound layer names) from one CSARP_layer file.
 
     Handles both layer formats in use: the OPR layerdata one (`lat`, `lon`,
     `twtt`, `lyr_name`/`lyr_id`) and the legacy CReSIS one (`Latitude`,
     `Longitude`, `layerData` cells, each carrying its own `name`).
+
+    Raises LayerFormatError - and nothing else - when the file is readable
+    but its surface and bottom cannot be named. Any other exception is a
+    defect in this reader and must escape rather than be logged as a frame
+    with no picks.
     """
     if 'twtt' in d and 'lat' in d:
         lat, lon = _flat(d['lat']), _flat(d['lon'])
@@ -146,9 +192,7 @@ def layer_picks(d):
             if tw.shape[0] > tw.shape[1]:
                 tw = tw.T
             layers = [tw[i] for i in range(tw.shape[0])]
-        raw_names = d.get('lyr_name', d.get('name'))
-        names = ([] if raw_names is None
-                 else [_as_name(v) for v in np.atleast_1d(raw_names)])
+        names = _name_list(d.get('lyr_name', d.get('name')))
         raw_ids = d.get('lyr_id', d.get('id'))
         ids = [] if raw_ids is None else list(_flat(raw_ids))
     elif 'layerData' in d and 'Latitude' in d:
@@ -165,20 +209,20 @@ def layer_picks(d):
                 continue
             layers.append(_flat(data))
             names.append(_as_name(getattr(lay, 'name', '')))
-            ids.append(float(np.atleast_1d(
-                np.asarray(getattr(lay, 'id', np.nan), float)).ravel()[0]))
+            ids.append(_scalar(getattr(lay, 'id', np.nan)))
     else:
-        raise ValueError('no recognised layer fields')
+        raise LayerFormatError('no recognised layer fields')
     if len(layers) < 2:
-        raise ValueError('fewer than two layers (need surface and bottom)')
+        raise LayerFormatError(
+            'holds %d layer(s); needs a surface and a bottom' % len(layers))
     names = names[:len(layers)]
     ids = ids[:len(layers)]
     i_s = _find_layer(names, ids, 'surface', 1)
     i_b = _find_layer(names, ids, 'bottom', 2)
     if i_s is None or i_b is None:
-        raise ValueError(
-            'cannot identify %s among %d layers named %s; refusing to '
-            'difference layers by position'
+        raise LayerFormatError(
+            'cannot unambiguously identify %s among %d layers named %s; '
+            'refusing to difference layers by position'
             % (' and '.join(w for w, i in (('surface', i_s), ('bottom', i_b))
                             if i is None),
                len(layers), names if names else '<unnamed>'))
@@ -186,7 +230,9 @@ def layer_picks(d):
     bed = (layers[i_b][:n] - layers[i_s][:n]) * C_ICE / 2.0
     bed[~np.isfinite(bed)] = np.nan
     bed[(bed < MIN_BED_M) | (bed > MAX_BED_M)] = np.nan
-    return lat[:n], lon[:n], bed
+    bound = {'surface': names[i_s] if names and names[i_s] else 'id 1',
+             'bottom': names[i_b] if names and names[i_b] else 'id 2'}
+    return lat[:n], lon[:n], bed, bound
 
 
 def find_layer_file(roots, day_seg, frm):
@@ -242,7 +288,7 @@ def main():
     if not sections:
         raise SystemExit('no quadpol_section_*.mat under %s' % DATA)
 
-    beds, n_picked, n_frames = {}, 0, 0
+    beds, bound_by_tag, n_picked, n_frames = {}, {}, 0, 0
     for fn in sections:
         tag = os.path.basename(fn)[len('quadpol_section_'):-len('.mat')]
         day_seg, frm_s = tag.rsplit('_', 1)
@@ -254,29 +300,43 @@ def main():
             print('  %s: no CSARP_layer file' % tag)
             continue
         try:
-            plat, plon, bed = layer_picks(load_mat(lfn))
-        except (ValueError, KeyError, OSError) as err:
+            d = load_mat(lfn)
+        except (OSError, ValueError) as err:
+            print('  %s: %s unreadable (%s)'
+                  % (tag, os.path.basename(lfn), err))
+            continue
+        try:
+            plat, plon, bed, bound = layer_picks(d)
+        except LayerFormatError as err:
             print('  %s: %s unusable (%s)' % (tag, os.path.basename(lfn), err))
             continue
         vals = nearest_bed(blat, blon, plat, plon, bed)
         beds[tag] = [None if not np.isfinite(v) else round(float(v), 1)
                      for v in vals]
+        bound_by_tag[tag] = bound
         n_frames += 1
         n_picked += int(np.isfinite(vals).sum())
-        print('  %s: %d of %d blocks picked (%.0f-%.0f m)'
+        print('  %s: %d of %d blocks picked (%.0f-%.0f m) [surface=%s '
+              'bottom=%s]'
               % (tag, int(np.isfinite(vals).sum()), vals.size,
                  np.nanmin(vals) if np.isfinite(vals).any() else np.nan,
-                 np.nanmax(vals) if np.isfinite(vals).any() else np.nan))
+                 np.nanmax(vals) if np.isfinite(vals).any() else np.nan,
+                 bound['surface'], bound['bottom']))
 
     if not beds:
         raise SystemExit('no frame matched a CSARP_layer file; nothing written')
+    # The layers each frame's bed was differenced from, so a shallow bed off
+    # an internal reflector is auditable in the product rather than only in
+    # a run log that nobody kept.
+    out = dict(beds)
+    out[LAYERS_KEY] = bound_by_tag
     # Write to a temp name in the same directory and rename into place, the
     # pattern run_quadpol_pipeline.m uses for its coreg cache: the movie is
     # fatal on a present-but-unreadable file, so a run killed mid-write would
     # otherwise leave a truncated JSON that breaks every later movie run.
     tmp_fn = OUT_FN + '.tmp'
     with open(tmp_fn, 'w') as fh:
-        json.dump(beds, fh, indent=1, sort_keys=True)
+        json.dump(out, fh, indent=1, sort_keys=True)
     os.replace(tmp_fn, OUT_FN)
     print('wrote %s: %d frames, %d blocks with a bed'
           % (OUT_FN, n_frames, n_picked))

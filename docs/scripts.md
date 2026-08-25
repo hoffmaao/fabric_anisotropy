@@ -46,8 +46,12 @@ gitignored - see the "Figure inputs and outputs" section at the end.
   reason. The surface and bottom layers are chosen BY NAME, never by
   position: these files carry internal reflectors too, and differencing
   whatever happens to be layer 2 would give a systematically shallow bed
-  that no plausibility filter catches, so a file exposing no identifiable
-  bottom is skipped with a line in the log instead. Each section block
+  that no plausibility filter catches. An exact name wins, a
+  merely-containing name only when it is the sole candidate, and the OPR
+  layer id (1 surface, 2 bottom) is the last resort; anything ambiguous or
+  unnamed is skipped with a line in the log. The names each frame's bed was
+  differenced from are recorded under the output's reserved `_layers` key,
+  so a wrong binding is auditable after the run. Each section block
   takes the nearest pick WITHIN ITS OWN FRAME and within half a block
   (62.5 m), because the trace axes differ once the qlook frames are culled
   and an index-for-index match would be wrong; measured over 56 Taylor
