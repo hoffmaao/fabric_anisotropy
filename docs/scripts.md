@@ -54,8 +54,13 @@ gitignored - see the "Figure inputs and outputs" section at the end.
   44.6 m ABOVE the polarimetric bed while `bottom_mc_bot` sits 44.4 m
   below, so the pair brackets a basal zone rather than picking it - and
   preferring it would grey out ~45 m of real ice at Eastwind and McMurdo,
-  the two seasons where it is the only non-polarimetric option. Anything
-  ambiguous or unnamed is skipped with a line in the log. The layers each
+  the two seasons where it is the only non-polarimetric option. The SURFACE
+  order is the reverse - exact `surface` first, per-channel second - because
+  all 107 layer files across the three seasons carry a plain `surface` and
+  69 carry a `surface_dem` beside it that is a DEM, not a radar pick, and
+  must never win; `_dem` layers are barred from the fuzzy tier for the same
+  reason. Anything ambiguous or unnamed is skipped with a line in the log.
+  The layers each
   frame's bed was differenced from are recorded under the output's reserved
   `_layers` key, so a wrong binding is auditable after the run. Each
   section block takes the nearest pick WITHIN ITS OWN FRAME and within half
@@ -65,7 +70,12 @@ gitignored - see the "Figure inputs and outputs" section at the end.
   radius turns nothing away. The picks themselves pass through UNTOUCHED -
   no thickness plausibility filter, no substituted frame medians, because
   thin ice is real at these sites and a small pick is not evidence of a bad
-  one. Blocks with no pick within the radius are written as null and drawn
+  one. The one validity check is on the SIGN: a bottom at or above the
+  surface is a malformed record rather than thin ice, and becomes null with
+  a warning naming the frame and the count, because a negative depth is
+  finite and would grey that block for the whole movie where null leaves it
+  drawn (measured, this fires on nothing - 0 of 66010 finite picks). Blocks
+  with no pick within the radius are written as null and drawn
   unmasked. The JSON is
   written to a temp name and renamed into place, as the pipeline does for
   its coreg cache, so a killed run cannot leave a truncated file that the

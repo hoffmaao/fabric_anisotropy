@@ -46,13 +46,28 @@ interface looks like and what bottom_mc does not. Preferring bottom_mc would
 grey out ~45 m of real ice at Eastwind and McMurdo - precisely the two
 seasons where it is the only non-polarimetric option.
 
+SURFACE PREFERENCE puts the EXACT `surface` first, which is where the two
+sides differ. All 107 layer files across 2022_Antarctica_Ground,
+2023_Antarctica_Ground and 2025_Antarctica_Ground2 carry a plain `surface`;
+69 of them carry a `surface_dem` beside it, and that is a digital elevation
+model rather than a radar pick, so it must never win. The per-channel tier
+(surface_HH/VV/HV/VH) sits second as a defence for a future season that
+names its surface the way it already names its bed - no season does today.
+A `_dem` layer is barred from the fuzzy tier outright for the same reason.
+
 THE PICKS THEMSELVES PASS THROUGH UNTOUCHED. There is no thickness
 plausibility filter and no substitution of frame medians for suspect picks:
 thin ice is real at these sites and a small pick is not evidence of a bad
 one. At Eastwind the thin blocks correlate -0.62/-0.64 with lat/lon toward
 the terminus, and at McMurdo the thin blocks are non-overlapping in
-longitude with the thick ones (+0.80 lat, +0.91 lon). The only judgement
-this script makes is which named layer to difference.
+longitude with the thick ones (+0.80 lat, +0.91 lon). The one validity check
+is on the SIGN: a bottom at or above the surface is not thin ice but a
+malformed record (an older layerData storing 0 for unpicked traces), and it
+becomes null with a warning naming the frame and the count. It has to,
+because a negative depth is finite and would leave `hi <= bed` false in
+every window - greying that block for the whole movie, where null leaves it
+drawn. Measured across the three seasons this fires on nothing: 0 negative
+and 0 zero values in 66010 finite picks.
 
 MATCHING IS BY POSITION, PER FRAME. A section block's centre is matched to
 the nearest pick within the SAME frame's layer file and within MAX_MATCH_M;
@@ -110,7 +125,13 @@ R_E = 6371000.0
 # trace rather than ranked among themselves. See the preference order in the
 # module docstring for why bottom_mc is not one of them.
 POLAR_BOTTOMS = ('bottom_hh', 'bottom_vv', 'bottom_hv', 'bottom_vh')
-BOTTOM_NAMES = ('bottom', 'bottom_mc')
+POLAR_SURFACES = ('surface_hh', 'surface_vv', 'surface_hv', 'surface_vh')
+# Substrings that mark a layer as something other than a radar pick. A
+# `surface_dem` is a digital elevation model: it loses to an exact `surface`
+# on tier order anyway, but it must not be admitted to the fuzzy tier either,
+# where in a file lacking a plain `surface` it would be the sole candidate
+# and would shift every bed in the frame by the DEM's own offset.
+NOT_A_PICK = ('dem',)
 
 
 def _deref(f, v):
@@ -178,25 +199,6 @@ def _scalar(v, default=np.nan):
     return float(a[0]) if a.size else default
 
 
-def _find_layer(names, ids, wanted_name, wanted_id):
-    """Index of the layer identified as `wanted_name`, or None.
-
-    Exact name first. A layer whose name merely CONTAINS the wanted word is
-    accepted only when it is the ONLY candidate: binding 'sub-surface debris'
-    as the surface would give a bed shallow by the depth of an internal
-    reflector, and nothing downstream could catch it. Ambiguity is
-    unidentifiable, not a first-wins race. The OPR layer id (1 surface,
-    2 bottom) is the last resort, for files that carry ids but no names.
-    Never by position.
-    """
-    for cand in ([i for i, nm in enumerate(names) if nm == wanted_name],
-                 [i for i, nm in enumerate(names) if wanted_name in nm],
-                 [i for i, v in enumerate(ids) if v == wanted_id]):
-        if cand:
-            return cand[0] if len(cand) == 1 else None
-    return None
-
-
 def _label(names, i, fallback):
     """Name of layer `i`, or `fallback` where the file did not name it.
 
@@ -207,39 +209,79 @@ def _label(names, i, fallback):
     return names[i] if i < len(names) and names[i] else fallback
 
 
-def _bottom_layer(layers, names, ids):
-    """(bed twtt, label) under the preference order in the module docstring.
+def _exact(names, want):
+    return [i for i, nm in enumerate(names) if nm == want]
 
-    Returns (None, None) where no bottom can be named unambiguously. The
-    polarimetric tier is combined per trace rather than ranked internally:
-    those four picks agree to under a metre, so their median is any one of
-    them, robust to whichever the file happens to omit.
+
+def _channels(names, wanted):
+    return [i for i, nm in enumerate(names) if nm in wanted]
+
+
+def _contains(names, want):
+    return [i for i, nm in enumerate(names)
+            if want in nm and not any(x in nm for x in NOT_A_PICK)]
+
+
+def _by_id(ids, want):
+    return [i for i, v in enumerate(ids) if v == want]
+
+
+def _resolve(layers, names, tiers):
+    """(twtt, label) for one layer role, or (None, None).
+
+    `tiers` is (candidate indices, combine, fallback label) in preference
+    order, and encodes the one rule this module rests on: the FIRST tier
+    offering any candidate decides. Exactly one binds; more than one is
+    unidentifiable and stops the walk, because letting a later tier rescue an
+    ambiguous earlier one is position dressed up as preference, and taking
+    the first of several is the same thing. `combine` takes the per-trace
+    median of the tier instead - the per-channel picks agree to under a
+    metre, so their median is any one of them, robust to whichever the file
+    omits.
     """
-    polar = [i for i, nm in enumerate(names) if nm in POLAR_BOTTOMS]
-    if polar:
-        n = min(layers[i].size for i in polar)
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', RuntimeWarning)
-            tw = np.nanmedian(np.vstack([layers[i][:n] for i in polar]),
-                              axis=0)
-        return tw, 'median(%s)' % ','.join(names[i] for i in polar)
-    for want in BOTTOM_NAMES:
-        hit = [i for i, nm in enumerate(names) if nm == want]
-        if hit:
-            return (layers[hit[0]], names[hit[0]]) if len(hit) == 1 \
-                else (None, None)
-    part = [i for i, nm in enumerate(names) if 'bottom' in nm]
-    if part:
-        return (layers[part[0]], names[part[0]]) if len(part) == 1 \
-            else (None, None)
-    by_id = [i for i, v in enumerate(ids) if v == 2]
-    if len(by_id) == 1:
-        return layers[by_id[0]], _label(names, by_id[0], 'id 2')
+    for cand, combine, fallback in tiers:
+        if not cand:
+            continue
+        if combine:
+            n = min(layers[i].size for i in cand)
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', RuntimeWarning)
+                tw = np.nanmedian(np.vstack([layers[i][:n] for i in cand]),
+                                  axis=0)
+            return tw, 'median(%s)' % ','.join(names[i] for i in cand)
+        if len(cand) > 1:
+            return None, None
+        return layers[cand[0]], _label(names, cand[0], fallback)
     return None, None
 
 
+def _surface_layer(layers, names, ids):
+    """(surface twtt, label) - EXACT `surface` outranks the per-channel tier.
+
+    The reverse of the bed order, deliberately: every layer file in these
+    seasons carries a plain `surface`, and 69 of 107 carry a `surface_dem`
+    beside it that is a DEM rather than a radar pick. See the module
+    docstring.
+    """
+    return _resolve(layers, names, [
+        (_exact(names, 'surface'), False, 'surface'),
+        (_channels(names, POLAR_SURFACES), True, None),
+        (_contains(names, 'surface'), False, 'surface'),
+        (_by_id(ids, 1), False, 'id 1')])
+
+
+def _bottom_layer(layers, names, ids):
+    """(bed twtt, label) under the preference order in the module docstring."""
+    return _resolve(layers, names, [
+        (_channels(names, POLAR_BOTTOMS), True, None),
+        (_exact(names, 'bottom'), False, 'bottom'),
+        (_exact(names, 'bottom_mc'), False, 'bottom_mc'),
+        (_contains(names, 'bottom'), False, 'bottom'),
+        (_by_id(ids, 2), False, 'id 2')])
+
+
 def layer_picks(d):
-    """(lat, lon, bed depth, bound layer names) from one CSARP_layer file.
+    """(lat, lon, bed depth, bound layer names, malformed count) from one file.
 
     Handles both layer formats in use: the OPR layerdata one (`lat`, `lon`,
     `twtt`, `lyr_name`/`lyr_id`) and the legacy CReSIS one (`Latitude`,
@@ -285,20 +327,23 @@ def layer_picks(d):
             'holds %d layer(s); needs a surface and a bottom' % len(layers))
     names = names[:len(layers)]
     ids = ids[:len(layers)]
-    i_s = _find_layer(names, ids, 'surface', 1)
+    tw_s, lbl_s = _surface_layer(layers, names, ids)
     tw_b, lbl_b = _bottom_layer(layers, names, ids)
-    if i_s is None or tw_b is None:
+    if tw_s is None or tw_b is None:
         raise LayerFormatError(
             'cannot unambiguously identify %s among %d layers named %s; '
             'refusing to difference layers by position'
-            % (' and '.join(w for w, i in (('surface', i_s), ('bottom', tw_b))
-                            if i is None),
+            % (' and '.join(w for w, t in (('surface', tw_s), ('bottom', tw_b))
+                            if t is None),
                len(layers), names if names else '<unnamed>'))
-    n = min(lat.size, lon.size, layers[i_s].size, tw_b.size)
-    bed = (tw_b[:n] - layers[i_s][:n]) * C_ICE / 2.0
+    n = min(lat.size, lon.size, tw_s.size, tw_b.size)
+    bed = (tw_b[:n] - tw_s[:n]) * C_ICE / 2.0
     bed[~np.isfinite(bed)] = np.nan
-    bound = {'surface': _label(names, i_s, 'id 1'), 'bottom': lbl_b}
-    return lat[:n], lon[:n], bed, bound
+    bad = bed <= 0
+    n_bad = int(np.count_nonzero(bad))
+    bed[bad] = np.nan
+    bound = {'surface': lbl_s, 'bottom': lbl_b}
+    return lat[:n], lon[:n], bed, bound, n_bad
 
 
 def find_layer_file(roots, day_seg, frm):
@@ -372,10 +417,14 @@ def main():
                   % (tag, os.path.basename(lfn), err))
             continue
         try:
-            plat, plon, bed, bound = layer_picks(d)
+            plat, plon, bed, bound, n_bad = layer_picks(d)
         except LayerFormatError as err:
             print('  %s: %s unusable (%s)' % (tag, os.path.basename(lfn), err))
             continue
+        if n_bad:
+            print('  WARNING: %s: %d pick(s) put the bottom at or above the '
+                  'surface; dropped as malformed, not as thin ice'
+                  % (tag, n_bad))
         vals = nearest_bed(blat, blon, plat, plon, bed)
         beds[tag] = [None if not np.isfinite(v) else round(float(v), 1)
                      for v in vals]
