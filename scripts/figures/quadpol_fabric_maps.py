@@ -51,8 +51,9 @@ from pyproj import Transformer                         # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import antarctic_basemap as ab                         # noqa: E402
 from scar_style import DATA, INK, MUTED                # noqa: E402
+from scar_style import FIGS  # noqa: E402
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
+OUT = sys.argv[1] if len(sys.argv) > 1 else FIGS
 MODE = sys.argv[2] if len(sys.argv) > 2 else 'principal'
 SITE = sys.argv[3] if len(sys.argv) > 3 else 'ridge_a'
 if MODE not in ('principal', 'gridnorth', 'cross'):
@@ -266,7 +267,7 @@ def main():
 
     sub = {
         'principal': (r'bars: axis $\theta_0$; track colour: '
-                      r'$\Delta\lambda$ per 125-trace block'),
+                      r'$\Delta\lambda$ per ~125 m block'),
         'gridnorth': (r'bars: axis $\theta_0$; track colour: '
                       r'$\Delta\lambda\,\cos 2(\alpha_{\rm gridN}-\theta_0)$ '
                       r'per block'),

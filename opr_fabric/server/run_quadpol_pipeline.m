@@ -75,13 +75,14 @@ end
 % same along-track sampling and can be read against each other cell for
 % cell rather than approximately.
 %
-% OVERRIDABLE, because 125 traces is not a fixed LENGTH. Ridge A traces sit
-% ~1 m apart so a block is ~125 m; the EastGRIP qlook traces are ~9 m apart
-% so the same count is a 1.1 km block, and a whole frame becomes 16 of them.
+% This is only a DEFAULT COUNT, because 125 traces is not a fixed LENGTH.
+% Ridge A traces sit ~1 m apart so a block is ~125 m; EastGRIP's are ~2.8 m
+% and Eastwind's 2.43 m apart, where the same count spans 346 m and 304 m.
 % At a shear margin, where fabric varies over hundreds of metres, that
 % averages genuinely different ice into one block - which depresses dlam and
 % destabilises theta0 exactly as the first EastGRIP validation frame did.
-% Set nblk_tr at the call site to match the block LENGTH, not the count.
+% So unless nblk_tr is set at the call site (which always wins), the count
+% is re-cut from the measured trace spacing further down, for EVERY season.
 if ~exist('nblk_tr', 'var') || isempty(nblk_tr)
   nblk_tr = 125;            % Ridge A's count; ~125 m at ~1 m trace spacing
   nblk_auto = true;
@@ -133,6 +134,132 @@ if qlook_mode
       'neither a polarimetric product nor %s', qfn);
   end
   P = load(qfn, 'Time', 'Surface', 'Latitude', 'Longitude', 'GPS_time');
+  % QLOOK COORDINATES THAT ARE NOT ON THE ICE SHEET are rebuilt from the
+  % season's reference trajectory. The 2024 Greenland qlook products carry
+  % a Latitude/Longitude pair that is not the geographic position of the
+  % traverse: frame 20240619_01_001 reads 0.196..0.229 N, 1.738..1.915 E -
+  % the Gulf of Guinea - where CSARP_reference_trajectory/ref_<seg>.mat
+  % puts the same GPS times at 75.507..75.628 N, -35.967..-35.603 E on
+  % 2700 m of ice, which is EastGRIP. Everything geometric is computed
+  % from these numbers, so using them as shipped is not a cosmetic error:
+  % measured on that frame, the along-track length inflates 3.3x (20.0 km
+  % against a true 6.1 km, so the trace spacing reads 9.07 m instead of
+  % 2.83 m and the auto block length, the stationary cull and the segment
+  % boundaries all scale with it), and because a degree of longitude
+  % subtends 111 km at the equator against 27.6 km at 75.6 N, the track
+  % azimuth comes out 98.8 deg instead of 127.1 - a 28 deg error carried
+  % straight into every theta0_geo this season reports.
+  %
+  % THE TRIGGER IS THE DEFECT, NOT THE PRODUCT FAMILY. Every survey this
+  % code serves is polar, so shipped coordinates that put the frame below
+  % 60 deg of latitude are the failure described above and nothing else.
+  % Gating on qlook_mode instead would block a future qlook season whose
+  % coordinates are correct on a reference trajectory it has no need of.
+  %
+  % THE FRACTION IS TAKEN OVER POSITIONED TRACES ONLY. "Placed somewhere
+  % wrong" and "not placed at all" are different faults with different
+  % owners: an unpositioned trace is the stationary cull's business - it
+  % drops them and reports the count - and a frame that is mostly NaN but
+  % correctly polar where it is located needs no reference trajectory. Only
+  % a frame with no position at all, or whose located traces are mostly
+  % sub-polar, is the defect this rebuild answers.
+  %
+  % Where a rebuild IS required it is an interpolation of the reference
+  % trajectory onto the frame's own GPS_time, and it is NOT optional and
+  % NOT silently skipped: a missing reference file, or a frame whose GPS
+  % times fall outside it by more than RT_TOL_S, errors out, because the
+  % alternative is a product that looks fine and is wrong by tens of
+  % degrees. Inside that tolerance the query time is clamped onto the end
+  % it overhangs rather than being refused, and traces carrying no GPS
+  % time at all are left unpositioned for the stationary cull; both are
+  % argued at the checks themselves.
+  la_qk = P.Latitude(:).'; lo_qk = P.Longitude(:).';
+  POLAR_LAT_MIN = 60;
+  located_qk = isfinite(la_qk) & isfinite(lo_qk);
+  n_located = nnz(located_qk);
+  n_polar = nnz(located_qk & abs(la_qk) >= POLAR_LAT_MIN);
+  if n_located > 0 && n_polar >= 0.5 * n_located
+    fprintf(['shipped qlook coordinates are polar on %d of %d positioned ' ...
+      'traces (%.3f..%.3f N %.3f..%.3f E); kept as shipped\n'], ...
+      n_polar, n_located, min(la_qk(located_qk)), max(la_qk(located_qk)), ...
+      min(lo_qk(located_qk)), max(lo_qk(located_qk)));
+  else
+    if n_located == 0
+      why = sprintf('none of its %d traces carries a position', numel(la_qk));
+    else
+      why = sprintf(['%d of its %d positioned traces sit below %d deg of ' ...
+        'latitude'], n_located - n_polar, n_located, POLAR_LAT_MIN);
+    end
+    ref_fn = fullfile(site_root, 'CSARP_reference_trajectory', ...
+      sprintf('ref_%s.mat', day_seg));
+    if exist(ref_fn, 'file') ~= 2
+      error('run_quadpol_pipeline:noRefTraj', ...
+        ['qlook coordinates are unusable (%s) and %s is missing; the frame ' ...
+        'cannot be positioned'], why, ref_fn);
+    end
+    RT = load(ref_fn, 'gps_time', 'lat', 'lon');
+    [rt_gps, rt_ord] = sort(RT.gps_time(:));
+    rt_lat = RT.lat(:); rt_lat = rt_lat(rt_ord);
+    rt_lon = RT.lon(:); rt_lon = rt_lon(rt_ord);
+    % interp1 rejects repeated sample points outright, so a reference
+    % trajectory that logged one GPS time twice would abort the frame with
+    % a generic grid-vector message instead of one of the checks here.
+    [rt_gps, rt_uniq] = unique(rt_gps, 'stable');
+    rt_lat = rt_lat(rt_uniq); rt_lon = rt_lon(rt_uniq);
+    if numel(rt_gps) < 2
+      error('run_quadpol_pipeline:refTrajShort', ...
+        '%s holds %d distinct GPS times; it cannot position a frame', ...
+        ref_fn, numel(rt_gps));
+    end
+    % THE TOLERANCE IS HONOURED, NOT MERELY TESTED FOR. interp1 returns
+    % NaN outside the reference span, so a frame that starts half a second
+    % before it - inside the slop this check accepts - would pass here and
+    % then abort on the gap test below with a message about a gap that does
+    % not exist. Queries within RT_TOL_S of an end are therefore clamped
+    % onto it: a second of a traverse is under 3 m, and refusing the frame
+    % over it is the outcome the tolerance was written to avoid.
+    %
+    % TRACES WITH NO GPS TIME ARE NOT THE RANGE'S BUSINESS. They cannot be
+    % interpolated and stay NaN, which is the stationary cull's affair as
+    % above; only the timed traces are ranged, and a gap is only a gap
+    % where there was a time to fill it.
+    RT_TOL_S = 1;
+    q_gps = P.GPS_time(:).';
+    q_ok = isfinite(q_gps);
+    if ~any(q_ok)
+      error('run_quadpol_pipeline:refTrajNoGPS', ...
+        ['qlook coordinates are unusable (%s) and no trace carries a GPS ' ...
+        'time, so %s cannot position the frame'], why, ref_fn);
+    end
+    q_min = min(q_gps(q_ok)); q_max = max(q_gps(q_ok));
+    if q_min < rt_gps(1) - RT_TOL_S || q_max > rt_gps(end) + RT_TOL_S
+      error('run_quadpol_pipeline:refTrajRange', ...
+        ['frame GPS times %.1f..%.1f fall outside the reference trajectory ' ...
+        '%.1f..%.1f by more than %g s'], q_min, q_max, rt_gps(1), ...
+        rt_gps(end), RT_TOL_S);
+    end
+    q_cl = min(max(q_gps(q_ok), rt_gps(1)), rt_gps(end));
+    P.Latitude = nan(1, numel(q_gps));
+    P.Longitude = nan(1, numel(q_gps));
+    P.Latitude(q_ok) = interp1(rt_gps, rt_lat, q_cl, 'linear');
+    P.Longitude(q_ok) = interp1(rt_gps, rt_lon, q_cl, 'linear');
+    n_gap = nnz(~isfinite(P.Latitude(q_ok)) | ~isfinite(P.Longitude(q_ok)));
+    if n_gap > 0
+      error('run_quadpol_pipeline:refTrajGap', ...
+        'reference trajectory left %d GPS-timed traces unpositioned', n_gap);
+    end
+    if any(~q_ok)
+      fprintf(['%d of %d traces carry no GPS time and stay unpositioned; ' ...
+        'the stationary cull drops them\n'], nnz(~q_ok), numel(q_gps));
+    end
+    fprintf(['trajectory rebuilt from %s: shipped %.3f..%.3f N %.3f..%.3f E ' ...
+      '-> %.3f..%.3f N %.3f..%.3f E\n'], ...
+      sprintf('ref_%s.mat', day_seg), min(la_qk), max(la_qk), min(lo_qk), ...
+      max(lo_qk), min(P.Latitude), max(P.Latitude), min(P.Longitude), ...
+      max(P.Longitude));
+    clear RT rt_gps rt_lat rt_lon rt_ord rt_uniq q_gps q_ok q_cl why;
+  end
+  clear la_qk lo_qk located_qk;
   % Coregistration defaults, copied from what the Antarctic products
   % recorded (Ridge A frame 20250108_02_009), so both families are aligned
   % by the same tiling and search rather than by whatever a toolbox default
@@ -199,8 +326,47 @@ else
   fprintf('=== %s_%03d ===\n', day_seg, frm);
   surf_t = [];
 end
-fprintf('window rbin %d:%d, tiling Tt %d Tx %d ov %d/%d\n', r0, r1, ...
-  CO.Tt, CO.Tx, CO.overlap_t, CO.overlap_x);
+% --- FIT THE WINDOW TO THE FRAME THAT ACTUALLY EXISTS.
+% The window and the coregistration tiling are both read from the product
+% and on short frames both can exceed it, which cost 21 of the 61 frames
+% in the 20 Aug Antarctic run. The window is settled here because r0/r1
+% are needed to read Data at all; the tiling waits for section 2c, where
+% the trace axis is final.
+%
+% The channel sizes are taken from the file headers rather than by
+% loading, so this costs nothing on the frames where it changes nothing.
+navail = inf;
+for k = 1:4
+  fnk = fullfile(site_root, sprintf(CHAN_DIR, upper(CHAN{k})), day_seg, name);
+  if exist(fnk, 'file') ~= 2
+    error('run_quadpol_pipeline:missing', 'missing %s channel', CHAN{k});
+  end
+  wi = whos('-file', fnk, 'Data');
+  if ~isempty(wi) && numel(wi(1).size) >= 2
+    navail = min(navail, wi(1).size(1));
+  end
+end
+% (1) RANGE. The thin-ice seasons (Eastwind, McMurdo: 200-300 m of ice)
+% record a max_rbin from a deeper configuration than their own data - e.g.
+% 20240202_01_001 asks for 11000 samples and holds 4151. Clamping keeps
+% every sample that exists instead of discarding a 19 km line over a
+% bookkeeping mismatch; only a window starting past the end is fatal.
+if isfinite(navail) && r0 >= navail
+  error('run_quadpol_pipeline:window', ...
+    'window starts at %d but only %d samples exist', r0, navail);
+end
+if isfinite(navail) && r1 > navail
+  warning('run_quadpol_pipeline:windowClamped', ...
+    'recorded window %d:%d exceeds the %d samples present; clamped to %d:%d', ...
+    r0, r1, navail, r0, navail);
+  r1 = navail;
+end
+% (2) ALONG TRACK is fitted further down, once the trace axis is final:
+% the tiling has to match the traces coregistration is actually handed,
+% and in qlook mode the stationary cull below removes about a third of
+% them. Only the range clamp can be settled here, because r0/r1 are
+% needed to read Data at all.
+fprintf('window rbin %d:%d\n', r0, r1);
 
 S = struct();
 for k = 1:4
@@ -260,17 +426,43 @@ if qlook_mode
   for k = 1:4, S.(CHAN{k}) = S.(CHAN{k})(:, keep_tr); end
   P.Latitude = la_all(keep_tr); P.Longitude = lo_all(keep_tr);
   Nx = nnz(keep_tr);
-  if nblk_auto
-    % Match the block LENGTH to Ridge A's ~125 m, not its trace count: at
-    % this season's ~9 m spacing 125 traces is a 1.1 km block, which
-    % averages genuinely different ice at a shear margin (the first
-    % validation frame: block-to-block dlam spread 7.2x vs Ridge A's 1.1x).
-    sp = step(keep_tr); sp = median(sp(isfinite(sp) & sp < 100));
-    NBLK_TR = max(8, round(125 / max(sp, 0.5)));
-    fprintf('qlook block size: %d traces (~%.0f m at %.1f m spacing)\n', ...
-      NBLK_TR, NBLK_TR * sp, sp);
-  end
 end
+
+%% 2c. FIT THE TILING TO THE TRACE AXIS COREGISTRATION WILL ACTUALLY SEE.
+% coregistration() interpolates its per-tile offsets and needs at least
+% FOUR tiles along track, i.e. 3*(Tx - overlap_x) + Tx <= Nx. That
+% threshold is measured, not assumed: on this survey 773-trace frames
+% coregister and 744-trace ones die indexing row_offset_full, and
+% 3*151 + 301 = 754 falls exactly between them. Short frames therefore get
+% a proportionally finer tiling - more, smaller tiles - rather than
+% failing. Frames that already satisfy the condition are untouched, so
+% every previously-processed frame is bit-identical.
+%
+% THIS RUNS AFTER THE CULL, and must. The count that matters is the width
+% of the S handed to ptt.coregisterChannels, not the width recorded in the
+% channel file headers: the cull above drops about a third of the EastGRIP
+% traces, so a raw 900-trace qlook frame clears 754 on its header and then
+% arrives at coregistration with ~600 - precisely the failure this guard
+% exists to prevent. Outside qlook mode there is no cull and the two counts
+% are the same, which is why the Antarctic run never exposed the gap.
+need_x = 3*(CO.Tx - CO.overlap_x) + CO.Tx;
+if Nx < need_x
+  Tx0 = CO.Tx; ov0 = CO.overlap_x;
+  while (3*(CO.Tx - CO.overlap_x) + CO.Tx) > Nx && CO.Tx > 16
+    CO.Tx = floor(CO.Tx * 0.9);
+    CO.overlap_x = floor(CO.Tx / 2);
+  end
+  if (3*(CO.Tx - CO.overlap_x) + CO.Tx) > Nx
+    error('run_quadpol_pipeline:tooShort', ...
+      ['%d traces cannot carry four coregistration tiles even at the ' ...
+      'minimum tile width; frame is too short to coregister'], Nx);
+  end
+  warning('run_quadpol_pipeline:tilingAdapted', ...
+    ['%d traces is short for tiling Tx %d ov %d (needs %d); adapted to ' ...
+    'Tx %d ov %d'], Nx, Tx0, ov0, need_x, CO.Tx, CO.overlap_x);
+end
+fprintf('tiling Tt %d Tx %d ov %d/%d over %d traces\n', CO.Tt, CO.Tx, ...
+  CO.overlap_t, CO.overlap_x, Nx);
 
 %% depth axis
 C0 = 299792458; C_ICE = C0/sqrt(3.171);
@@ -283,11 +475,74 @@ z = (Tv(:) - st) * C_ICE / 2;
 keep = z >= 0 & z <= Z_MAX;
 for k = 1:4, S.(CHAN{k}) = S.(CHAN{k})(keep, :); end
 z = z(keep);
+% The reporting band is clamped to the record that actually exists. The
+% fixed 200-1200 m was written for the deep Antarctic sites; at the thin-ice
+% seasons it reaches past the end of the sounding - Eastwind holds 561 m and
+% McMurdo 998 - so every console figure quoted from it was averaging in
+% depths the frame does not have. The saved arrays and the figures carry
+% their own per-site bands, but this one is not report-only: `band` also
+% selects the samples the before/after coregistration coherences are
+% measured over, and those are saved into res. So it is clamped at BOTH
+% ends - a record shallower than the 200 m floor would otherwise leave the
+% band empty and write NaN coherences without a word - and a record that
+% cannot carry any band at all is an error rather than a page of NaN.
+z_band_asked = Z_BAND;
+if z(end) < Z_BAND(2), Z_BAND(2) = z(end); end
+if Z_BAND(1) >= Z_BAND(2), Z_BAND(1) = z(1); end
+if ~isequal(Z_BAND, z_band_asked)
+  fprintf('report band %.0f-%.0f m clamped to the record: %.0f-%.0f m\n', ...
+    z_band_asked(1), z_band_asked(2), Z_BAND(1), Z_BAND(2));
+end
 band = z > Z_BAND(1) & z < Z_BAND(2);
+if ~any(band)
+  error('run_quadpol_pipeline:reportBand', ...
+    ['the %.0f..%.0f m record holds no sample inside the reporting band ' ...
+    '%.0f-%.0f m; every coherence and reported figure would be NaN'], ...
+    z(1), z(end), Z_BAND(1), Z_BAND(2));
+end
 kr = ones(NRW,1)/NRW;
 % Positions, needed by the section loop below as well as by the reporting,
 % so they are defined once here rather than after the first use.
 la = P.Latitude(:); lo = P.Longitude(:);
+
+% --- BLOCK SIZE IS A LENGTH, AND IS SET FOR EVERY SEASON.
+% A section block must cover the same ice everywhere or block-level
+% quantities are not comparable between surveys. 125 traces is ~125 m only
+% where traces sit ~1 m apart; this sizing used to run in qlook mode alone,
+% so EastGRIP was corrected to 122 m while EASTWIND - an Antarctic season
+% at 2.43 m spacing - silently kept 125 traces and produced 304 m blocks,
+% 2.4x every other site, which is exactly the lateral averaging the
+% segmented pass exists to avoid. Deriving it from the measured spacing
+% covers both paths with one rule; an explicit nblk_tr at the call site
+% still wins.
+BLK_TARGET_M = 125;      % Ridge A's block, the length every site matches
+BLK_TOL = 0.25;          % how far off before it is worth re-cutting
+if nblk_auto
+  R_E = 6371000;
+  dph_s = deg2rad(diff(la(:)));
+  dlo_s = deg2rad(diff(lo(:)));
+  aa_s = sin(dph_s/2).^2 ...
+    + cos(deg2rad(la(1:end-1))) .* cos(deg2rad(la(2:end))) .* sin(dlo_s/2).^2;
+  sp = 2 * R_E * asin(min(1, sqrt(aa_s)));
+  sp = median(sp(isfinite(sp) & sp > 0 & sp < 100));
+  % Only RE-CUT when the default count spans materially the wrong length.
+  % Without the tolerance this rounds 125 to 126 at every ~1 m site - the
+  % measured spacing is 0.996 m, not exactly 1 - which would rewrite the
+  % block boundaries of 107 of 130 finished frames to move a block by one
+  % metre. That is churn, not a correction: it would invalidate the Ridge A
+  % control and the Thwaites dose-response to no purpose. A quarter is wide
+  % enough to leave every ~1 m season exactly as it was and still catch
+  % Eastwind's 304 m and EastGRIP's 346 m.
+  if isfinite(sp) && sp > 0 && abs(nblk_tr*sp - BLK_TARGET_M) > BLK_TOL*BLK_TARGET_M
+    NBLK_TR = max(8, round(BLK_TARGET_M / max(sp, 0.5)));
+    fprintf(['block size RE-CUT: %d traces (~%.0f m at %.2f m spacing); ' ...
+      'the default %d would span %.0f m\n'], NBLK_TR, NBLK_TR*sp, sp, ...
+      nblk_tr, nblk_tr*sp);
+  elseif isfinite(sp) && sp > 0
+    fprintf('block size: %d traces (~%.0f m at %.2f m spacing)\n', ...
+      NBLK_TR, NBLK_TR * sp, sp);
+  end
+end
 fprintf('depth window %.0f..%.0f m (%d samples)\n', z(1), z(end), numel(z));
 
 %% 3. coregistration, or the cache of a previous run
@@ -301,18 +556,28 @@ cache_fn = fullfile(out_dir, 'coreg_cache', ...
 from_cache = false;
 if exist(cache_fn, 'file') == 2
   try
-    % Nx (the post-cull trace count) is part of the key so a changed cull
-    % rule can never reuse a cache whose trace axis no longer matches the
-    % freshly culled coordinates. Caches written before the field existed
-    % lack it; a MISSING Nx counts as valid when everything else matches,
-    % so the existing Antarctic and EastGRIP caches are not invalidated.
-    if ismember('Nx', who('-file', cache_fn))
-      cq = load(cache_fn, 'z', 'CO', 'r0', 'r1', 'Nx');
-      nx_ok = isequal(double(cq.Nx), double(Nx));
-    else
-      cq = load(cache_fn, 'z', 'CO', 'r0', 'r1');
-      nx_ok = true;
+    % The post-cull trace count is part of the key, so a changed cull rule
+    % can never reuse a cache whose trace axis no longer matches the
+    % freshly culled coordinates. It is read from the CACHED CHANNEL
+    % ITSELF rather than from a stored Nx field: the array's own second
+    % dimension is the trace axis the cache actually has, it exists in
+    % every cache ever written, and it cannot drift from the data the way
+    % a separately-saved scalar can. The earlier stored-field version had
+    % a compatibility escape hatch - a missing Nx counted as valid - and
+    % that hatch is exactly what let a 2058-trace EastGRIP cache load
+    % against a corrected 2055-trace cull, indexing past the coordinate
+    % arrays inside the frame pass. Nx is still written for provenance.
+    cq = load(cache_fn, 'z', 'CO', 'r0', 'r1');
+    cache_nx = NaN;
+    try
+      wi = whos('-file', cache_fn, 'hh');
+      if ~isempty(wi) && numel(wi(1).size) >= 2
+        cache_nx = wi(1).size(2);
+      end
+    catch
+      cache_nx = NaN;
     end
+    nx_ok = isfinite(cache_nx) && isequal(double(cache_nx), double(Nx));
     if isequal(cq.CO, CO) && cq.r0 == r0 && cq.r1 == r1 && nx_ok ...
         && numel(cq.z) == numel(z) && max(abs(cq.z(:) - z(:))) < 1e-6
       cq = load(cache_fn, 'hh', 'vv', 'hv', 'vh');
@@ -476,17 +741,23 @@ end
 okt = isfinite(th_geo_raw);
 % Blocks inherit the ANTENNA-frame pedestal (an instrument constant, so it
 % is the same in every block's own frame) and their segment's geographic
-% axis through ptt.thetaProfileAt below.
-if all(isfinite(ped_ant))
-  blk_ped = ped_ant;
-else
+% axis through ptt.thetaProfileAt below. A frame whose pedestal fit did not
+% converge carries the marker instead of a measurement, and the marker is
+% finite, so the test is ptt.pedestalFailed and not isfinite: anchoring the
+% blocks to it would fit every block at a pedestal of exactly zero on
+% precisely the degraded frames the fallback exists for. Those frames drop
+% to 'frame', where each block estimates its own.
+if ptt.pedestalFailed(ped_ant)
   blk_ped = 'frame';
+else
+  blk_ped = ped_ant;
 end
 fprintf(['LS frame pass %.1f min (%s, heading p95 spread %.1f deg): ' ...
-  'theta0 constrained on %d of %d windows, pedestal [%.3f %+.3fi %.3f], ' ...
+  'theta0 constrained on %d of %d windows, pedestal [%.3f %+.3fi %.3f]%s, ' ...
   '%d segment(s) of ~%.1f km\n'], ...
   toc(t0)/60, H_tag(curved, 'GEOGRAPHIC frame', 'antenna frame'), hspread, ...
   nnz(okt), numel(th_geo_raw), ped_ant(1), ped_ant(2), ped_ant(3), ...
+  H_tag(ischar(blk_ped), ' (FAILED marker; blocks fit their own)', ''), ...
   fp.nseg, (x_along(end) - x_along(1)) / max(fp.nseg, 1) / 1000);
 
 %% 4b. the SECTION: both estimators, per along-track block

@@ -232,8 +232,10 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     the window - which is the mistake behind the retracted result in
     03d292e, where the inversion ran on channels coregistration never
     touched. ~71 min on a 6601 x 4346 frame the first time; reruns load
-    the coreg_cache (keyed to the product's window and tiling settings)
-    and take minutes. `coreg_only = true` stops after building the cache,
+    the coreg_cache (keyed to the product's window and tiling settings
+    and to the cached array's OWN trace count, so a changed cull rule
+    cannot reuse a cache whose trace axis no longer matches) and take
+    minutes. `coreg_only = true` stops after building the cache,
     and the 2022/2023 seasons - which shipped the polarimetric product
     only in its SNAPHU-unwrapped form - fall back to
     `CSARP_polarimetric_unwrap` for the window and coregistration
@@ -270,14 +272,41 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     leading-edge surface pick (the `negis_interferogram.m` rule) plus
     `z_max`, a stationary-trace cull BEFORE any block geometry, and a
     loud error on a real-valued channel (segment 20240618_01 is a
-    real-only setup day). Antarctic behavior is unchanged. The LS dlam
+    real-only setup day). Antarctic behavior is unchanged.
+    Shipped coordinates that place the frame OFF THE ICE SHEET (below
+    60 deg of latitude on most of its positioned traces - the 2024
+    Greenland qlook products put the traverse in the Gulf of Guinea) are
+    rebuilt by interpolating `CSARP_reference_trajectory/ref_<seg>.mat`
+    onto the frame's own GPS times, because along-track distance and
+    track azimuth - hence block geometry and every `theta0_geo` - are
+    computed from them. The rebuild is not optional: a missing reference,
+    or one a frame overhangs by more than the one-second tolerance the
+    range check accepts, errors the frame rather than positioning it
+    wrongly - inside that tolerance the query is clamped onto the end, so
+    a second of slop cannot abort a frame on a gap that does not exist.
+    The trigger is the defect, not the product family, so a qlook season
+    whose coordinates are sound is left alone.
+    The RANGE WINDOW and the coregistration TILING are both fitted to
+    the frame that exists: a recorded `max_rbin` past the end of the
+    data is clamped (the thin-ice seasons record windows from deeper
+    configurations, and one 19 km line was being discarded over it), and
+    a frame too short to carry the four along-track tiles
+    `coregistration` needs gets a proportionally finer tiling instead of
+    failing. The tiling is fitted AFTER the cull, on the trace count
+    coregistration is actually handed; frames that already satisfy the
+    condition are untouched and bit-identical. The LS dlam
     search ceiling is site-aware and overridable per run via `dlam_max`:
     the estimator default 0.25 for the Antarctic sites, 0.45 in qlook
     mode because the EGRIP contrast (~0.3) sits above the default cap
     (`test/test_egrip_cap.m` pins both sides). `nblk_tr` is likewise
-    overridable, and qlook mode auto-defaults it to Ridge A's ~125 m
-    block LENGTH from the measured trace spacing, because 125 TRACES at
-    this season's ~9 m spacing would be a 1.1 km block.
+    overridable, and EVERY season auto-defaults it to Ridge A's ~125 m
+    block LENGTH from the measured trace spacing, not to a trace count:
+    125 TRACES is 125 m only where traces sit ~1 m apart, so at
+    EastGRIP's ~2.8 m and Eastwind's 2.43 m spacing it would average
+    over 2-3x the ice every other site does, which block-level
+    comparisons between surveys cannot survive. The re-cut carries a
+    25% length tolerance so the ~1 m seasons keep the exact block
+    boundaries their finished frames were cut on.
   - `run_season_*.m` over `run_season_frame.m` - declarative per-season
     fact sheets for that pipeline: each season script declares what is
     different about its acquisition (site root, plus the overrides
@@ -301,18 +330,17 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     starting only after every currently running batch has gone fully
     quiet; its header carries the launch line.
   - `egrip_chain.sh` - the EastGRIP season driver for the pipeline's
-    qlook mode: revalidates one frame with the raised dlam ceiling,
-    gates on its LS residuals (median resid < 0.40 AND finite fraction
-    > 0.60 over 300-1100 m), and only past the gate batches every
-    complex frame of the season with the same idempotent lock/retry
-    discipline as the other drivers. The gate stopping the batch is the
-    feature: a failing estimator must not burn days of compute. The
-    revalidated frame currently stops there (resid 0.476 with the
-    segmented frame pass, from 0.485 pooled, with dlam 0.229 - the
-    honest domain median - and the finite fraction recovered), so the
-    season is deliberately unbatched: the remaining residual floor is
-    un-modeled site physics/calibration (the chan_equal family), a
-    separate decision from the frame pass.
+    qlook mode: gates on the already-revalidated section of the
+    validation frame, and only past the gate batches every complex frame
+    of the season with the same idempotent lock/retry discipline as the
+    other drivers. The gate stopping the batch is the feature: a failing
+    estimator must not burn days of compute. What it gates on was
+    re-stated once the residual floor was diagnosed as the 2psi
+    chan_equal-family calibration signature rather than an estimator
+    failure - finite fraction > 0.60 AND block self-consistency (median
+    adjacent-block dlam step < 0.05) over 300-1100 m, with the residual
+    RECORDED as the documented site floor instead of gated on. The
+    script's header carries the measured values behind that decision.
   - `extract_sweep_egrip.m` - pulls the measured C(psi,z) and P(psi,z)
     azimuth sweeps for that validation frame, for exactly that open
     diagnosis: the suspect is anisotropic reflectivity from the EGRIP

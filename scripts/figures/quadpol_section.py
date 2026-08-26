@@ -1,14 +1,15 @@
 """Quad-pol fabric section along one profile, beside the co-polarized one.
 
-run_quadpol_pipeline.m inverts each 125-trace block of a coregistered
-quad-pol frame with ptt.ershadiFabric and ptt.quadpolFabricLS, giving dlam
-and theta as functions of BOTH depth and along-track distance. 125 traces
-is what run_sections.m uses for the co-polarized Ridge A section, so the
-two are sampled the same way along track and can be read against each
-other cell for cell. When the LS fields are present the figure adds a
-third row - the LS coherence-field fit above the published direct chain,
-on a shared color scale; older .mat files without them still draw the
-two-row layout.
+run_quadpol_pipeline.m inverts each ~125 m along-track block of a
+coregistered quad-pol frame with ptt.ershadiFabric and ptt.quadpolFabricLS,
+giving dlam and theta as functions of BOTH depth and along-track distance.
+The block is a LENGTH, re-cut per season from the measured trace spacing,
+and 125 m is what run_sections.m's 125 traces span on the co-polarized
+Ridge A section, so the two are sampled the same way along track and can be
+read against each other cell for cell. When the LS fields are present the
+figure adds a third row - the LS coherence-field fit above the published
+direct chain, on a shared color scale; older .mat files without them still
+draw the two-row layout.
 
 WHAT THE TWO SECTIONS ARE NOT. They do not measure the same quantity, and
 drawing them side by side without saying so would invite reading the
@@ -47,8 +48,9 @@ from scipy.io import loadmat             # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scar_style import DATA, INK, MUTED, cumdist_km, field  # noqa: E402
+from scar_style import FIGS  # noqa: E402
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
+OUT = sys.argv[1] if len(sys.argv) > 1 else FIGS
 TAG = sys.argv[2] if len(sys.argv) > 2 else '20250108_02_009'
 # run_quadpol_pipeline.m writes this one; run_quadpol_frame.m writes
 # quadpol_<tag>.mat, which is a different layout read by

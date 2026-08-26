@@ -1,11 +1,20 @@
-%TEST_EGRIP_BLOCKS Why 1.1 km blocks fail on EastGRIP, and what size works.
+%TEST_EGRIP_BLOCKS Why long blocks fail on EastGRIP, and what size works.
 %
 % The first EastGRIP validation frame (20240619_01_001) inverted end to end
 % but failed internally: block-to-block dlam spread 7.2x against Ridge A's
 % 1.1x, resid 0.60 against 0.21, |C_hhvv| 0.17 against 0.42. The suspect is
 % the along-track block: 125 traces is ~125 m at Ridge A's ~1 m trace
-% spacing but ~1.1 km at EastGRIP's ~9 m, and EastGRIP's fabric is strong
+% spacing but ~346 m at EastGRIP's 2.83 m, and EastGRIP's fabric is strong
 % (EGRIP core: horizontal eigenvalue difference ~0.2-0.35).
+%
+% WHERE THE SPACING NUMBERS COME FROM. This test was written against the
+% season's shipped qlook coordinates, which place the traverse in the Gulf
+% of Guinea and inflate along-track distance 3.3x: they imply ~9 m per
+% trace, so 125 traces looked like ~1.1 km. The CSARP_reference_trajectory
+% rebuild puts the true spacing at 2.83 m, so the real over-long block is
+% ~346 m - 2.8x Ridge A's block, not 8.8x. The synthetic below still runs
+% the 9 m geometry it was built on, so it drives the mechanism at an
+% EXAGGERATED block length (1.1 km) rather than at the season's actual one.
 %
 % THE MECHANISM BEING TESTED, which is sharper than "lateral averaging":
 % pooling traces whose birefringent phase ramps differ by ddlam builds a
@@ -18,8 +27,9 @@
 % scale with 1/(dlam variation), which in practice means: strong-fabric
 % sites need Ridge A LENGTH, not Ridge A trace count.
 %
-% Synthetic: EastGRIP-like column (dlam ramping 0.25 -> 0.35 along 4.5 km,
-% axis fixed, 9 m trace spacing so traces are independent speckle), the
+% Synthetic: EastGRIP-like column - the site's fabric strength on the 9 m
+% geometry noted above (dlam ramping 0.25 -> 0.35 along 4.5 km, axis fixed,
+% 9 m trace spacing so traces are independent speckle), the
 % test_quadpol_ls pedestal (correlated + decorrelated parts) and noise at
 % the level that gives a realistic coherence floor. The full pipeline
 % two-pass is mimicked exactly: frame-level theta0 + pedestal, then
@@ -38,8 +48,9 @@
 % dlam CAP - the actual EastGRIP culprit - is guarded separately by
 % test_egrip_cap.m; the cap is raised here so it cannot mask the ramp.)
 %
-% PASS =  125-trace blocks fail on the ramp AND 14-trace blocks fail the
-%         same way while the frame pass is dead.
+% PASS =  125-trace blocks (1125 m at this synthetic's 9 m spacing) fail on
+%         the ramp AND 14-trace blocks fail the same way while the frame
+%         pass is dead.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_egrip_blocks.m')"
 clear;

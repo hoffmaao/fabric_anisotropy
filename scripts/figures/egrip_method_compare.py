@@ -80,12 +80,13 @@ import matplotlib.pyplot as plt          # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scar_style import DATA, INK, MUTED  # noqa: E402
+from scar_style import FIGS  # noqa: E402
 from egrip_azimuthal import (BANDS, EG_LAT, EG_LON, FLOW_AZ,  # noqa: E402
                              P_BOUND, RADIUS_KM, band_estimates, core_table,
                              haversine_km, solve_band, solve_bands,
                              stage_lines)
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
+OUT = sys.argv[1] if len(sys.argv) > 1 else FIGS
 ZFN = os.path.join(DATA, 'egrip_zeising.mat')
 IFN = os.path.join(DATA, 'egrip_inversion.mat')
 

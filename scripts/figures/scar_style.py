@@ -36,6 +36,18 @@ from matplotlib.colors import hsv_to_rgb
 # mirrored products rather than in the repo.
 DATA = os.path.expanduser(os.environ.get('SCAR_DATA', '~/data/opr/scar'))
 
+# Outputs are data too, and are gitignored for the same reason - but they
+# belong beside the code that made them, so they land in the repository's
+# own figs/ rather than in a directory outside the tree. Resolved from this
+# file's location so a script run from anywhere writes to the same place,
+# and created on import so savefig never fails on a missing directory.
+# Override per run with a script's <out_dir> argument, or globally with
+# FABRIC_FIGS.
+FIGS = os.environ.get('FABRIC_FIGS') or os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..',
+                 'figs'))
+os.makedirs(FIGS, exist_ok=True)
+
 FIGSIZE = (13.0, 5.8)
 DPI = 200
 

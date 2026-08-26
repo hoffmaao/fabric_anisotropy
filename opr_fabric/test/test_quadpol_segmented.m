@@ -107,7 +107,10 @@ for ci = 1:size(cases, 1)
   % gate b reproduces the documented failure (the q-weighted smoothing of
   % fp.th_frame bridges this synthetic ramp and would hide it); the NEW
   % path takes both from the segmented pass (fp.ped_ant may be
-  % segment-derived)
+  % segment-derived). ped_old is raw quadpolFabricLS output, NaN when it
+  % fails; ped_new is the frame-pass field that carries
+  % ptt.pedestalMarker() instead, which is finite - so it is gated by the
+  % predicate, exactly as the pipeline gates blk_ped.
   ped_old = fp.lsq.pedestal;
   ped_new = fp.ped_ant;
   nblk = floor(Nx / NBLK);
@@ -124,7 +127,7 @@ for ci = 1:size(cases, 1)
     m = ob.zw > 300 & ob.zw < 1100;
     dl_old(b) = median(ob.dlam(m), 'omitnan');
     o = BOPTS;
-    if all(isfinite(ped_new)), o.pedestal = ped_new; end
+    if ~ptt.pedestalFailed(ped_new), o.pedestal = ped_new; end
     o.theta0 = ptt.thetaProfileAt(fp, xb);   % geographic; heading 0
     ob = ptt.quadpolFabricLS(Sb, z, o);
     dl_new(b) = median(ob.dlam(m), 'omitnan');
