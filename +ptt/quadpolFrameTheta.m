@@ -11,7 +11,8 @@ function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 %
 % WHY. The two-pass design's single point of failure is the frame pass
 % pooling every trace into one theta0(z) handoff: an along-frame change in
-% the fabric (EastGRIP's 19.9 km frame crosses a shear margin mid-way)
+% the fabric (EastGRIP's 6.1 km frame crosses a shear margin mid-way -
+% 19.9 km before the pipeline rebuilt that season's trajectory)
 % decoheres the pooled fit, and every block then inherits its garbage
 % (test_egrip_blocks.m pins this: a 0.10 along-frame dlam ramp kills the
 % frame pass by ~100 m depth and NO block size rescues the section,
@@ -74,7 +75,14 @@ function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 %   resid_seg [Nw x Nseg]
 %   seg_x     [1 x Nseg] segment centres in x_along coordinates
 %   seg_n     [1 x Nseg] traces per segment
-%   nseg, curved, hspread, ped_ant ([1 x 3]), track_az,
+%   nseg, curved, hspread, track_az
+%   ped_ant   [1 x 3] antenna-frame pedestal. ptt.pedestalMarker() -
+%             exactly [0 0 0] - MARKS a frame whose pedestal fit did not
+%             converge, whose segments were then fitted without one; it is
+%             an audit marker to drop, never a measurement (a real fit
+%             never lands on exact zeros). Consumers test it with
+%             ptt.pedestalFailed rather than for finiteness, which the
+%             marker passes.
 %   lsq       the frame-pass LS output (report/save compatibility)
 %
 % The per-block handoff belongs to ptt.thetaProfileAt(fp, x), which
@@ -124,6 +132,23 @@ PSI_FIT = (0:PSI_STEP_SEG:180-PSI_STEP_SEG) * pi/180;
 if ~curved
   lsq = ptt.quadpolFabricLS(T, z, base);
   ped_ant = lsq.pedestal;
+  % The frame-mode pedestal is NaN whenever fewer than five windows gave a
+  % finite coefficient - and quadpolFabricLS still returns a populated
+  % theta0 in that case, so the frame pass looks healthy. Left unguarded a
+  % NaN pedestal would enter H_ped_field, poison every segment's coherence
+  % field, kill every segment fit on the MIN_SEG_W test, and drop the whole
+  % pass back onto the frame profile: nseg > 1 and ls_theta_seg populated,
+  % yet bit-identical to the pooled handoff. That silent no-op would hit
+  % exactly the degraded frames segmentation exists for, so it is guarded
+  % here as it already is on the curved branch. The substituted EXACT zeros
+  % are the audit signal - a real fit never lands on them - and the warning
+  % puts it in the frame log.
+  if ptt.pedestalFailed(ped_ant)
+    warning('ptt:quadpolFrameTheta:pedestalFailed', ...
+      ['frame pedestal did not converge; segments fit with a zero ' ...
+      'pedestal (saved ls_pedestal is exactly [0 0 0] to mark it)']);
+    ped_ant = ptt.pedestalMarker();
+  end
   th_geo_raw = lsq.theta0 + deg2rad(track_az);
 else
   % antenna-frame single pass: theta/dlam are junk on a curve, but the
@@ -132,7 +157,7 @@ else
   oa = base; oa.pedestal = 'window';
   lsa = ptt.quadpolFabricLS(T, z, oa);
   ped_ant = lsa.pedestal;
-  if ~all(isfinite(ped_ant)), ped_ant = [0 0 0]; end
+  if ptt.pedestalFailed(ped_ant), ped_ant = ptt.pedestalMarker(); end
   Mg = H_geo_moments(T, az_tr, 1:Nx, NBLK_ROT, CHAN);
   og = segbase;
   og.pedestal = H_ped_field(ped_ant, az_tr, 1:Nx, PSI_FIT);

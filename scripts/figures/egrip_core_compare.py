@@ -42,10 +42,11 @@ import matplotlib.pyplot as plt          # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scar_style import INK, MUTED         # noqa: E402
+from scar_style import FIGS  # noqa: E402
 from egrip_azimuthal import (BANDS, RADIUS_KM, core_table,  # noqa: E402
                              solve_bands, stage_lines)
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
+OUT = sys.argv[1] if len(sys.argv) > 1 else FIGS
 # validated categorical slots 1-3 (dataviz reference palette, light mode)
 C_E = ['#2a78d6', '#eb6834', '#1baf7a']
 C_RAD = '#4a3aa7'

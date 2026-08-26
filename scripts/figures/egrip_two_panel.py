@@ -43,10 +43,11 @@ import cartopy.crs as ccrs               # noqa: E402
 import scar_style as sty                 # noqa: E402
 from scar_style import (DPI, PROFILE_C, PROFILE_FX,  # noqa: E402
                         PROFILE_LW, SPEED_CB_LABEL, TRACK_C, cumdist_km)
+from scar_style import FIGS  # noqa: E402
 from egrip_azimuthal import (C_ICE, DATA, EG_LAT, EG_LON,  # noqa: E402
                              haversine_km, load_line)
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
+OUT = sys.argv[1] if len(sys.argv) > 1 else FIGS
 FRAME = '20240619_01_001'
 CAMP_SEG = '20240618_01'
 CAMP_TOL_KM = 1.0        # centroid-vs-constant disagreement worth reporting
