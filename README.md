@@ -1,17 +1,12 @@
 # fabric_anisotropy
 
-Inferring ice crystal orientation fabric from polarimetric radar traveltimes,
-implementing the theory of Rathmann (2026), "Inferring glacier ice-crystal
-orientation fabrics from oblique polarimetric radar" (Proc. R. Soc. A,
-RSPA-2026-0001; reference Python code: https://github.com/nicholasmr/ptt).
-Target application: polarimetric data from the CReSIS ground-based
-accumulation radar.
+To Infer ice crystal orientation fabric from polarimetric radar traveltime and refelctivity, we implement the theory of Rathmann (2026), "Inferring glacier ice-crystal orientation fabrics from oblique polarimetric radar" (Proc. R. Soc. A, RSPA-2026-0001; reference Python code: https://github.com/nicholasmr/ptt) and Ershadi (2022) and use these methods to interpret polarimetric data from the CReSIS ground-based accumulation radar.
 
 ## Layout
 
 | path | what it holds |
 |---|---|
-| `+ptt/` | the method: column physics, the CMP and common-offset inversions, and the interferometric and quad-pol estimator chain |
+| `+ptt/` | the method: column physics, CMP and common-offset inversions, and interferometric and quad-pol estimator chain |
 | `opr_fabric/` | a drop-in OPR processing module plus the server drivers and the MATLAB test suite |
 | `scripts/` | synthetic validations, batch drivers, and the figure scripts |
 | `docs/` | reference detail (below) |
@@ -19,11 +14,8 @@ accumulation radar.
 
 Two reference pages carry the detail that used to live in this file:
 
-- [`docs/method.md`](docs/method.md) - every `+ptt` function, what it
-  models, and the reasoning behind the choices. Each function also has a
-  full header of its own (`help ptt.<name>`).
-- [`docs/scripts.md`](docs/scripts.md) - every script and figure, what it
-  validates or produces, and where its inputs come from.
+- [`docs/method.md`](docs/method.md) - every `+ptt` function, and choice that informed the fabric algorthim. Each function also has a full header of its own (`help ptt.<name>`).
+- [`docs/scripts.md`](docs/scripts.md) - every script and figure, with information on what it validates or produces, and where its inputs come from.
 
 ## Data and figures
 
