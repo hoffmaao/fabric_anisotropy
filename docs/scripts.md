@@ -39,10 +39,22 @@ its locks and write its fail markers in the LIVE tree while MATLAB, on the
 same `+ptt` anchor, wrote products into the test tree. A launcher copied out
 of the repo has no `+ptt` above it and is its own work root.
 
-`FABRIC_ROOT` overrides the product root on **both** sides, moves neither
-the code nor the workers, and on both sides must name a directory that
-exists - it is rejected rather than created, because a typo that is created
-on first write quietly collects the products.
+`FABRIC_ROOT` overrides the product root on **both** sides and moves neither
+the code nor the workers. It **picks the candidate; it does not exempt it**:
+a work root is a work root by the same test however it was obtained, so the
+override goes through the identical checks the derived value does - exists,
+can be entered, resolved to an absolute path, and (in the shell) holds
+`stages/`. An override is more likely to be wrong than a derived path, not
+less: `FABRIC_ROOT=$HOME`, or a path off by one component, is a typo nothing
+else would catch. It is rejected rather than created, because a typo that is
+created on first write quietly collects the products. A relative value
+resolves against the working directory on both sides.
+
+Every failure is loud on both sides - the shell returns non-zero so the
+launchers' `|| exit 1` fires, and MATLAB errors. Neither can hand back an
+empty path: `set -u` does not catch a set-but-empty variable, and an empty
+`$FAB` would resolve every path against `/`, miss every skip-if-cached
+check, and recompute the survey.
 
 The one deliberate difference: MATLAB creates `stages/` under its own output
 root, so `fabric_paths.m` does not require it to pre-exist, while the

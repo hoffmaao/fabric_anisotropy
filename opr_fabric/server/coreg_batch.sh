@@ -16,7 +16,7 @@ set -u
 # Workers come from this script's own directory, <work> from the walk in
 # fabric_paths.sh. FABRIC_ROOT overrides <work> only. No username is baked
 # in, and nothing has to be deployed anywhere.
-FAB_DIR=$(cd "$(dirname "$0")" && pwd)
+FAB_DIR=$(cd "$(dirname "$0")" && pwd) || exit 1
 . "$FAB_DIR/fabric_paths.sh"
 FAB=$(fabric_work_root "$FAB_DIR") || exit 1
 site=${1:?usage: coreg_batch.sh <site> [K]}

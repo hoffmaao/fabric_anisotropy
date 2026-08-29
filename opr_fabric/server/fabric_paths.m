@@ -43,13 +43,25 @@ function [code_root, work_root] = fabric_paths()
 % for a layout whose products do not sit beside the code. code_root always
 % comes from this file, so callers must take it from here rather than
 % rebuilding it as fullfile(work_root, 'code'), which is wrong under
-% exactly the override the variable exists for. The override must name a
-% directory that exists, and is resolved to an absolute path: a typo would
-% otherwise be created on first write and quietly collect the products.
+% exactly the override the variable exists for.
+%
+% The override is validated by the same test the derived value passes,
+% never a weaker one - an override is MORE likely to be wrong, not less. A
+% derived work_root is absolute and exists by construction (it is the
+% parent of the directory this file was found in), so FABRIC_ROOT must
+% equally name a directory that exists and is resolved to an absolute path;
+% a typo would otherwise be created on first write and quietly collect the
+% products. It is resolved by entering it, NOT via what() - what() consults
+% the MATLAB search path, so a relative override could bind to a directory
+% other than the one isfolder just validated relative to the working
+% directory, which is the whole failure this check exists to stop.
 %
 % fabric_paths.sh beside this file is the shell launchers' mirror of the
-% same two rules, anchored on the same +ptt walk. It differs in one stated
-% way, which its header gives: it requires stages/ to already exist.
+% same two rules, anchored on the same +ptt walk, and it validates its
+% override the same way (exists, enterable, absolute). It differs in one
+% stated way, which its header gives: it additionally requires stages/ to
+% already exist, because its locks and skip-if-cached checks live there,
+% whereas MATLAB creates stages/ under its own output root.
 %
 % See also run_quadpol_pipeline, run_season_frame.
 
@@ -77,14 +89,27 @@ work_root = getenv('FABRIC_ROOT');
 if isempty(work_root)
   work_root = fileparts(code_root);
 else
-  if ~isfolder(work_root)
+  given = work_root;
+  if ~isfolder(given)
     error('fabric_paths:noRoot', ...
-      ['FABRIC_ROOT names %s, which is not a directory - an override ' ...
-      'that does not exist would put every product in a tree nothing ' ...
-      'else reads'], work_root);
+      ['FABRIC_ROOT is %s, which is not a directory - a root that does ' ...
+      'not exist would put every product in a tree nothing else reads'], ...
+      given);
   end
-  w = what(work_root);
-  work_root = w(1).path;
+  try
+    here = cd(given);
+  catch err
+    error('fabric_paths:noRoot', ...
+      ['FABRIC_ROOT is %s, which cannot be entered - check permissions ' ...
+      '(%s)'], given, err.message);
+  end
+  restore = onCleanup(@() cd(here));
+  work_root = pwd;
+  clear restore;
+  if isempty(work_root)
+    error('fabric_paths:noRoot', ...
+      'FABRIC_ROOT is %s, which did not resolve to an absolute path', given);
+  end
 end
 
 end
