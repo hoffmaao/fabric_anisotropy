@@ -30,9 +30,9 @@
 # A WORK ROOT IS A WORK ROOT BY THE SAME TEST HOWEVER IT WAS OBTAINED.
 # FABRIC_ROOT picks the candidate; it does not exempt it. Both candidates
 # then go through the one block below - exists, can be entered, is
-# absolute, holds stages/ - because an override is MORE likely to be wrong
-# than a derived path, not less: FABRIC_ROOT=$HOME or a path off by one
-# component is a typo nothing else would catch.
+# absolute, holds stages/. Why an override is held to the derived value's
+# test rather than a weaker one is an argument about both helpers, so it is
+# owned by docs/scripts.md, "Running on the CReSIS machines".
 #
 # stages/ is the confirmation, and its absence is fatal either way. Walking
 # on to an ancestor that happens to have stages/ would be worse than not
@@ -49,36 +49,17 @@
 # skip-if-cached checks would miss every frame, and the survey would
 # recompute at ~50 min each.
 #
-# The two files differ in exactly two ways, both named here so neither can
-# drift unnoticed. Everything else agrees: code from the file, product root
-# overridable, and the override validated by the same test as the derived
-# value.
+# Everything else agrees with fabric_paths.m: code from the file, product
+# root overridable, and the override validated by the same test as the
+# derived value. The two files diverge in exactly two ways - the stages/
+# requirement above, which MATLAB does not make, and symlinks - and both
+# are claims about the pair, so docs/scripts.md owns the reasoning for each
+# and neither header restates it.
 #
-# 1. stages/. This file requires it; fabric_paths.m does not. The reason is
-#    SILENT vs LOUD, not who creates the directory - of the 17 MATLAB
-#    consumers that write under stages/, only three create it
-#    (run_quadpol_pipeline, quadpol_coreg_frame, run_deltak_stages); the
-#    other fourteen neither create nor check it and save() straight in. So
-#    MATLAB against a missing stages/ always fails loudly, just LATE - those
-#    fourteen die at the closing save() with "Cannot create file" after a
-#    full survey or section pass, discarding the compute. The launchers have
-#    no such backstop: a missing stages/ makes their skip-if-cached checks
-#    match nothing and their mkdir locks land in a fresh tree, so the run
-#    quietly recomputes every frame at ~50 min each instead of failing.
-#    Pre-checking is what turns that silence into an error; MATLAB does not
-#    need it because it cannot be silent.
-#
-# 2. Symlinks. bash's pwd is LOGICAL by default, so a work root reached
-#    through a symlink comes back here as the path written, while MATLAB's
-#    pwd reports the OS getcwd and returns the resolved target. The two
-#    therefore hand back different strings for the same directory. Benign
-#    today: nothing compares them, both sides only join them onto further
-#    path components, and they denote the same tree - so the difference
-#    reaches log and error text only. It would stop being benign if anything
-#    ever compared a shell-derived root to a MATLAB-derived one, keyed a
-#    cache or lock name on the string, or recorded it in a product for a
-#    later run to match against. Use `pwd -P` here if identical strings are
-#    ever wanted.
+# What symlinks mean HERE: bash's pwd is LOGICAL by default, so a work root
+# reached through one comes back as the path written, where MATLAB returns
+# the resolved target. Use `pwd -P` in the resolve below if identical
+# strings are ever wanted.
 fabric_work_root() {
   local start repo d parent k work abs origin
 

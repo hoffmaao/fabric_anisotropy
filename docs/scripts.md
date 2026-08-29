@@ -56,8 +56,10 @@ empty path: `set -u` does not catch a set-but-empty variable, and an empty
 `$FAB` would resolve every path against `/`, miss every skip-if-cached
 check, and recompute the survey.
 
-The two helpers differ in exactly two ways, named here and in both headers so
-neither drifts unnoticed.
+The two helpers differ in exactly two ways. Both are claims about the PAIR
+rather than about either side, so they are owned here and the two headers
+point at this section instead of restating them - each header describing
+only what its own side does.
 
 **`stages/`.** The launchers require it to pre-exist; `fabric_paths.m` does
 not. The reason is silent-versus-loud failure, not who creates the
@@ -70,7 +72,8 @@ with "Cannot create file" after a full survey or section pass, discarding
 the compute. The launchers have no such backstop: their skip-if-cached
 checks would match nothing and their `mkdir` locks would land in a fresh
 tree, so the run would quietly recompute every frame at ~50 min each.
-Pre-checking is what turns that silence into an error.
+Pre-checking is what turns that silence into an error; `fabric_paths.m`
+needs no such pre-check because it cannot be silent.
 
 **Symlinks.** `bash`'s `pwd` is logical, so a work root reached through a
 symlink comes back from `fabric_paths.sh` as the path written;

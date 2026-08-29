@@ -45,37 +45,29 @@ function [code_root, work_root] = fabric_paths()
 % rebuilding it as fullfile(work_root, 'code'), which is wrong under
 % exactly the override the variable exists for.
 %
-% The override is validated by the same test the derived value passes,
-% never a weaker one - an override is MORE likely to be wrong, not less. A
-% derived work_root is absolute and exists by construction (it is the
-% parent of the directory this file was found in), so FABRIC_ROOT must
-% equally name a directory that exists and is resolved to an absolute path;
-% a typo would otherwise be created on first write and quietly collect the
-% products. It is resolved by entering it, NOT via what() - what() consults
-% the MATLAB search path, so a relative override could bind to a directory
-% other than the one isfolder just validated relative to the working
-% directory, which is the whole failure this check exists to stop.
+% FABRIC_ROOT is therefore checked here for exactly what the derived value
+% gives for free: it must name a directory that EXISTS and must resolve to
+% an ABSOLUTE path, a derived work_root being both by construction (it is
+% the parent of the directory this file was found in), and it is rejected
+% rather than created, since a typo created on first write would quietly
+% collect the products. Why an override is held to the derived value's test
+% rather than a weaker one is an argument about both helpers, so it is
+% owned by docs/scripts.md, "Running on the CReSIS machines".
 %
-% fabric_paths.sh beside this file is the shell launchers' mirror of the
-% same two rules, anchored on the same +ptt walk, and it validates its
-% override the same way (exists, enterable, absolute). It differs in
-% exactly two ways, both stated in its header and repeated here so neither
-% can drift unnoticed:
+% The part of that check which is MATLAB's alone: the override is resolved
+% by ENTERING it, not via what() - what() consults the MATLAB search path,
+% so a relative override could bind to a directory other than the one
+% isfolder just validated relative to the working directory, which is the
+% whole failure this check exists to stop.
 %
-%   1. It additionally requires stages/ to already exist. That is about
-%      SILENT vs LOUD failure, not about who creates the directory - only
-%      three MATLAB consumers create stages/ (run_quadpol_pipeline,
-%      quadpol_coreg_frame, run_deltak_stages) and the other fourteen that
-%      write under it neither create nor check it. Against a missing
-%      stages/ MATLAB therefore still fails loudly, just LATE: those
-%      fourteen die at the closing save() after a full pass. The launchers
-%      would fail SILENTLY - skip-if-cached matching nothing, locks in a
-%      fresh tree, every frame recomputed - so they must pre-check.
-%   2. Symlinks. MATLAB's pwd reports the OS getcwd, so a work root reached
-%      through a symlink comes back resolved here, while bash's logical pwd
-%      returns it as written. Different strings, same directory; benign
-%      while nothing compares them, since both sides only join them onto
-%      further path components.
+% fabric_paths.sh beside this file is the shell launchers' mirror, anchored
+% on the same +ptt walk. It diverges deliberately in two ways, and what
+% each means on THIS side is: stages/ is not required here, only there; and
+% the work_root handed back here has its symlinks RESOLVED, because MATLAB's
+% pwd reports the OS getcwd, where bash's logical pwd returns the path as
+% written. Both divergences are claims about the pair, so docs/scripts.md,
+% "Running on the CReSIS machines", owns the reasoning for each and neither
+% header restates it.
 %
 % See also run_quadpol_pipeline, run_season_frame.
 
