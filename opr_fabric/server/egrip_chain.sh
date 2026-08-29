@@ -10,10 +10,17 @@
 # setup day (the pipeline would error on it deliberately). Frames missing
 # a VH channel (9 in the season) fail loudly into their own logs and are
 # capped like any other failure.
-F=/kucresis/scratch/hoffmana_sta/fabric
+set -u
+# <work> comes from the walk in fabric_paths.sh, so the chain lands on the
+# same root whether it is run from the checkout or from a copy in <work>,
+# and on the same root MATLAB derives. FABRIC_ROOT overrides. No username
+# is baked in, and nothing has to be deployed anywhere.
+FAB_DIR=$(cd "$(dirname "$0")" && pwd) || exit 1
+. "$FAB_DIR/fabric_paths.sh"
+F=$(fabric_work_root "$FAB_DIR") || exit 1
 R=/cresis/dataproducts/opr_data/accum/2024_Greenland_Ground2
 ML=/opt/sw/matlab/2024b/bin/matlab
-cd $F
+cd "$F" || { echo "cannot cd to $F" >&2; exit 1; }
 mkdir -p invert_logs
 echo "=== egrip chain start $(date)"
 
@@ -24,10 +31,14 @@ echo "=== egrip chain start $(date)"
 # Ridge A carries at a third the amplitude - so the gate is RE-STATED per
 # the author's 18 Aug decision: finite fraction + block self-consistency;
 # resid is RECORDED as the documented site floor, not gated on.
-gate=$(python3 - <<'PY'
+# <work> arrives as argv[1] so the heredoc can stay QUOTED: unquoting it to
+# interpolate $F would expand every $ in the Python body too.
+gate=$(python3 - "$F" <<'PY'
+import os, sys
 import h5py, numpy as np
 try:
-    fn = "/kucresis/scratch/hoffmana_sta/fabric/stages/quadpol/quadpol_section_20240619_01_001.mat"
+    fn = os.path.join(sys.argv[1], "stages", "quadpol",
+                      "quadpol_section_20240619_01_001.mat")
     with h5py.File(fn) as f:
         r = f["res"]
         z = np.array(r["z"]).ravel()
@@ -63,7 +74,7 @@ echo "$(wc -l < egrip_work.txt) frames queued"
 
 # Stale locks from a killed run would make every worker skip those frames
 # forever; the chain is launched once, so any lock present now is stale.
-stale=$(find $F/invert_logs -maxdepth 1 -type d -name 'lock_egrip_*' 2>/dev/null)
+stale=$(find "$F/invert_logs" -maxdepth 1 -type d -name 'lock_egrip_*' 2>/dev/null)
 if [ -n "$stale" ]; then
   echo "removing $(echo "$stale" | wc -l) stale lock(s)"
   echo "$stale" | xargs rmdir
@@ -72,24 +83,24 @@ fi
 worker() {
   while read -r seg frm; do
     tag=$(printf '%s_%03d' "$seg" "$((10#$frm))")
-    out=$F/stages/quadpol/quadpol_section_${tag}.mat
+    out="$F/stages/quadpol/quadpol_section_${tag}.mat"
     [ -f "$out" ] && continue
-    fail=$F/invert_logs/fail_egrip_${tag}.count
+    fail="$F/invert_logs/fail_egrip_${tag}.count"
     n=$(cat "$fail" 2>/dev/null || echo 0)
     [ "$n" -ge 2 ] && continue
-    lock=$F/invert_logs/lock_egrip_${tag}
+    lock="$F/invert_logs/lock_egrip_${tag}"
     mkdir "$lock" 2>/dev/null || continue
     echo "start $tag $(date +%d/%H:%M)"
-    nice -n 10 $ML -batch "maxNumCompThreads(8); site_root='$R'; day_seg='$seg'; frm=$((10#$frm)); run_quadpol_pipeline" \
-      > $F/invert_logs/egrip_${tag}.log 2>&1
+    nice -n 10 $ML -batch "addpath('$FAB_DIR'); maxNumCompThreads(8); site_root='$R'; day_seg='$seg'; frm=$((10#$frm)); run_quadpol_pipeline" \
+      > "$F/invert_logs/egrip_${tag}.log" 2>&1
     if [ -f "$out" ]; then
       echo "done  $tag ok $(date +%d/%H:%M)"; rm -f "$fail"
     else
       echo "done  $tag FAIL $(date +%d/%H:%M)"; echo $((n+1)) > "$fail"
     fi
     rmdir "$lock" 2>/dev/null
-  done < $F/egrip_work.txt
+  done < "$F/egrip_work.txt"
 }
 for w in 1 2 3; do worker & done
 wait
-echo "=== egrip chain finished $(date): $(ls $F/stages/quadpol/quadpol_section_202406*.mat 2>/dev/null | wc -l) sections on disk"
+echo "=== egrip chain finished $(date): $(ls "$F"/stages/quadpol/quadpol_section_202406*.mat 2>/dev/null | wc -l) sections on disk"

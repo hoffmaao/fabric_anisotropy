@@ -7,7 +7,8 @@
 % fabric orientation.
 %
 % Pick the survey with `site`, default ridge_a:
-%   matlab -batch "site='taylor_dome'; run_survey_fabric"
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  site='taylor_dome'; run_survey_fabric"
 %
 % AZIMUTH DIVERSITY IS A PROPERTY OF THE SURVEY, NOT OF THE METHOD. The
 % orientation solve needs two legs at least ~20 deg apart over the same
@@ -44,7 +45,9 @@
 % Saves per-frame dlam(interval, block) with block positions, so the depth
 % average and the crossing search both happen downstream and can be retuned
 % without another server pass.
-scratch = '/kucresis/scratch/hoffmana_sta/fabric';
+% Repo root and <work> are derived from this script's own location - see
+% fabric_paths.
+[code, scratch] = fabric_paths();
 if ~exist('site', 'var') || isempty(site)
   site = 'ridge_a';
 end
@@ -81,7 +84,6 @@ switch site
 end
 out_fn = fullfile(scratch, 'stages', sprintf('%s_survey.mat', site));
 
-code = fullfile(scratch, 'code');
 addpath(code); addpath(fullfile(code,'opr_fabric'));
 addpath(fullfile(code,'opr_fabric','test','stubs'));
 

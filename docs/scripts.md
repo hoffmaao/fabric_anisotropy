@@ -6,6 +6,150 @@ Every script that validates or applies the method code in
 Figure scripts write into the repository's `figs/` directory, which is
 gitignored - see the "Figure inputs and outputs" section at the end.
 
+## Running on the CReSIS machines
+
+Processing happens in a scratch work root, laid out as
+
+    <work>/code          this repo, including the batch launchers
+    <work>/stages        products (stages/quadpol/, coreg_cache/, ...)
+    <work>/invert_logs   per-frame logs
+
+Nothing names that root. `opr_fabric/server/fabric_paths.m` derives both it
+and the repo root by walking up from its own location until it finds the
+`+ptt` toolbox - looking for the toolbox rather than counting directories,
+so it stays right if the tree is nested differently and fails loudly rather
+than putting a wrong directory on the path.
+
+The shell launchers split the same two roles the MATLAB side does, so one
+name cannot mean two things across the two languages. CODE location comes
+from the file: a launcher reads its worker from its own directory
+(`"$FAB_DIR/<worker>.sh"`), because a worker is a sibling in the repo and
+stays one wherever the tree is copied, and it passes that same directory to
+MATLAB as an explicit `addpath` in every `-batch` string, so no run depends
+on the operator's cwd or on a personally saved MATLAB path.
+
+The PRODUCT root is derived by `opr_fabric/server/fabric_paths.sh` on the
+SAME `+ptt` anchor, so the two sides cannot disagree about which tree a run
+belongs to: the repo root is the directory holding `+ptt`, and the work root
+is its parent. That is ONE candidate, never a list, and `stages/` is
+confirmation on it. A missing `stages/` is fatal and the walk stops there
+rather than continuing to an ancestor - binding to an ancestor's work root
+is worse than not resolving at all, since a second checkout would then take
+its locks and write its fail markers in the LIVE tree while MATLAB, on the
+same `+ptt` anchor, wrote products into the test tree. A launcher copied out
+of the repo has no `+ptt` above it and is its own work root.
+
+`FABRIC_ROOT` overrides the product root on **both** sides and moves neither
+the code nor the workers. It **picks the candidate; it does not exempt it**:
+a work root is a work root by the same test however it was obtained, so the
+override goes through the identical checks the derived value does - exists,
+can be entered, resolved to an absolute path, and (in the shell) holds
+`stages/`. An override is more likely to be wrong than a derived path, not
+less: `FABRIC_ROOT=$HOME`, or a path off by one component, is a typo nothing
+else would catch. It is rejected rather than created, because a typo that is
+created on first write quietly collects the products. A relative value
+resolves against the working directory on both sides.
+
+Every failure is loud on both sides - the shell returns non-zero so the
+launchers' `|| exit 1` fires, and MATLAB errors. Neither can hand back an
+empty path: `set -u` does not catch a set-but-empty variable, and an empty
+`$FAB` would resolve every path against `/`, miss every skip-if-cached
+check, and recompute the survey.
+
+The two helpers differ in exactly two ways. Both are claims about the PAIR
+rather than about either side, so they are owned here and the two headers
+point at this section instead of restating them - each header describing
+only what its own side does.
+
+**`stages/`.** The launchers require it to pre-exist; `fabric_paths.m` does
+not. The reason is silent-versus-loud failure, not who creates the
+directory: of the 17 MATLAB consumers that write under `stages/`, only three
+create it (`run_quadpol_pipeline`, `quadpol_coreg_frame`,
+`run_deltak_stages`) and the other fourteen neither create nor check it,
+calling `save()` straight in. So MATLAB against a missing `stages/` still
+fails loudly - just **late**, those fourteen dying at the closing `save()`
+with "Cannot create file" after a full survey or section pass, discarding
+the compute. The launchers have no such backstop: their skip-if-cached
+checks would match nothing and their `mkdir` locks would land in a fresh
+tree, so the run would quietly recompute every frame at ~50 min each.
+Pre-checking is what turns that silence into an error; `fabric_paths.m`
+needs no such pre-check because it cannot be silent.
+
+**Symlinks.** `bash`'s `pwd` is logical, so a work root reached through a
+symlink comes back from `fabric_paths.sh` as the path written;
+`fabric_paths.m` goes through MATLAB's `pwd`, which reports the OS `getcwd`
+and returns the resolved target. Different strings for the same directory.
+This is benign today - nothing compares them, both sides only join them onto
+further path components, so the difference reaches log and error text only.
+It would stop being benign if anything compared a shell-derived root against
+a MATLAB-derived one, keyed a cache or lock name on the string, or recorded
+it in a product for a later run to match.
+
+So the launchers run in place out of the checkout - `bash
+<work>/code/opr_fabric/server/coreg_batch.sh ridge_a` - and equally from a
+copy in `<work>`. **There is no deploy step**, and **nothing carries a
+username**, so the same tree runs from any user's scratch and a second
+checkout can sit beside the live one for testing.
+
+Deliberately NOT relative to the working directory: the batch launchers cd
+to `<work>`, but the one-liner form needs the script's directory on the
+path to find the script at all, so cwd is not a reliable anchor for both.
+
+DATA paths stay absolute - `/cresis/...` season roots and `gps_dir` are real
+mount points, not part of the work tree, and each season declares its own
+`site_root` in its `run_season_*` driver. So does the shared
+`/kucresis/scratch/software/snaphu`.
+
+### Standing up a work root
+
+The CReSIS machines have no GitHub credentials, so ship the history as a
+bundle rather than cloning from the remote:
+
+    git bundle create /tmp/fabric.bundle <branch>            # locally
+    cat /tmp/fabric.bundle | ssh mem1 'cat > ~/fabric.bundle' # ship
+    ssh mem1
+    mkdir -p <work>/stages/quadpol
+    git clone --branch <branch> ~/fabric.bundle <work>/code
+
+The `mkdir` is what makes `<work>` a work root: it is the `stages/` the
+launchers confirm before they will run, so create it first - without it they
+refuse rather than reaching for the enclosing directory's. Nothing else is
+deployed: the launchers stay in `<work>/code/opr_fabric/server` and find
+their workers, `<work>` and MATLAB's path from there.
+
+That is a real clone at a known commit, which a copied tree is not: the
+live `code/` was hand-copied file by file and `git -C code rev-parse HEAD`
+fails on it, so there is no way to say which commit produced a product.
+
+### Reproducing a known result
+
+A frame reruns from its coregistration cache in ~30 min instead of ~100,
+so stage just the cache for the frame you want:
+
+    cp <live>/stages/quadpol/coreg_cache/creg_<tag>.mat \
+       <work>/stages/quadpol/coreg_cache/
+    cd <work> && matlab -batch "addpath('<work>/code/opr_fabric/server'); \
+      day_seg='20250108_02'; frm=9; run_season_ridge_a"
+
+Verified 29 Aug 2026 across three seasons - `20250108_02_009` (Ridge A),
+`20260106_02_001` (Taylor Dome) and `20221206_02_001` (Eastwind, which
+exercises the short-frame window clamp, 2.43 m spacing and length-based
+block sizing). A fresh clone into an empty work root reproduced the staged
+products **bit-identically, 52 of 52 leaves** including the nested
+`row_med` struct, with no configuration beyond the cache.
+
+The one field that did not match was `day_seg` on Eastwind, and in the
+direction that matters: the LIVE product holds the unreadable string
+marker and the reproduction holds the char text. 21 of 141 staged products
+carry that marker (all 17 Eastwind, 2 from 2024, 2 from 2026) because they
+were produced before `char(day_seg)` was added. Nothing is lost - `tag`
+goes through `sprintf` and is correct in every product, so `day_seg` is
+`tag` minus the frame suffix - and every new run writes it readable.
+
+Compare with h5py rather than by file size - two identical products differ
+in bytes - and dereference cell fields such as `pairs` rather than
+comparing HDF5 object references, which never match.
+
 - `scripts/synthetic_experiments.m` - reproduces the paper's synthetic CMP
   experiments 1-3 (noisy forward data, uninformed initial guess).
 - `scripts/synthetic_common_offset.m` - synthetic validation of the

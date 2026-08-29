@@ -8,7 +8,12 @@
 # batches racing on one frame; a stale lock from a hard kill just makes
 # the frame report "locked" - remove .lock_<tag> and re-run.
 set -u
-FAB=/kucresis/scratch/hoffmana_sta/fabric
+# <work> comes from the walk in fabric_paths.sh, so this worker lands on
+# the same root whether it is run from the checkout or from a copy in
+# <work>, and on the same root MATLAB derives. FABRIC_ROOT overrides.
+FAB_DIR=$(cd "$(dirname "$0")" && pwd) || exit 1
+. "$FAB_DIR/fabric_paths.sh"
+FAB=$(fabric_work_root "$FAB_DIR") || exit 1
 root=$1
 seg=$2
 frm=$3
@@ -39,7 +44,7 @@ echo "start $tag $(date '+%H:%M')"
 # the node is shared. 8 threads x 3-4 concurrent frames is the polite
 # footprint; raise the batch's K rather than the threads if it is idle.
 nice -n 10 /opt/sw/matlab/2024b/bin/matlab -batch \
-  "maxNumCompThreads(8); site_root='$root'; day_seg='$seg'; frm=$frm; coreg_only=true; run_quadpol_pipeline" \
+  "addpath('$FAB_DIR'); maxNumCompThreads(8); site_root='$root'; day_seg='$seg'; frm=$frm; coreg_only=true; run_quadpol_pipeline" \
   > "$log" 2>&1
 rc=$?
 if [ -s "$cache" ]; then st=ok; else st=FAILED; fi

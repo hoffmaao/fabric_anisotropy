@@ -11,7 +11,8 @@
 % If |C| is high per trace and falls as traces are added, it is (a)/(b) and
 % the fix is to average less; if it is low even on one trace, the channels
 % were never coherent and no amount of care in the averaging helps.
-addpath('/kucresis/scratch/hoffmana_sta/fabric/code');
+% repo root derived from this script's own location - see fabric_paths
+addpath(fabric_paths());
 site_root = '/cresis/nvme/opr_data/accum/2024_Antarctica_Ground2';
 day_seg = '20250108_02'; frm = 9;
 CHAN = {'hh','vv','hv','vh'};

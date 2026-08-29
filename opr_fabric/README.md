@@ -105,7 +105,12 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
   headers).
 - The rest of `server/` is single-purpose runners for the SCAR work, the
   comparison against published methods, and the quad-pol scattering-matrix
-  work. Like the batches above they carry absolute mem1 paths by design and
+  work. Like the batches above they keep the `/cresis` DATA roots absolute
+  by design, but DERIVE the scratch work root and the repo root from their
+  own location (`server/fabric_paths.m`, and `server/fabric_paths.sh` for
+  the shell launchers), so no script names a user's scratch. That layout,
+  the `FABRIC_ROOT` override and how to stand a work root up are owned by
+  `docs/scripts.md` ("Running on the CReSIS machines"). They
   are launched by hand with `matlab -batch`; each one's header states its
   inputs, its launch line and what it concluded - including where the
   conclusion is NEGATIVE, which several of the quad-pol ones are. Runtimes
@@ -174,9 +179,10 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     NON-EMPTY `snaphu_out_phase`, so a pre-SNAPHU product is rebuilt rather
     than silently falling back to wrapped phase and reporting a 'phase' run
     that never saw one. `targets` is overridable by the caller
-    (`matlab -batch "targets = {...}; run_negis_fabric"`) so another frame
-    set runs through the SAME repackaging, cull and surface pick instead of
-    a fork that could drift in any of them. A target that fails at
+    (`matlab -batch "addpath('<code>/opr_fabric/server'); targets = {...};
+    run_negis_fabric"`) so another frame set runs through the SAME
+    repackaging, cull and surface pick instead of a fork that could drift
+    in any of them. A target that fails at
     repackaging, the trace cull or the inversion warns and is skipped so the
     rest of the batch still runs; a SNAPHU failure alone is narrower - the
     product is still saved and still usable via delta-k, so it warns and

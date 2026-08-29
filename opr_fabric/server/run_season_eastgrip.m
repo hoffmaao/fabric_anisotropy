@@ -30,7 +30,8 @@
 % physics/calibration - the chan_equal family - which is a separate
 % decision from the frame pass. Batch via egrip_chain.sh, never by hand.
 %
-%   matlab -batch "day_seg='20240619_01'; frm=1; run_season_eastgrip"
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  day_seg='20240619_01'; frm=1; run_season_eastgrip"
 season = struct( ...
   'name', 'eastgrip', ...
   'site_root', '/cresis/dataproducts/opr_data/accum/2024_Greenland_Ground2', ...

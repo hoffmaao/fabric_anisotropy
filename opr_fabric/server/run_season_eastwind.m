@@ -7,7 +7,8 @@
 % ~0.02 below ~340 m (apparent deep dlam there is noise; never animate
 % it). Polarimetric products in _unwrap form; automatic fallback.
 %
-%   matlab -batch "day_seg='20221210_02'; frm=1; run_season_eastwind"
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  day_seg='20221210_02'; frm=1; run_season_eastwind"
 season = struct( ...
   'name', 'eastwind', ...
   'site_root', '/cresis/dataproducts/opr_data/accum/2022_Antarctica_Ground');
