@@ -32,6 +32,14 @@ if ~exist('site_root', 'var') || isempty(site_root)
   site_root = '/cresis/nvme/opr_data/accum/2024_Antarctica_Ground2';
 end
 if ~exist('day_seg', 'var') || isempty(day_seg), day_seg = '20250108_02'; end
+% Normalise to CHAR before it reaches the saved product. day_seg goes into
+% res verbatim (unlike tag, which sprintf always returns as char), so a
+% caller writing day_seg="..." - a STRING scalar, which shell escaping
+% around matlab -batch often forces - stores MATLAB's string marker where
+% the text should be, and a reader gets [3707764736 2 1 1 1 1] instead of
+% '20250108_02'. The same frame processed two ways would then differ in
+% that field alone. Found by the fresh-clone reproduction test.
+day_seg = char(day_seg);
 if ~exist('frm', 'var') || isempty(frm), frm = 9; end
 % Work root and repo root are DERIVED from the scripts' own location - see
 % fabric_paths. The /cresis site_root above stays absolute: that is a real
