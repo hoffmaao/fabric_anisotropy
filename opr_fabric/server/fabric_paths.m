@@ -58,10 +58,24 @@ function [code_root, work_root] = fabric_paths()
 %
 % fabric_paths.sh beside this file is the shell launchers' mirror of the
 % same two rules, anchored on the same +ptt walk, and it validates its
-% override the same way (exists, enterable, absolute). It differs in one
-% stated way, which its header gives: it additionally requires stages/ to
-% already exist, because its locks and skip-if-cached checks live there,
-% whereas MATLAB creates stages/ under its own output root.
+% override the same way (exists, enterable, absolute). It differs in
+% exactly two ways, both stated in its header and repeated here so neither
+% can drift unnoticed:
+%
+%   1. It additionally requires stages/ to already exist. That is about
+%      SILENT vs LOUD failure, not about who creates the directory - only
+%      three MATLAB consumers create stages/ (run_quadpol_pipeline,
+%      quadpol_coreg_frame, run_deltak_stages) and the other fourteen that
+%      write under it neither create nor check it. Against a missing
+%      stages/ MATLAB therefore still fails loudly, just LATE: those
+%      fourteen die at the closing save() after a full pass. The launchers
+%      would fail SILENTLY - skip-if-cached matching nothing, locks in a
+%      fresh tree, every frame recomputed - so they must pre-check.
+%   2. Symlinks. MATLAB's pwd reports the OS getcwd, so a work root reached
+%      through a symlink comes back resolved here, while bash's logical pwd
+%      returns it as written. Different strings, same directory; benign
+%      while nothing compares them, since both sides only join them onto
+%      further path components.
 %
 % See also run_quadpol_pipeline, run_season_frame.
 
