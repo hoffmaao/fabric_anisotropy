@@ -6,6 +6,78 @@ Every script that validates or applies the method code in
 Figure scripts write into the repository's `figs/` directory, which is
 gitignored - see the "Figure inputs and outputs" section at the end.
 
+## Running on the CReSIS machines
+
+Processing happens in a scratch work root, laid out as
+
+    <work>/code          this repo
+    <work>/stages        products (stages/quadpol/, coreg_cache/, ...)
+    <work>/invert_logs   per-frame logs
+    <work>/*.sh          the batch launchers, deployed up from opr_fabric/server
+
+Nothing names that root. `opr_fabric/server/fabric_paths.m` derives both it
+and the repo root by walking up from its own location until it finds the
+`+ptt` toolbox - looking for the toolbox rather than counting directories,
+so it stays right if the tree is nested differently and fails loudly rather
+than putting a wrong directory on the path. The shell launchers take the
+work root from their own directory, which is what their existing
+`"$FAB/<worker>.sh"` invocation already assumed. `FABRIC_ROOT` overrides
+both. **Nothing carries a username**, so the same tree runs from any user's
+scratch, and a second checkout can sit beside the live one for testing.
+
+Deliberately NOT relative to the working directory: the batch launchers cd
+to `<work>`, but the one-liner form needs the script's directory on the
+path to find the script at all, so cwd is not a reliable anchor for both.
+
+DATA paths stay absolute - `/cresis/...` season roots and `gps_dir` are real
+mount points, not part of the work tree, and each season declares its own
+`site_root` in its `run_season_*` driver. So does the shared
+`/kucresis/scratch/software/snaphu`.
+
+### Standing up a work root
+
+The CReSIS machines have no GitHub credentials, so ship the history as a
+bundle rather than cloning from the remote:
+
+    git bundle create /tmp/fabric.bundle <branch>            # locally
+    cat /tmp/fabric.bundle | ssh mem1 'cat > ~/fabric.bundle' # ship
+    ssh mem1
+    mkdir -p <work>/stages/quadpol
+    git clone --branch <branch> ~/fabric.bundle <work>/code
+
+That is a real clone at a known commit, which a copied tree is not: the
+live `code/` was hand-copied file by file and `git -C code rev-parse HEAD`
+fails on it, so there is no way to say which commit produced a product.
+
+### Reproducing a known result
+
+A frame reruns from its coregistration cache in ~30 min instead of ~100,
+so stage just the cache for the frame you want:
+
+    cp <live>/stages/quadpol/coreg_cache/creg_<tag>.mat \
+       <work>/stages/quadpol/coreg_cache/
+    cd <work> && matlab -batch "addpath('<work>/code/opr_fabric/server'); \
+      day_seg='20250108_02'; frm=9; run_season_ridge_a"
+
+Verified 29 Aug 2026 across three seasons - `20250108_02_009` (Ridge A),
+`20260106_02_001` (Taylor Dome) and `20221206_02_001` (Eastwind, which
+exercises the short-frame window clamp, 2.43 m spacing and length-based
+block sizing). A fresh clone into an empty work root reproduced the staged
+products **bit-identically, 52 of 52 leaves** including the nested
+`row_med` struct, with no configuration beyond the cache.
+
+The one field that did not match was `day_seg` on Eastwind, and in the
+direction that matters: the LIVE product holds the unreadable string
+marker and the reproduction holds the char text. 21 of 141 staged products
+carry that marker (all 17 Eastwind, 2 from 2024, 2 from 2026) because they
+were produced before `char(day_seg)` was added. Nothing is lost - `tag`
+goes through `sprintf` and is correct in every product, so `day_seg` is
+`tag` minus the frame suffix - and every new run writes it readable.
+
+Compare with h5py rather than by file size - two identical products differ
+in bytes - and dereference cell fields such as `pairs` rather than
+comparing HDF5 object references, which never match.
+
 - `scripts/synthetic_experiments.m` - reproduces the paper's synthetic CMP
   experiments 1-3 (noisy forward data, uninformed initial guess).
 - `scripts/synthetic_common_offset.m` - synthetic validation of the
