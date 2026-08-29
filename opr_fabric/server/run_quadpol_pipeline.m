@@ -33,11 +33,15 @@ if ~exist('site_root', 'var') || isempty(site_root)
 end
 if ~exist('day_seg', 'var') || isempty(day_seg), day_seg = '20250108_02'; end
 if ~exist('frm', 'var') || isempty(frm), frm = 9; end
+% Work root and repo root are DERIVED from the scripts' own location - see
+% fabric_paths. The /cresis site_root above stays absolute: that is a real
+% mount point, not part of the work tree.
+[fabric_code, fabric_work] = fabric_paths();
 if ~exist('out_dir', 'var') || isempty(out_dir)
-  out_dir = '/kucresis/scratch/hoffmana_sta/fabric/stages/quadpol';
+  out_dir = fullfile(fabric_work, 'stages', 'quadpol');
 end
 if exist(out_dir, 'dir') ~= 7, mkdir(out_dir); end
-addpath('/kucresis/scratch/hoffmana_sta/fabric/code');
+addpath(fabric_code);
 
 CHAN = {'hh','vv','hv','vh'};
 NRW = 101;

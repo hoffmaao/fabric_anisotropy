@@ -54,7 +54,9 @@
 % to negis_interferogram.m; see that file for why each is needed.
 season = '/cresis/dataproducts/opr_data/accum/2024_Greenland_Ground2';
 gps_dir = '/cresis/dataproducts/opr_data/opr_support/gps/2024_Greenland_Ground2';
-out_dir = '/kucresis/scratch/hoffmana_sta/fabric/stages';
+% <work> is derived from this script's own location - see fabric_paths.
+[~, scratch] = fabric_paths();
+out_dir = fullfile(scratch, 'stages');
 
 % The nine borehole-proximal lines, and they must stay in step with FRAMES
 % in scripts/figures/egrip_azimuthal.py: the azimuthal solve that consumes

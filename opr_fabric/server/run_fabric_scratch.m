@@ -14,7 +14,8 @@
 %   Launch on mem1 with:
 %     /opt/sw/matlab/2024b/bin/matlab -batch "run('<code>/opr_fabric/server/run_fabric_scratch.m')"
 
-scratch = '/kucresis/scratch/hoffmana_sta/fabric';
+% <work> is derived from this script's own location - see fabric_paths.
+[~, scratch] = fabric_paths();
 % One row per input product: {season, data_root, product name, out_path}.
 % 2022/2023: Hoffman/Christianson unwrapped products. 2024_..._Ground2 has
 % two independent processings (Lilien's decimated unwrap and Paden's

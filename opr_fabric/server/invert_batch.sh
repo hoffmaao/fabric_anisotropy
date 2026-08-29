@@ -7,7 +7,10 @@
 #
 #   nohup bash invert_batch.sh ridge_a 2 > invert_chain.log 2>&1 &
 set -u
-FAB=/kucresis/scratch/hoffmana_sta/fabric
+# <work> is this script's own directory: the batch scripts invoke their
+# workers as "$FAB/<worker>.sh", so deployment already puts these in the
+# work root. FABRIC_ROOT overrides. No username is baked in.
+FAB=${FABRIC_ROOT:-$(cd "$(dirname "$0")" && pwd)}
 site=${1:?usage: invert_batch.sh <site> [K]}
 K=${2:-2}
 MAX_FAIL=2

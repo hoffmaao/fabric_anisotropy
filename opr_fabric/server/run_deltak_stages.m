@@ -23,7 +23,8 @@
 %   for scripts/figures/deltak_stages.py.
 
 %% Frame selection
-scratch  = '/kucresis/scratch/hoffmana_sta/fabric';
+% <work> is derived from this script's own location - see fabric_paths.
+[~, scratch]  = fabric_paths();
 season   = '2024_Antarctica_Ground2';
 data_root = '/cresis/nvme/opr_data/accum';
 in_name  = 'CSARP_polarimetric';

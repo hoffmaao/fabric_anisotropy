@@ -6,7 +6,8 @@
 % shipped. This measures |C_HHVV| from those two directly, per trace and
 % with no cross-trace averaging, which is the number the raw-standardphase
 % estimate of 0.291 should be compared against.
-addpath('/kucresis/scratch/hoffmana_sta/fabric/code');
+% repo root derived from this script's own location - see fabric_paths
+addpath(fabric_paths());
 root = '/cresis/nvme/opr_data/accum/2024_Antarctica_Ground2';
 fn = fullfile(root, 'CSARP_polarimetric', '20250108_02', ...
   'Data_20250108_02_009.mat');

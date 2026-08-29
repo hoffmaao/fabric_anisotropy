@@ -18,7 +18,8 @@
 % Saves dlam, the node coherence (dlam_quality) used for shading, the
 % interpolated-node flag, and block positions for each site.
 
-scratch = '/kucresis/scratch/hoffmana_sta/fabric';
+% <work> is derived from this script's own location - see fabric_paths.
+[~, scratch] = fabric_paths();
 out_fn = fullfile(scratch, 'stages', 'fabric_sections.mat');
 
 code = fullfile(scratch, 'code');

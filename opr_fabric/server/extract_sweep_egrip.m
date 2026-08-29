@@ -6,9 +6,12 @@
 % from the EGRIP girdle - is an EVEN cos-2psi structure in the CO-POL POWER
 % aligned with theta0, which the LS nuisance basis cannot absorb. That
 % hypothesis is testable by looking at Phh(psi) directly.
-addpath('/kucresis/scratch/hoffmana_sta/fabric/code');
-cq = load(['/kucresis/scratch/hoffmana_sta/fabric/stages/quadpol/' ...
-  'coreg_cache/creg_20240619_01_001.mat']);
+% repo root and <work> derived from this script's own location - see
+% fabric_paths
+[fabric_code, scratch] = fabric_paths();
+addpath(fabric_code);
+cq = load(fullfile(scratch, 'stages', 'quadpol', 'coreg_cache', ...
+  'creg_20240619_01_001.mat'));
 T = struct('hh', double(cq.hh), 'vv', double(cq.vv), ...
   'hv', double(cq.hv), 'vh', double(cq.vh));
 z = cq.z(:);
@@ -23,7 +26,7 @@ keep = keep(1:4:end);
 C = single(conj(A.chhvv(keep, :)));   % deramped, as the LS sees it
 Phh = single(A.Phh(keep, :)); Pxc = single(A.Pxc(keep, :));
 zk = z(keep);
-save('/kucresis/scratch/hoffmana_sta/fabric/stages/sweep_egrip_619_001.mat', ...
+save(fullfile(scratch, 'stages', 'sweep_egrip_619_001.mat'), ...
   '-v7.3', 'C', 'Phh', 'Pxc', 'zk', 'psi');
 fprintf('wrote sweep_egrip_619_001.mat: %d depths x %d azimuths\n', ...
   numel(zk), numel(psi));

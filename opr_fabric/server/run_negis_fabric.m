@@ -41,12 +41,13 @@
 % the matched-filter convention settled by the Ridge A cell regression,
 % because the sign regression needs row_offset to run.
 %
-% Launch on mem1 with:
-%   /opt/sw/matlab/2024b/bin/matlab -batch "run('/kucresis/scratch/hoffmana_sta/fabric/run_negis_fabric.m')"
+% Launch on mem1 with (from the work root, whose code/ is on the path):
+%   /opt/sw/matlab/2024b/bin/matlab -batch "run_negis_fabric"
 
 season_dir = '/cresis/dataproducts/opr_data/accum/2024_Greenland_Ground2';
 gps_dir = '/cresis/dataproducts/opr_data/opr_support/gps/2024_Greenland_Ground2';
-scratch = '/kucresis/scratch/hoffmana_sta/fabric';
+% <work> is derived from this script's own location - see fabric_paths.
+[~, scratch] = fabric_paths();
 season = '2024_Greenland_Ground2';
 % Frames to repackage and invert. The first is the along-flow line beside
 % the southeastern shear margin; the second stands 0.32 km off the
