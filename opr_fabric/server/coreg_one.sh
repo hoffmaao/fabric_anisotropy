@@ -11,7 +11,7 @@ set -u
 # <work> comes from the walk in fabric_paths.sh, so this worker lands on
 # the same root whether it is run from the checkout or from a copy in
 # <work>, and on the same root MATLAB derives. FABRIC_ROOT overrides.
-FAB_DIR=$(cd "$(dirname "$0")" && pwd)
+FAB_DIR=$(cd "$(dirname "$0")" && pwd) || exit 1
 . "$FAB_DIR/fabric_paths.sh"
 FAB=$(fabric_work_root "$FAB_DIR") || exit 1
 root=$1

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Work root for the shell launchers, derived. SOURCE this, do not run it:
 #
-#   FAB_DIR=$(cd "$(dirname "$0")" && pwd)
+#   FAB_DIR=$(cd "$(dirname "$0")" && pwd) || exit 1
 #   . "$FAB_DIR/fabric_paths.sh"
 #   FAB=$(fabric_work_root "$FAB_DIR") || exit 1
 #
@@ -27,61 +27,91 @@
 # (into <work> beside stages/, the old deploy layout) has no +ptt above it
 # and is its own work root.
 #
-# stages/ is then CONFIRMATION on that one candidate, and its absence is
-# fatal. Walking on to an ancestor that happens to have stages/ would be
-# worse than not resolving at all: a second checkout beside a live one -
-# which this layout exists to allow - would take its mkdir locks and write
-# its fail markers in the LIVE tree while MATLAB, anchored on +ptt, wrote
-# products into the test tree. So the walk stops at the checkout boundary
-# and says what it looked for.
+# A WORK ROOT IS A WORK ROOT BY THE SAME TEST HOWEVER IT WAS OBTAINED.
+# FABRIC_ROOT picks the candidate; it does not exempt it. Both candidates
+# then go through the one block below - exists, can be entered, is
+# absolute, holds stages/ - because an override is MORE likely to be wrong
+# than a derived path, not less: FABRIC_ROOT=$HOME or a path off by one
+# component is a typo nothing else would catch.
+#
+# stages/ is the confirmation, and its absence is fatal either way. Walking
+# on to an ancestor that happens to have stages/ would be worse than not
+# resolving at all: a second checkout beside a live one - which this layout
+# exists to allow - would take its mkdir locks and write its fail markers
+# in the LIVE tree while MATLAB, anchored on +ptt, wrote products into the
+# test tree. So nothing here searches upwards for stages/, and every
+# failure says what it looked for and where.
+#
+# Every failure path also RETURNS NON-ZERO. Callers guard with
+# `FAB=$(fabric_work_root ...) || exit 1`, and a function that printed
+# nothing while reporting success would set FAB to the empty string, which
+# set -u does not catch: every path would then resolve against /, the
+# skip-if-cached checks would miss every frame, and the survey would
+# recompute at ~50 min each.
 #
 # This is the one place the two files deliberately differ: MATLAB creates
 # stages/ under its own output root, so fabric_paths.m does not require it
 # to pre-exist. The launchers do, because their skip-if-cached checks and
 # mkdir locks all live under stages/, and against a missing one they find
-# nothing to skip, arbitrate nothing, and recompute every frame at ~50 min
-# each. Both sides agree on the rule that matters: code from the file,
-# product root overridable and validated.
+# nothing to skip and arbitrate nothing. Both sides agree on everything
+# else: code from the file, product root overridable, and the override
+# validated by the same test as the derived value.
 fabric_work_root() {
-  local start repo d parent k work
+  local start repo d parent k work abs origin
 
   start=$1
   if [ -n "${FABRIC_ROOT:-}" ]; then
-    if [ ! -d "$FABRIC_ROOT" ]; then
-      echo "FABRIC_ROOT is $FABRIC_ROOT, which is not a directory - an" \
-        "override that does not exist would put every lock and every" \
-        "skip-if-cached check in a tree holding no products" >&2
-      return 1
-    fi
-    # absolute, because site_chain.sh and egrip_chain.sh cd away from here
-    ( cd "$FABRIC_ROOT" && pwd )
-    return 0
-  fi
-
-  repo=
-  d=$start
-  for k in 1 2 3 4 5; do
-    if [ -d "$d/+ptt" ]; then
-      repo=$d
-      break
-    fi
-    parent=$(dirname "$d")
-    if [ -z "$parent" ] || [ "$parent" = "$d" ]; then
-      break
-    fi
-    d=$parent
-  done
-
-  if [ -n "$repo" ]; then
-    work=$(dirname "$repo")
+    work=$FABRIC_ROOT
+    origin="FABRIC_ROOT"
   else
-    work=$start
+    repo=
+    d=$start
+    for k in 1 2 3 4 5; do
+      if [ -d "$d/+ptt" ]; then
+        repo=$d
+        break
+      fi
+      parent=$(dirname "$d") || return 1
+      if [ -z "$parent" ] || [ "$parent" = "$d" ]; then
+        break
+      fi
+      d=$parent
+    done
+    if [ -n "$repo" ]; then
+      work=$(dirname "$repo") || return 1
+      origin="the work root for $start, the parent of the $repo checkout"
+    else
+      work=$start
+      origin="the work root for $start, which has no +ptt checkout above it"
+    fi
   fi
 
+  if [ -z "$work" ]; then
+    echo "$origin resolved to an empty path" >&2
+    return 1
+  fi
+  if [ ! -d "$work" ]; then
+    echo "$origin is $work, which is not a directory - a root that does" \
+      "not exist would put every lock and every skip-if-cached check in a" \
+      "tree holding no products, so every frame would recompute" >&2
+    return 1
+  fi
+  # absolute, because site_chain.sh and egrip_chain.sh cd away from here.
+  # Captured separately: assigning straight into work would blank it before
+  # the failure message could name it.
+  abs=$( cd "$work" && pwd ) || {
+    echo "$origin is $work, which cannot be entered - check permissions" >&2
+    return 1
+  }
+  if [ -z "$abs" ]; then
+    echo "$origin is $work, which did not resolve to an absolute path" >&2
+    return 1
+  fi
+  work=$abs
   if [ ! -d "$work/stages" ]; then
-    echo "no stages/ in $work, the work root for $start - create it" \
-      "(mkdir -p $work/stages/quadpol) or set FABRIC_ROOT to a work root." \
-      "Refusing to search upwards: an ancestor's stages/ belongs to" \
+    echo "no stages/ in $work - $origin. Create it (mkdir -p" \
+      "$work/stages/quadpol) or point FABRIC_ROOT at a work root that has" \
+      "one. Not searching upwards: an ancestor's stages/ belongs to" \
       "another run." >&2
     return 1
   fi
