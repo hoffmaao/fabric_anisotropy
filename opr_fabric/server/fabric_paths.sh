@@ -49,13 +49,36 @@
 # skip-if-cached checks would miss every frame, and the survey would
 # recompute at ~50 min each.
 #
-# This is the one place the two files deliberately differ: MATLAB creates
-# stages/ under its own output root, so fabric_paths.m does not require it
-# to pre-exist. The launchers do, because their skip-if-cached checks and
-# mkdir locks all live under stages/, and against a missing one they find
-# nothing to skip and arbitrate nothing. Both sides agree on everything
-# else: code from the file, product root overridable, and the override
-# validated by the same test as the derived value.
+# The two files differ in exactly two ways, both named here so neither can
+# drift unnoticed. Everything else agrees: code from the file, product root
+# overridable, and the override validated by the same test as the derived
+# value.
+#
+# 1. stages/. This file requires it; fabric_paths.m does not. The reason is
+#    SILENT vs LOUD, not who creates the directory - of the 17 MATLAB
+#    consumers that write under stages/, only three create it
+#    (run_quadpol_pipeline, quadpol_coreg_frame, run_deltak_stages); the
+#    other fourteen neither create nor check it and save() straight in. So
+#    MATLAB against a missing stages/ always fails loudly, just LATE - those
+#    fourteen die at the closing save() with "Cannot create file" after a
+#    full survey or section pass, discarding the compute. The launchers have
+#    no such backstop: a missing stages/ makes their skip-if-cached checks
+#    match nothing and their mkdir locks land in a fresh tree, so the run
+#    quietly recomputes every frame at ~50 min each instead of failing.
+#    Pre-checking is what turns that silence into an error; MATLAB does not
+#    need it because it cannot be silent.
+#
+# 2. Symlinks. bash's pwd is LOGICAL by default, so a work root reached
+#    through a symlink comes back here as the path written, while MATLAB's
+#    pwd reports the OS getcwd and returns the resolved target. The two
+#    therefore hand back different strings for the same directory. Benign
+#    today: nothing compares them, both sides only join them onto further
+#    path components, and they denote the same tree - so the difference
+#    reaches log and error text only. It would stop being benign if anything
+#    ever compared a shell-derived root to a MATLAB-derived one, keyed a
+#    cache or lock name on the string, or recorded it in a product for a
+#    later run to match against. Use `pwd -P` here if identical strings are
+#    ever wanted.
 fabric_work_root() {
   local start repo d parent k work abs origin
 

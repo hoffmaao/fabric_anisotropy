@@ -56,11 +56,31 @@ empty path: `set -u` does not catch a set-but-empty variable, and an empty
 `$FAB` would resolve every path against `/`, miss every skip-if-cached
 check, and recompute the survey.
 
-The one deliberate difference: MATLAB creates `stages/` under its own output
-root, so `fabric_paths.m` does not require it to pre-exist, while the
-launchers do. Their skip-if-cached checks and `mkdir` locks all live under
-`stages/`, and against a missing one they find nothing to skip, arbitrate
-nothing, and recompute every frame at ~50 min each.
+The two helpers differ in exactly two ways, named here and in both headers so
+neither drifts unnoticed.
+
+**`stages/`.** The launchers require it to pre-exist; `fabric_paths.m` does
+not. The reason is silent-versus-loud failure, not who creates the
+directory: of the 17 MATLAB consumers that write under `stages/`, only three
+create it (`run_quadpol_pipeline`, `quadpol_coreg_frame`,
+`run_deltak_stages`) and the other fourteen neither create nor check it,
+calling `save()` straight in. So MATLAB against a missing `stages/` still
+fails loudly - just **late**, those fourteen dying at the closing `save()`
+with "Cannot create file" after a full survey or section pass, discarding
+the compute. The launchers have no such backstop: their skip-if-cached
+checks would match nothing and their `mkdir` locks would land in a fresh
+tree, so the run would quietly recompute every frame at ~50 min each.
+Pre-checking is what turns that silence into an error.
+
+**Symlinks.** `bash`'s `pwd` is logical, so a work root reached through a
+symlink comes back from `fabric_paths.sh` as the path written;
+`fabric_paths.m` goes through MATLAB's `pwd`, which reports the OS `getcwd`
+and returns the resolved target. Different strings for the same directory.
+This is benign today - nothing compares them, both sides only join them onto
+further path components, so the difference reaches log and error text only.
+It would stop being benign if anything compared a shell-derived root against
+a MATLAB-derived one, keyed a cache or lock name on the string, or recorded
+it in a product for a later run to match.
 
 So the launchers run in place out of the checkout - `bash
 <work>/code/opr_fabric/server/coreg_batch.sh ridge_a` - and equally from a
