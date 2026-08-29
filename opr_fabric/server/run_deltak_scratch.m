@@ -24,15 +24,14 @@
 %   Launch on mem1 with:
 %     /opt/sw/matlab/2024b/bin/matlab -batch "run('<code>/opr_fabric/server/run_deltak_scratch.m')"
 
-% <work> is derived from this script's own location - see fabric_paths.
-[~, scratch] = fabric_paths();
+% Repo root and <work> are derived from this script's own location - see
+% fabric_paths.
+[proj_root, scratch] = fabric_paths();
 % {season, data_root, product name, out_path}
 product_tbl = { ...
   '2024_Antarctica_Ground2', '/cresis/nvme/opr_data/accum',         'CSARP_polarimetric',        'fabric_deltak_jp'; ...
   '2023_Antarctica_Ground',  '/cresis/dataproducts/opr_data/accum', 'CSARP_polarimetric_unwrap', 'fabric_deltak'};
 
-this_dir = fileparts(mfilename('fullpath'));
-proj_root = fileparts(fileparts(this_dir));
 addpath(proj_root);                               % +ptt
 addpath(fullfile(proj_root,'opr_fabric'));        % fabric_task
 addpath(fullfile(proj_root,'opr_fabric','test','stubs')); % shadow opr_* helpers

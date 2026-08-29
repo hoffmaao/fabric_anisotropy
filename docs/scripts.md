@@ -10,20 +10,34 @@ gitignored - see the "Figure inputs and outputs" section at the end.
 
 Processing happens in a scratch work root, laid out as
 
-    <work>/code          this repo
+    <work>/code          this repo, including the batch launchers
     <work>/stages        products (stages/quadpol/, coreg_cache/, ...)
     <work>/invert_logs   per-frame logs
-    <work>/*.sh          the batch launchers, deployed up from opr_fabric/server
 
 Nothing names that root. `opr_fabric/server/fabric_paths.m` derives both it
 and the repo root by walking up from its own location until it finds the
 `+ptt` toolbox - looking for the toolbox rather than counting directories,
 so it stays right if the tree is nested differently and fails loudly rather
-than putting a wrong directory on the path. The shell launchers take the
-work root from their own directory, which is what their existing
-`"$FAB/<worker>.sh"` invocation already assumed. `FABRIC_ROOT` overrides
-both. **Nothing carries a username**, so the same tree runs from any user's
-scratch, and a second checkout can sit beside the live one for testing.
+than putting a wrong directory on the path.
+
+The shell launchers split the same two roles the MATLAB side does, so one
+name cannot mean two things across the two languages. CODE location comes
+from the file: a launcher reads its worker from its own directory
+(`"$FAB_DIR/<worker>.sh"`), because a worker is a sibling in the repo and
+stays one wherever the tree is copied. The PRODUCT root is derived by
+`opr_fabric/server/fabric_paths.sh`, which walks up for the directory
+holding `stages/` exactly as the MATLAB walk looks for `+ptt`, and fails
+loudly rather than falling back on the script's own directory - a launcher
+taking its locks and its skip-if-cached checks in a tree that holds no
+products would find nothing to skip and recompute every frame at ~50 min
+each. `FABRIC_ROOT` overrides the product root on **both** sides and moves
+neither the code nor the workers.
+
+So the launchers run in place out of the checkout - `bash
+<work>/code/opr_fabric/server/coreg_batch.sh ridge_a` - and equally from a
+copy in `<work>`. **There is no deploy step**, and **nothing carries a
+username**, so the same tree runs from any user's scratch and a second
+checkout can sit beside the live one for testing.
 
 Deliberately NOT relative to the working directory: the batch launchers cd
 to `<work>`, but the one-liner form needs the script's directory on the
@@ -44,6 +58,11 @@ bundle rather than cloning from the remote:
     ssh mem1
     mkdir -p <work>/stages/quadpol
     git clone --branch <branch> ~/fabric.bundle <work>/code
+
+The `mkdir` is what makes `<work>` a work root: it is the `stages/` the
+launchers walk up for, so create it before running one. Nothing else is
+deployed - the launchers stay in `<work>/code/opr_fabric/server` and find
+both their workers and `<work>` from there.
 
 That is a real clone at a known commit, which a copied tree is not: the
 live `code/` was hand-copied file by file and `git -C code rev-parse HEAD`

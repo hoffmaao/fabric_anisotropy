@@ -44,8 +44,9 @@
 % Saves per-frame dlam(interval, block) with block positions, so the depth
 % average and the crossing search both happen downstream and can be retuned
 % without another server pass.
-% <work> is derived from this script's own location - see fabric_paths.
-[~, scratch] = fabric_paths();
+% Repo root and <work> are derived from this script's own location - see
+% fabric_paths.
+[code, scratch] = fabric_paths();
 if ~exist('site', 'var') || isempty(site)
   site = 'ridge_a';
 end
@@ -82,7 +83,6 @@ switch site
 end
 out_fn = fullfile(scratch, 'stages', sprintf('%s_survey.mat', site));
 
-code = fullfile(scratch, 'code');
 addpath(code); addpath(fullfile(code,'opr_fabric'));
 addpath(fullfile(code,'opr_fabric','test','stubs'));
 

@@ -5,10 +5,13 @@
 #
 #   nohup bash site_chain.sh taylor_dome eastwind > site_chain.log 2>&1 &
 set -u
-# <work> is this script's own directory: the batch scripts invoke their
-# workers as "$FAB/<worker>.sh", so deployment already puts these in the
-# work root. FABRIC_ROOT overrides. No username is baked in.
-FAB=${FABRIC_ROOT:-$(cd "$(dirname "$0")" && pwd)}
+# The batch scripts come from this script's own directory, <work> from the
+# walk in fabric_paths.sh. FABRIC_ROOT overrides <work> only. No username
+# is baked in, and nothing has to be deployed anywhere.
+FAB_DIR=$(cd "$(dirname "$0")" && pwd)
+. "$FAB_DIR/fabric_paths.sh"
+FAB=$(fabric_work_root "$FAB_DIR") || exit 1
+# the per-site chain logs below are written relative to here
 cd "$FAB" || { echo "cannot cd to $FAB" >&2; exit 1; }
 echo "waiting for current batches to finish, $(date)"
 while pgrep -f "[c]oreg_batch.sh" > /dev/null || \
@@ -18,11 +21,11 @@ while pgrep -f "[c]oreg_batch.sh" > /dev/null || \
 done
 for site in "$@"; do
   echo "=== site $site starting $(date)"
-  nohup bash coreg_batch.sh "$site" 3 > "coreg_${site}.log" 2>&1 &
+  nohup bash "$FAB_DIR/coreg_batch.sh" "$site" 3 > "coreg_${site}.log" 2>&1 &
   sleep 30
   # the follower runs in the foreground and exits when the site's caches
   # are all swept and its coreg batch is gone; wait then reaps the coreg
-  bash invert_batch.sh "$site" 2 > "invert_chain_${site}.log" 2>&1
+  bash "$FAB_DIR/invert_batch.sh" "$site" 2 > "invert_chain_${site}.log" 2>&1
   wait
   echo "=== site $site done $(date)"
 done
