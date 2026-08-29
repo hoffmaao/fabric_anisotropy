@@ -38,8 +38,14 @@ function [code_root, work_root] = fabric_paths()
 % The walk looks for the +ptt toolbox rather than counting directories, so
 % it stays right if the tree is nested differently, and it fails loudly
 % rather than putting a wrong directory on the path and dying later on a
-% missing function. FABRIC_ROOT overrides work_root for a layout whose
-% products do not sit beside the code.
+% missing function. FABRIC_ROOT overrides work_root - and ONLY work_root -
+% for a layout whose products do not sit beside the code. code_root always
+% comes from this file, so callers must take it from here rather than
+% rebuilding it as fullfile(work_root, 'code'), which is wrong under
+% exactly the override the variable exists for.
+%
+% fabric_paths.sh beside this file is the shell launchers' mirror of the
+% same two rules.
 %
 % See also run_quadpol_pipeline, run_season_frame.
 

@@ -8,10 +8,12 @@
 # batches racing on one frame; a stale lock from a hard kill just makes
 # the frame report "locked" - remove .lock_<tag> and re-run.
 set -u
-# <work> is this script's own directory: the batch scripts invoke their
-# workers as "$FAB/<worker>.sh", so deployment already puts these in the
-# work root. FABRIC_ROOT overrides. No username is baked in.
-FAB=${FABRIC_ROOT:-$(cd "$(dirname "$0")" && pwd)}
+# <work> comes from the walk in fabric_paths.sh, so this worker lands on
+# the same root whether it is run from the checkout or from a copy in
+# <work>, and on the same root MATLAB derives. FABRIC_ROOT overrides.
+FAB_DIR=$(cd "$(dirname "$0")" && pwd)
+. "$FAB_DIR/fabric_paths.sh"
+FAB=$(fabric_work_root "$FAB_DIR") || exit 1
 root=$1
 seg=$2
 frm=$3

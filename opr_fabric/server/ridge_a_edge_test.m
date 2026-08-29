@@ -20,13 +20,13 @@
 % Also reports node coherence against depth, since a coherence-driven bias
 % toward zero would mimic a real weakening.
 
-% <work> is derived from this script's own location - see fabric_paths.
-[~, scratch] = fabric_paths();
+% Repo root and <work> are derived from this script's own location - see
+% fabric_paths.
+[code, scratch] = fabric_paths();
 in_fn = ['/cresis/nvme/opr_data/accum/2024_Antarctica_Ground2/' ...
   'CSARP_polarimetric/20250108_02/Data_20250108_02_009.mat'];
 out_fn = fullfile(scratch, 'stages', 'ridge_a_edge_test.mat');
 
-code = fullfile(scratch, 'code');
 addpath(code); addpath(fullfile(code,'opr_fabric'));
 addpath(fullfile(code,'opr_fabric','test','stubs'));
 

@@ -30,6 +30,14 @@ if ~exist('site_root', 'var') || isempty(site_root)
   site_root = '/cresis/nvme/opr_data/accum/2024_Antarctica_Ground2';
 end
 if ~exist('day_seg', 'var') || isempty(day_seg), day_seg = '20250108_02'; end
+% Normalise to CHAR before it reaches the saved product, for the reason
+% run_quadpol_pipeline.m gives at the same line: day_seg goes into the
+% output verbatim, so a caller writing day_seg="..." - a STRING scalar,
+% which shell escaping around matlab -batch often forces - stores MATLAB's
+% string marker where the text should be. This file's product carries no
+% sprintf-normalised tag beside it, so there would be no correct copy of
+% the text to recover it from.
+day_seg = char(day_seg);
 if ~exist('frm', 'var') || isempty(frm), frm = 9; end
 % repo root and <work> derived from this script's own location - see
 % fabric_paths

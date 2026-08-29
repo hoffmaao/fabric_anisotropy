@@ -46,8 +46,9 @@
 
 season_dir = '/cresis/dataproducts/opr_data/accum/2024_Greenland_Ground2';
 gps_dir = '/cresis/dataproducts/opr_data/opr_support/gps/2024_Greenland_Ground2';
-% <work> is derived from this script's own location - see fabric_paths.
-[~, scratch] = fabric_paths();
+% Repo root and <work> are derived from this script's own location - see
+% fabric_paths.
+[code, scratch] = fabric_paths();
 season = '2024_Greenland_Ground2';
 % Frames to repackage and invert. The first is the along-flow line beside
 % the southeastern shear margin; the second stands 0.32 km off the
@@ -81,7 +82,6 @@ SNAPHU_BIN = '/kucresis/scratch/software/snaphu/bin/snaphu';
 GOLD_ALPHA = 0.8;      % ptt.goldsteinFilter default; see branch_cuts.py
 kmb = ones(COH_WIN, 'single') / prod(COH_WIN);   % shared multilook boxcar
 
-code = fullfile(scratch, 'code');
 addpath(code);
 addpath(fullfile(code, 'opr_fabric'));
 addpath(fullfile(code, 'opr_fabric', 'test', 'stubs'));

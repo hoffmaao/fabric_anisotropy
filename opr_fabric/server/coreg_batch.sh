@@ -13,10 +13,12 @@
 #
 #   nohup bash -c "bash coreg_batch.sh ridge_a 3; bash coreg_batch.sh thwaites 3" &
 set -u
-# <work> is this script's own directory: the batch scripts invoke their
-# workers as "$FAB/<worker>.sh", so deployment already puts these in the
-# work root. FABRIC_ROOT overrides. No username is baked in.
-FAB=${FABRIC_ROOT:-$(cd "$(dirname "$0")" && pwd)}
+# Workers come from this script's own directory, <work> from the walk in
+# fabric_paths.sh. FABRIC_ROOT overrides <work> only. No username is baked
+# in, and nothing has to be deployed anywhere.
+FAB_DIR=$(cd "$(dirname "$0")" && pwd)
+. "$FAB_DIR/fabric_paths.sh"
+FAB=$(fabric_work_root "$FAB_DIR") || exit 1
 site=${1:?usage: coreg_batch.sh <site> [K]}
 K=${2:-3}
 case $site in
@@ -38,7 +40,7 @@ while read -r f; do
 done > "$list"
 total=$(wc -l < "$list")
 echo "=== $site: $total frames, $K concurrent, started $(date)"
-xargs -P "$K" -L 1 bash "$FAB/coreg_one.sh" < "$list"
+xargs -P "$K" -L 1 bash "$FAB_DIR/coreg_one.sh" < "$list"
 have=$(cut -d' ' -f2,3 "$list" | while read -r s n; do
   printf '%s_%03d\n' "$s" "$n"
 done | while read -r tag; do

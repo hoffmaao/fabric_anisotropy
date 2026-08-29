@@ -7,10 +7,12 @@
 #
 #   nohup bash invert_batch.sh ridge_a 2 > invert_chain.log 2>&1 &
 set -u
-# <work> is this script's own directory: the batch scripts invoke their
-# workers as "$FAB/<worker>.sh", so deployment already puts these in the
-# work root. FABRIC_ROOT overrides. No username is baked in.
-FAB=${FABRIC_ROOT:-$(cd "$(dirname "$0")" && pwd)}
+# Workers come from this script's own directory, <work> from the walk in
+# fabric_paths.sh. FABRIC_ROOT overrides <work> only. No username is baked
+# in, and nothing has to be deployed anywhere.
+FAB_DIR=$(cd "$(dirname "$0")" && pwd)
+. "$FAB_DIR/fabric_paths.sh"
+FAB=$(fabric_work_root "$FAB_DIR") || exit 1
 site=${1:?usage: invert_batch.sh <site> [K]}
 K=${2:-2}
 MAX_FAIL=2
@@ -49,7 +51,7 @@ while :; do
   n_work=$(wc -l < "$list")
   echo "=== sweep $sweep: $n_work frames ready, $(date)"
   if [ "$n_work" -gt 0 ]; then
-    xargs -P "$K" -L 1 bash "$FAB/invert_one.sh" < "$list"
+    xargs -P "$K" -L 1 bash "$FAB_DIR/invert_one.sh" < "$list"
   else
     # the [c] keeps pgrep from matching this script's own command line
     if pgrep -f "[c]oreg_batch.sh" > /dev/null; then
