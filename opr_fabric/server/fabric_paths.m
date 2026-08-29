@@ -19,7 +19,8 @@ function [code_root, work_root] = fabric_paths()
 % Deliberately not relative to the WORKING DIRECTORY. The batch launchers
 % cd to <work>, but the one-liner form
 %
-%   matlab -batch "day_seg='20250108_02'; frm=9; run_season_ridge_a"
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  day_seg='20250108_02'; frm=9; run_season_ridge_a"
 %
 % needs this directory on the path already, to find the script at all - so
 % the cwd that lets MATLAB find a script is not necessarily the cwd that
@@ -42,10 +43,13 @@ function [code_root, work_root] = fabric_paths()
 % for a layout whose products do not sit beside the code. code_root always
 % comes from this file, so callers must take it from here rather than
 % rebuilding it as fullfile(work_root, 'code'), which is wrong under
-% exactly the override the variable exists for.
+% exactly the override the variable exists for. The override must name a
+% directory that exists, and is resolved to an absolute path: a typo would
+% otherwise be created on first write and quietly collect the products.
 %
 % fabric_paths.sh beside this file is the shell launchers' mirror of the
-% same two rules.
+% same two rules, anchored on the same +ptt walk. It differs in one stated
+% way, which its header gives: it requires stages/ to already exist.
 %
 % See also run_quadpol_pipeline, run_season_frame.
 
@@ -72,6 +76,15 @@ end
 work_root = getenv('FABRIC_ROOT');
 if isempty(work_root)
   work_root = fileparts(code_root);
+else
+  if ~isfolder(work_root)
+    error('fabric_paths:noRoot', ...
+      ['FABRIC_ROOT names %s, which is not a directory - an override ' ...
+      'that does not exist would put every product in a tree nothing ' ...
+      'else reads'], work_root);
+  end
+  w = what(work_root);
+  work_root = w(1).path;
 end
 
 end

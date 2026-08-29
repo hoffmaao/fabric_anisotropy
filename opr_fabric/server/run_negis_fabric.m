@@ -41,8 +41,9 @@
 % the matched-filter convention settled by the Ridge A cell regression,
 % because the sign regression needs row_offset to run.
 %
-% Launch on mem1 with (from the work root, whose code/ is on the path):
-%   /opt/sw/matlab/2024b/bin/matlab -batch "run_negis_fabric"
+% Launch on mem1 with:
+%   /opt/sw/matlab/2024b/bin/matlab -batch \
+%     "addpath('<code>/opr_fabric/server'); run_negis_fabric"
 
 season_dir = '/cresis/dataproducts/opr_data/accum/2024_Greenland_Ground2';
 gps_dir = '/cresis/dataproducts/opr_data/opr_support/gps/2024_Greenland_Ground2';
@@ -63,7 +64,8 @@ season = '2024_Greenland_Ground2';
 % borehole-proximal lines are run this way for the method comparison, and
 % a forked copy would be free to drift in the repackaging, the cull or the
 % surface pick, which is exactly what the comparison must hold fixed:
-%   matlab -batch "targets = {'20240628_01',1; ...}; run_negis_fabric"
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  targets = {'20240628_01',1; ...}; run_negis_fabric"
 if ~exist('targets', 'var') || isempty(targets)
   targets = { '20240626_03', 1; '20240619_01', 1 };
 end

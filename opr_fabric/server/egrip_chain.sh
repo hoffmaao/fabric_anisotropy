@@ -91,7 +91,7 @@ worker() {
     lock="$F/invert_logs/lock_egrip_${tag}"
     mkdir "$lock" 2>/dev/null || continue
     echo "start $tag $(date +%d/%H:%M)"
-    nice -n 10 $ML -batch "maxNumCompThreads(8); site_root='$R'; day_seg='$seg'; frm=$((10#$frm)); run_quadpol_pipeline" \
+    nice -n 10 $ML -batch "addpath('$FAB_DIR'); maxNumCompThreads(8); site_root='$R'; day_seg='$seg'; frm=$((10#$frm)); run_quadpol_pipeline" \
       > "$F/invert_logs/egrip_${tag}.log" 2>&1
     if [ -f "$out" ]; then
       echo "done  $tag ok $(date +%d/%H:%M)"; rm -f "$fail"

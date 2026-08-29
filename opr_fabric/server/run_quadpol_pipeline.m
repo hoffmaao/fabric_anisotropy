@@ -27,7 +27,8 @@
 % Runtime is dominated by step 3: ~71 min on a 6601 x 4346 frame, less in
 % proportion for shorter ones. Run per profile.
 %
-%   matlab -batch "day_seg='20250108_02'; frm=9; run_quadpol_pipeline"
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  day_seg='20250108_02'; frm=9; run_quadpol_pipeline"
 if ~exist('site_root', 'var') || isempty(site_root)
   site_root = '/cresis/nvme/opr_data/accum/2024_Antarctica_Ground2';
 end

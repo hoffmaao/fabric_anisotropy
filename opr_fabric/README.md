@@ -174,7 +174,8 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     NON-EMPTY `snaphu_out_phase`, so a pre-SNAPHU product is rebuilt rather
     than silently falling back to wrapped phase and reporting a 'phase' run
     that never saw one. `targets` is overridable by the caller
-    (`matlab -batch "targets = {...}; run_negis_fabric"`) so another frame
+    (`matlab -batch "addpath('<code>/opr_fabric/server'); targets = {...};
+    run_negis_fabric"`) so another frame
     set runs through the SAME repackaging, cull and surface pick instead of
     a fork that could drift in any of them. A target that fails at
     repackaging, the trace cull or the inversion warns and is skipped so the

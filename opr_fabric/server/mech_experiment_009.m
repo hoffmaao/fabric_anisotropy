@@ -22,7 +22,8 @@
 %                   scale.
 %
 % Runs from the frame-009 coreg cache; ~45 min sequential.
-%   matlab -batch "maxNumCompThreads(8); mech_experiment_009"
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  maxNumCompThreads(8); mech_experiment_009"
 % repo root and <work> derived from this script's own location - see
 % fabric_paths
 [fabric_code, scratch] = fabric_paths();
