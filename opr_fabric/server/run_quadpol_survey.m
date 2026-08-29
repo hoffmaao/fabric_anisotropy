@@ -35,7 +35,8 @@ switch site
   otherwise
     error('run_quadpol_survey:site', 'unknown site %s', site);
 end
-scratch = '/kucresis/scratch/hoffmana_sta/fabric';
+% <work> is derived from this script's own location - see fabric_paths.
+[~, scratch] = fabric_paths();
 out_fn = fullfile(scratch, 'stages', sprintf('quadpol_%s.mat', site));
 addpath(fullfile(scratch, 'code'));
 

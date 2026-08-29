@@ -28,11 +28,14 @@ if ~exist('site_root', 'var') || isempty(site_root)
 end
 if ~exist('day_seg', 'var') || isempty(day_seg), day_seg = '20250108_02'; end
 if ~exist('frm', 'var') || isempty(frm), frm = 9; end
+% repo root and <work> derived from this script's own location - see
+% fabric_paths
+[fabric_code, fabric_work] = fabric_paths();
 if ~exist('out_fn', 'var') || isempty(out_fn)
-  out_fn = sprintf('/kucresis/scratch/hoffmana_sta/fabric/stages/quadpol_%s_%03d.mat', ...
-    day_seg, frm);
+  out_fn = fullfile(fabric_work, 'stages', ...
+    sprintf('quadpol_%s_%03d.mat', day_seg, frm));
 end
-addpath('/kucresis/scratch/hoffmana_sta/fabric/code');
+addpath(fabric_code);
 
 CHAN = {'hh','vv','hv','vh'};
 NR = 9;                 % range looks for the moment matrix

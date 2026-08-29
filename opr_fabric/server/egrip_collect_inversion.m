@@ -15,7 +15,8 @@
 % phase-only estimator, so the two must come from the same lines, the same
 % cull and the same surface pick - which they do, because both start from
 % the frame list in egrip_zeising.m.
-scratch = '/kucresis/scratch/hoffmana_sta/fabric';
+% <work> is derived from this script's own location - see fabric_paths.
+[~, scratch] = fabric_paths();
 season = '2024_Greenland_Ground2';
 % Which inversion output to gather, and where to put it. Overridable so the
 % delta-k and SNAPHU runs can both be collected without editing the file -

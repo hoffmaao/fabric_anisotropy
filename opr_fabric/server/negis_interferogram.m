@@ -48,7 +48,9 @@
 % small enough to copy back for figures.
 season = '/cresis/dataproducts/opr_data/accum/2024_Greenland_Ground2';
 gps_dir = '/cresis/dataproducts/opr_data/opr_support/gps/2024_Greenland_Ground2';
-out_dir = '/kucresis/scratch/hoffmana_sta/fabric/stages';
+% <work> is derived from this script's own location - see fabric_paths.
+[~, scratch] = fabric_paths();
+out_dir = fullfile(scratch, 'stages');
 
 % seg / frame candidates. The first group is ranked by along-track speed
 % contrast over ITS_LIVE with straightness >= 0.93; the second group are

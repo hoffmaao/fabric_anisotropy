@@ -8,7 +8,10 @@
 # batches racing on one frame; a stale lock from a hard kill just makes
 # the frame report "locked" - remove .lock_<tag> and re-run.
 set -u
-FAB=/kucresis/scratch/hoffmana_sta/fabric
+# <work> is this script's own directory: the batch scripts invoke their
+# workers as "$FAB/<worker>.sh", so deployment already puts these in the
+# work root. FABRIC_ROOT overrides. No username is baked in.
+FAB=${FABRIC_ROOT:-$(cd "$(dirname "$0")" && pwd)}
 root=$1
 seg=$2
 frm=$3

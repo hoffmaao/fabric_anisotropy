@@ -44,7 +44,8 @@
 % Saves per-frame dlam(interval, block) with block positions, so the depth
 % average and the crossing search both happen downstream and can be retuned
 % without another server pass.
-scratch = '/kucresis/scratch/hoffmana_sta/fabric';
+% <work> is derived from this script's own location - see fabric_paths.
+[~, scratch] = fabric_paths();
 if ~exist('site', 'var') || isempty(site)
   site = 'ridge_a';
 end

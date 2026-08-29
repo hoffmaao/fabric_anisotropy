@@ -10,7 +10,9 @@
 # setup day (the pipeline would error on it deliberately). Frames missing
 # a VH channel (9 in the season) fail loudly into their own logs and are
 # capped like any other failure.
-F=/kucresis/scratch/hoffmana_sta/fabric
+# <work> is this script's own directory - deployment puts the chain and its
+# workers in the work root. FABRIC_ROOT overrides. No username is baked in.
+F=${FABRIC_ROOT:-$(cd "$(dirname "$0")" && pwd)}
 R=/cresis/dataproducts/opr_data/accum/2024_Greenland_Ground2
 ML=/opt/sw/matlab/2024b/bin/matlab
 cd $F
@@ -24,10 +26,14 @@ echo "=== egrip chain start $(date)"
 # Ridge A carries at a third the amplitude - so the gate is RE-STATED per
 # the author's 18 Aug decision: finite fraction + block self-consistency;
 # resid is RECORDED as the documented site floor, not gated on.
-gate=$(python3 - <<'PY'
+# <work> arrives as argv[1] so the heredoc can stay QUOTED: unquoting it to
+# interpolate $F would expand every $ in the Python body too.
+gate=$(python3 - "$F" <<'PY'
+import os, sys
 import h5py, numpy as np
 try:
-    fn = "/kucresis/scratch/hoffmana_sta/fabric/stages/quadpol/quadpol_section_20240619_01_001.mat"
+    fn = os.path.join(sys.argv[1], "stages", "quadpol",
+                      "quadpol_section_20240619_01_001.mat")
     with h5py.File(fn) as f:
         r = f["res"]
         z = np.array(r["z"]).ravel()

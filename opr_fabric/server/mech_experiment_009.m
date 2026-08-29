@@ -23,9 +23,12 @@
 %
 % Runs from the frame-009 coreg cache; ~45 min sequential.
 %   matlab -batch "maxNumCompThreads(8); mech_experiment_009"
-addpath('/kucresis/scratch/hoffmana_sta/fabric/code');
-cq = load(['/kucresis/scratch/hoffmana_sta/fabric/stages/quadpol/' ...
-  'coreg_cache/creg_20250108_02_009.mat']);
+% repo root and <work> derived from this script's own location - see
+% fabric_paths
+[fabric_code, scratch] = fabric_paths();
+addpath(fabric_code);
+cq = load(fullfile(scratch, 'stages', 'quadpol', 'coreg_cache', ...
+  'creg_20250108_02_009.mat'));
 T = struct('hh', double(cq.hh), 'vv', double(cq.vv), ...
   'hv', double(cq.hv), 'vh', double(cq.vh));
 z = cq.z(:);
@@ -65,6 +68,6 @@ end
 % reflectivity profile for the offline stratigraphy correlation
 R.pmean = mean(abs(T.hh).^2, 2);
 R.z = z;
-save('/kucresis/scratch/hoffmana_sta/fabric/stages/mech_009.mat', ...
+save(fullfile(scratch, 'stages', 'mech_009.mat'), ...
   '-v7.3', 'R');
 fprintf('wrote stages/mech_009.mat\n');
