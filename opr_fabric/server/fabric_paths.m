@@ -13,8 +13,8 @@ function [code_root, work_root] = fabric_paths()
 % from this file's own location rather than named, so the same tree runs
 % from any user's scratch and from a second checkout used to test a change
 % without disturbing the live work root. Hardcoding them baked one
-% username into 21 scripts, which is what made this code unrunnable by
-% anyone else on the CReSIS machines.
+% username into 22 MATLAB scripts and 6 shell launchers, which is what made
+% this code unrunnable by anyone else on the CReSIS machines.
 %
 % Deliberately not relative to the WORKING DIRECTORY. The batch launchers
 % cd to <work>, but the one-liner form
