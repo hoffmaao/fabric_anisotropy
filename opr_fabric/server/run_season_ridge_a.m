@@ -8,7 +8,8 @@
 % coregistration settings, Surface, ref). Pedestal family a3 = +0.27,
 % frame-stable. Fabric: theta0_geo 96.5 +- 7.4, deep dlam ~0.06.
 %
-%   matlab -batch "day_seg='20250108_02'; frm=9; run_season_ridge_a"
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  day_seg='20250108_02'; frm=9; run_season_ridge_a"
 season = struct( ...
   'name', 'ridge_a', ...
   'site_root', '/cresis/nvme/opr_data/accum/2024_Antarctica_Ground2');

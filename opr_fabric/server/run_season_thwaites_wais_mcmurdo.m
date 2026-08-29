@@ -9,7 +9,8 @@
 % pipeline falls back to it automatically. Thwaites: depth-rotating axes,
 % honest abstention in the margin core - never depth-average theta0 there.
 %
-%   matlab -batch "day_seg='20240108_01'; frm=1; run_season_thwaites_wais_mcmurdo"
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  day_seg='20240108_01'; frm=1; run_season_thwaites_wais_mcmurdo"
 season = struct( ...
   'name', 'thwaites_wais_mcmurdo', ...
   'site_root', '/cresis/dataproducts/opr_data/accum/2023_Antarctica_Ground');

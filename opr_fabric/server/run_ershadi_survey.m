@@ -22,7 +22,8 @@
 % as between them - the same ice, the same calibration, the same
 % processing, only the heading differing.
 %
-%   matlab -batch "site='ridge_a'; run_ershadi_survey"
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  site='ridge_a'; run_ershadi_survey"
 if ~exist('site', 'var') || isempty(site), site = 'ridge_a'; end
 switch site
   case 'ridge_a'

@@ -21,7 +21,8 @@
 % One frame cannot separate those; a survey can.
 %
 % Pick the survey with `site`, default ridge_a:
-%   matlab -batch "site='ridge_a'; run_quadpol_survey"
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  site='ridge_a'; run_quadpol_survey"
 if ~exist('site', 'var') || isempty(site), site = 'ridge_a'; end
 switch site
   case 'ridge_a'

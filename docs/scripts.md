@@ -24,14 +24,31 @@ The shell launchers split the same two roles the MATLAB side does, so one
 name cannot mean two things across the two languages. CODE location comes
 from the file: a launcher reads its worker from its own directory
 (`"$FAB_DIR/<worker>.sh"`), because a worker is a sibling in the repo and
-stays one wherever the tree is copied. The PRODUCT root is derived by
-`opr_fabric/server/fabric_paths.sh`, which walks up for the directory
-holding `stages/` exactly as the MATLAB walk looks for `+ptt`, and fails
-loudly rather than falling back on the script's own directory - a launcher
-taking its locks and its skip-if-cached checks in a tree that holds no
-products would find nothing to skip and recompute every frame at ~50 min
-each. `FABRIC_ROOT` overrides the product root on **both** sides and moves
-neither the code nor the workers.
+stays one wherever the tree is copied, and it passes that same directory to
+MATLAB as an explicit `addpath` in every `-batch` string, so no run depends
+on the operator's cwd or on a personally saved MATLAB path.
+
+The PRODUCT root is derived by `opr_fabric/server/fabric_paths.sh` on the
+SAME `+ptt` anchor, so the two sides cannot disagree about which tree a run
+belongs to: the repo root is the directory holding `+ptt`, and the work root
+is its parent. That is ONE candidate, never a list, and `stages/` is
+confirmation on it. A missing `stages/` is fatal and the walk stops there
+rather than continuing to an ancestor - binding to an ancestor's work root
+is worse than not resolving at all, since a second checkout would then take
+its locks and write its fail markers in the LIVE tree while MATLAB, on the
+same `+ptt` anchor, wrote products into the test tree. A launcher copied out
+of the repo has no `+ptt` above it and is its own work root.
+
+`FABRIC_ROOT` overrides the product root on **both** sides, moves neither
+the code nor the workers, and on both sides must name a directory that
+exists - it is rejected rather than created, because a typo that is created
+on first write quietly collects the products.
+
+The one deliberate difference: MATLAB creates `stages/` under its own output
+root, so `fabric_paths.m` does not require it to pre-exist, while the
+launchers do. Their skip-if-cached checks and `mkdir` locks all live under
+`stages/`, and against a missing one they find nothing to skip, arbitrate
+nothing, and recompute every frame at ~50 min each.
 
 So the launchers run in place out of the checkout - `bash
 <work>/code/opr_fabric/server/coreg_batch.sh ridge_a` - and equally from a
@@ -60,9 +77,10 @@ bundle rather than cloning from the remote:
     git clone --branch <branch> ~/fabric.bundle <work>/code
 
 The `mkdir` is what makes `<work>` a work root: it is the `stages/` the
-launchers walk up for, so create it before running one. Nothing else is
-deployed - the launchers stay in `<work>/code/opr_fabric/server` and find
-both their workers and `<work>` from there.
+launchers confirm before they will run, so create it first - without it they
+refuse rather than reaching for the enclosing directory's. Nothing else is
+deployed: the launchers stay in `<work>/code/opr_fabric/server` and find
+their workers, `<work>` and MATLAB's path from there.
 
 That is a real clone at a known commit, which a copied tree is not: the
 live `code/` was hand-copied file by file and `git -C code rev-parse HEAD`

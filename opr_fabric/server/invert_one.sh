@@ -36,7 +36,7 @@ fi
 trap 'rmdir "$lock" 2>/dev/null' EXIT
 echo "start $tag $(date '+%H:%M')"
 nice -n 10 /opt/sw/matlab/2024b/bin/matlab -batch \
-  "maxNumCompThreads(8); site_root='$root'; day_seg='$seg'; frm=$frm; run_quadpol_pipeline" \
+  "addpath('$FAB_DIR'); maxNumCompThreads(8); site_root='$root'; day_seg='$seg'; frm=$frm; run_quadpol_pipeline" \
   > "$log" 2>&1
 rc=$?
 if [ -s "$outmat" ]; then

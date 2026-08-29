@@ -22,7 +22,8 @@ season = '2024_Greenland_Ground2';
 % delta-k and SNAPHU runs can both be collected without editing the file -
 % the EastGRIP comparison needs them side by side, and a collector that
 % could only see one of them would make the switch unmeasurable:
-%   matlab -batch "in_name='CSARP_fabric_deltak_negis'; \
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  in_name='CSARP_fabric_deltak_negis'; \
 %                  out_name='egrip_inversion_deltak.mat'; \
 %                  egrip_collect_inversion"
 if ~exist('in_name', 'var') || isempty(in_name)

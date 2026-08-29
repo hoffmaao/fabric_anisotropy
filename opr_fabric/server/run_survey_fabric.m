@@ -7,7 +7,8 @@
 % fabric orientation.
 %
 % Pick the survey with `site`, default ridge_a:
-%   matlab -batch "site='taylor_dome'; run_survey_fabric"
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  site='taylor_dome'; run_survey_fabric"
 %
 % AZIMUTH DIVERSITY IS A PROPERTY OF THE SURVEY, NOT OF THE METHOD. The
 % orientation solve needs two legs at least ~20 deg apart over the same
