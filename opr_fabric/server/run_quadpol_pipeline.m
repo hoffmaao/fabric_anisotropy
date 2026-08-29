@@ -27,17 +27,30 @@
 % Runtime is dominated by step 3: ~71 min on a 6601 x 4346 frame, less in
 % proportion for shorter ones. Run per profile.
 %
-%   matlab -batch "day_seg='20250108_02'; frm=9; run_quadpol_pipeline"
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  day_seg='20250108_02'; frm=9; run_quadpol_pipeline"
 if ~exist('site_root', 'var') || isempty(site_root)
   site_root = '/cresis/nvme/opr_data/accum/2024_Antarctica_Ground2';
 end
 if ~exist('day_seg', 'var') || isempty(day_seg), day_seg = '20250108_02'; end
+% Normalise to CHAR before it reaches the saved product. day_seg goes into
+% res verbatim (unlike tag, which sprintf always returns as char), so a
+% caller writing day_seg="..." - a STRING scalar, which shell escaping
+% around matlab -batch often forces - stores MATLAB's string marker where
+% the text should be, and a reader gets [3707764736 2 1 1 1 1] instead of
+% '20250108_02'. The same frame processed two ways would then differ in
+% that field alone. Found by the fresh-clone reproduction test.
+day_seg = char(day_seg);
 if ~exist('frm', 'var') || isempty(frm), frm = 9; end
+% Work root and repo root are DERIVED from the scripts' own location - see
+% fabric_paths. The /cresis site_root above stays absolute: that is a real
+% mount point, not part of the work tree.
+[fabric_code, fabric_work] = fabric_paths();
 if ~exist('out_dir', 'var') || isempty(out_dir)
-  out_dir = '/kucresis/scratch/hoffmana_sta/fabric/stages/quadpol';
+  out_dir = fullfile(fabric_work, 'stages', 'quadpol');
 end
 if exist(out_dir, 'dir') ~= 7, mkdir(out_dir); end
-addpath('/kucresis/scratch/hoffmana_sta/fabric/code');
+addpath(fabric_code);
 
 CHAN = {'hh','vv','hv','vh'};
 NRW = 101;

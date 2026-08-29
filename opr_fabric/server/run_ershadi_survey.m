@@ -22,7 +22,8 @@
 % as between them - the same ice, the same calibration, the same
 % processing, only the heading differing.
 %
-%   matlab -batch "site='ridge_a'; run_ershadi_survey"
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  site='ridge_a'; run_ershadi_survey"
 if ~exist('site', 'var') || isempty(site), site = 'ridge_a'; end
 switch site
   case 'ridge_a'
@@ -36,9 +37,11 @@ switch site
   otherwise
     error('run_ershadi_survey:site', 'unknown site %s', site);
 end
-scratch = '/kucresis/scratch/hoffmana_sta/fabric';
+% Repo root and <work> are derived from this script's own location - see
+% fabric_paths.
+[code, scratch] = fabric_paths();
 out_fn = fullfile(scratch, 'stages', sprintf('ershadi_%s.mat', site));
-addpath(fullfile(scratch, 'code'));
+addpath(code);
 
 CHAN = {'hh','vv','hv','vh'};
 NBLK = 200;             % traces per heading block

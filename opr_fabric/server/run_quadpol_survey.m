@@ -21,7 +21,8 @@
 % One frame cannot separate those; a survey can.
 %
 % Pick the survey with `site`, default ridge_a:
-%   matlab -batch "site='ridge_a'; run_quadpol_survey"
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  site='ridge_a'; run_quadpol_survey"
 if ~exist('site', 'var') || isempty(site), site = 'ridge_a'; end
 switch site
   case 'ridge_a'
@@ -35,9 +36,11 @@ switch site
   otherwise
     error('run_quadpol_survey:site', 'unknown site %s', site);
 end
-scratch = '/kucresis/scratch/hoffmana_sta/fabric';
+% Repo root and <work> are derived from this script's own location - see
+% fabric_paths.
+[code, scratch] = fabric_paths();
 out_fn = fullfile(scratch, 'stages', sprintf('quadpol_%s.mat', site));
-addpath(fullfile(scratch, 'code'));
+addpath(code);
 
 CHAN = {'hh','vv','hv','vh'};
 NR = 9;                 % range looks for the moment matrix

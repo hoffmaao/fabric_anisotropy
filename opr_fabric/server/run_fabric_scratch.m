@@ -14,7 +14,9 @@
 %   Launch on mem1 with:
 %     /opt/sw/matlab/2024b/bin/matlab -batch "run('<code>/opr_fabric/server/run_fabric_scratch.m')"
 
-scratch = '/kucresis/scratch/hoffmana_sta/fabric';
+% Repo root and <work> are derived from this script's own location - see
+% fabric_paths.
+[proj_root, scratch] = fabric_paths();
 % One row per input product: {season, data_root, product name, out_path}.
 % 2022/2023: Hoffman/Christianson unwrapped products. 2024_..._Ground2 has
 % two independent processings (Lilien's decimated unwrap and Paden's
@@ -27,8 +29,6 @@ product_tbl = { ...
   '2024_Antarctica_Ground2', '/cresis/nvme/opr_data/accum',         'CSARP_polarimetric',                'fabric_joint_jp'; ...
   '2025_Antarctica_Ground2', '/cresis/nvme/opr_data/accum',         'CSARP_polarimetric',                'fabric_joint'};
 
-this_dir = fileparts(mfilename('fullpath'));
-proj_root = fileparts(fileparts(this_dir));
 addpath(proj_root);                               % +ptt
 addpath(fullfile(proj_root,'opr_fabric'));        % fabric_task
 addpath(fullfile(proj_root,'opr_fabric','test','stubs')); % shadow opr_* helpers

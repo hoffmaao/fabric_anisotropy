@@ -12,13 +12,14 @@
 % Rathmann's permittivities and the Maxwell-Garnett firn mixing actually
 % do is what is used here.
 
-scratch = '/kucresis/scratch/hoffmana_sta/fabric';
+% Repo root and <work> are derived from this script's own location - see
+% fabric_paths.
+[code, scratch] = fabric_paths();
 in_fn = ['/cresis/nvme/opr_data/accum/2024_Antarctica_Ground2/' ...
   'CSARP_polarimetric/20250108_02/Data_20250108_02_009.mat'];
 sec_fn = fullfile(scratch, 'stages', 'fabric_sections.mat');
 out_fn = fullfile(scratch, 'stages', 'fringe_check.mat');
 
-code = fullfile(scratch, 'code');
 addpath(code); addpath(fullfile(code,'opr_fabric'));
 addpath(fullfile(code,'opr_fabric','test','stubs'));
 

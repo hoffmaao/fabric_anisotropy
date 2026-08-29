@@ -7,7 +7,12 @@
 # cache builder: the cache must already exist (frames without one belong
 # to coreg_batch.sh) and the section output must not (idempotent reruns).
 set -u
-FAB=/kucresis/scratch/hoffmana_sta/fabric
+# <work> comes from the walk in fabric_paths.sh, so this worker lands on
+# the same root whether it is run from the checkout or from a copy in
+# <work>, and on the same root MATLAB derives. FABRIC_ROOT overrides.
+FAB_DIR=$(cd "$(dirname "$0")" && pwd) || exit 1
+. "$FAB_DIR/fabric_paths.sh"
+FAB=$(fabric_work_root "$FAB_DIR") || exit 1
 root=$1
 seg=$2
 frm=$3
@@ -31,7 +36,7 @@ fi
 trap 'rmdir "$lock" 2>/dev/null' EXIT
 echo "start $tag $(date '+%H:%M')"
 nice -n 10 /opt/sw/matlab/2024b/bin/matlab -batch \
-  "maxNumCompThreads(8); site_root='$root'; day_seg='$seg'; frm=$frm; run_quadpol_pipeline" \
+  "addpath('$FAB_DIR'); maxNumCompThreads(8); site_root='$root'; day_seg='$seg'; frm=$frm; run_quadpol_pipeline" \
   > "$log" 2>&1
 rc=$?
 if [ -s "$outmat" ]; then

@@ -42,11 +42,14 @@
 % because the sign regression needs row_offset to run.
 %
 % Launch on mem1 with:
-%   /opt/sw/matlab/2024b/bin/matlab -batch "run('/kucresis/scratch/hoffmana_sta/fabric/run_negis_fabric.m')"
+%   /opt/sw/matlab/2024b/bin/matlab -batch \
+%     "addpath('<code>/opr_fabric/server'); run_negis_fabric"
 
 season_dir = '/cresis/dataproducts/opr_data/accum/2024_Greenland_Ground2';
 gps_dir = '/cresis/dataproducts/opr_data/opr_support/gps/2024_Greenland_Ground2';
-scratch = '/kucresis/scratch/hoffmana_sta/fabric';
+% Repo root and <work> are derived from this script's own location - see
+% fabric_paths.
+[code, scratch] = fabric_paths();
 season = '2024_Greenland_Ground2';
 % Frames to repackage and invert. The first is the along-flow line beside
 % the southeastern shear margin; the second stands 0.32 km off the
@@ -61,7 +64,8 @@ season = '2024_Greenland_Ground2';
 % borehole-proximal lines are run this way for the method comparison, and
 % a forked copy would be free to drift in the repackaging, the cull or the
 % surface pick, which is exactly what the comparison must hold fixed:
-%   matlab -batch "targets = {'20240628_01',1; ...}; run_negis_fabric"
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  targets = {'20240628_01',1; ...}; run_negis_fabric"
 if ~exist('targets', 'var') || isempty(targets)
   targets = { '20240626_03', 1; '20240619_01', 1 };
 end
@@ -80,7 +84,6 @@ SNAPHU_BIN = '/kucresis/scratch/software/snaphu/bin/snaphu';
 GOLD_ALPHA = 0.8;      % ptt.goldsteinFilter default; see branch_cuts.py
 kmb = ones(COH_WIN, 'single') / prod(COH_WIN);   % shared multilook boxcar
 
-code = fullfile(scratch, 'code');
 addpath(code);
 addpath(fullfile(code, 'opr_fabric'));
 addpath(fullfile(code, 'opr_fabric', 'test', 'stubs'));

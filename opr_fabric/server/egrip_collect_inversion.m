@@ -15,13 +15,15 @@
 % phase-only estimator, so the two must come from the same lines, the same
 % cull and the same surface pick - which they do, because both start from
 % the frame list in egrip_zeising.m.
-scratch = '/kucresis/scratch/hoffmana_sta/fabric';
+% <work> is derived from this script's own location - see fabric_paths.
+[~, scratch] = fabric_paths();
 season = '2024_Greenland_Ground2';
 % Which inversion output to gather, and where to put it. Overridable so the
 % delta-k and SNAPHU runs can both be collected without editing the file -
 % the EastGRIP comparison needs them side by side, and a collector that
 % could only see one of them would make the switch unmeasurable:
-%   matlab -batch "in_name='CSARP_fabric_deltak_negis'; \
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  in_name='CSARP_fabric_deltak_negis'; \
 %                  out_name='egrip_inversion_deltak.mat'; \
 %                  egrip_collect_inversion"
 if ~exist('in_name', 'var') || isempty(in_name)

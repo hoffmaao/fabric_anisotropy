@@ -13,7 +13,9 @@
 % file is visible rather than silently extrapolated).
 season = '/cresis/dataproducts/opr_data/accum/2024_Greenland_Ground2';
 gps_dir = '/cresis/dataproducts/opr_data/opr_support/gps/2024_Greenland_Ground2';
-out_fn = '/kucresis/scratch/hoffmana_sta/fabric/stages/negis2024_tracks_fixed.mat';
+% <work> is derived from this script's own location - see fabric_paths.
+[~, scratch] = fabric_paths();
+out_fn = fullfile(scratch, 'stages', 'negis2024_tracks_fixed.mat');
 
 segs = dir(fullfile(season, 'CSARP_qlook_HH'));
 segs = segs([segs.isdir] & ~startsWith({segs.name}, '.'));

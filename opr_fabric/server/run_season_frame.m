@@ -11,8 +11,10 @@
 % Variables already set at the call site WIN over the season defaults, so
 % special runs stay one-liners on top of the season driver:
 %
-%   matlab -batch "day_seg='20250108_02'; frm=9; run_season_ridge_a"
-%   matlab -batch "day_seg='20250108_02'; frm=9; z_max=4000; run_season_ridge_a"
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  day_seg='20250108_02'; frm=9; run_season_ridge_a"
+%   matlab -batch "addpath('<code>/opr_fabric/server'); \
+%                  day_seg='20250108_02'; frm=9; z_max=4000; run_season_ridge_a"
 %
 % This file must stay BEHAVIOR-FREE: no physics, no thresholds, no season
 % facts. Those belong in the season scripts (facts) or the pipeline

@@ -23,7 +23,9 @@
 %   for scripts/figures/deltak_stages.py.
 
 %% Frame selection
-scratch  = '/kucresis/scratch/hoffmana_sta/fabric';
+% Repo root and <work> are derived from this script's own location - see
+% fabric_paths.
+[proj_root, scratch] = fabric_paths();
 season   = '2024_Antarctica_Ground2';
 data_root = '/cresis/nvme/opr_data/accum';
 in_name  = 'CSARP_polarimetric';
@@ -33,8 +35,6 @@ frm      = 1;
 fc = 750e6;
 phase_sign = -1;   % forced, as in run_deltak_scratch
 
-this_dir = fileparts(mfilename('fullpath'));
-proj_root = fileparts(fileparts(this_dir));
 addpath(proj_root);                               % +ptt
 addpath(fullfile(proj_root,'opr_fabric'));
 
