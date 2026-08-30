@@ -176,7 +176,14 @@ MAX_AXIS_DEG = 10;
 %   is not clearance. At 5 the worst case sits 2.8 deg under it.
 MIN_BAND_W = 5;
 % Smallest number of DISJOINT block apertures a verdict-3 median may rest
-% on. Eight, not more, because the dlam cap bounds it - see verdict 3.
+% on. DERIVED, given the cap OPTS_L sets: the ramp climbs 0.0354 dlam per
+% disjoint block (verdict 3 works this out, and it is independent of the
+% block length), so from DL0 = 0.25 up to the rail at 0.98*0.60 = 0.588
+% there is room for (0.588 - 0.25)/0.0354 = 9.54, i.e. NINE whole blocks.
+% JUDGEMENT: 8, one below the ceiling, so the deepest block is not fitting
+% against the rail. Note this and OPTS_L.dlam_max are chosen as a PAIR -
+% more blocks needs a higher cap, and a higher cap coarsens the search
+% grid - so neither derives the other on its own; see verdict 3.
 NMIN_BLK = 8;
 % Verdict 2's bar: the frame-axis handoff must cost at least this factor
 % in block dlam. DERIVED as a floor, not a target - the mechanism gives no
@@ -212,6 +219,11 @@ fprintf(['geometry: %.2f m spacing, %d traces (%.2f km), %d m block = ' ...
 % only meaningful together: abstention shows as a FALLING finite fraction,
 % a lie as a handed-on profile with a large angular error. Only the second
 % is dangerous, and it is what the 9 m geometry used to produce.
+% JUDGEMENT: three points spanning the transition, from a sweep of
+% 1.0-2.0e-5 that found no lying regime anywhere in it. The ENDS are what
+% the verdict reads - the mildest must still be a scorable handoff, the
+% steepest must have abstained - so they bracket the transition rather
+% than sample it; 1.4 is the midpoint, reported for shape, not asserted.
 RATES = [1.0 1.4 2.0] * 1e-5;          % dlam per metre
 ang = nan(size(RATES));
 nlive = zeros(size(RATES)); nband = zeros(size(RATES));
@@ -321,14 +333,14 @@ fprintf('%-51s %s\n', '2. frame-axis quality dominates block dlam:', ...
 % number would not make the median any more robust: neighbours sharing
 % half their traces share their speckle and their stretch of ramp.
 %
-% EIGHT is the ceiling the dlam cap allows, and the arithmetic is worth
-% recording because it does not depend on the block length. Holding a
-% block at the failure sigma needs rate*L = sigma/(gpd*z_max), so the ramp
-% climbs sigma/(gpd*z_max) = 11.7/(0.300*1100) = 0.035 dlam per DISJOINT
-% block whatever L is. From DL0 = 0.25 up to the rail at 0.98*0.60 that
-% leaves room for (0.588 - 0.25)/0.035 = 9.5 blocks, so 8 clears the rail
-% with margin and 12 would not. Buying more by lifting the cap further is
-% not free - see the grid coupling below.
+% How many blocks the cap allows is worth deriving here, because it does
+% not depend on the block length. Holding a block at the failure sigma
+% needs rate*L = sigma/(gpd*z_max), so the ramp climbs
+% sigma/(gpd*z_max) = 11.7/(0.300*1100) = 0.0354 dlam per DISJOINT block
+% whatever L is. From DL0 = 0.25 up to the rail at 0.98*0.60 that leaves
+% room for (0.588 - 0.25)/0.0354 = 9.54, so NINE is the derived ceiling;
+% NMIN_BLK takes 8, one below it. Buying more by lifting the cap further
+% is not free - see the grid coupling below.
 %
 % The section is sized from the LENGTH the verdict needs, never a trace
 % count: NMIN_BLK whole long blocks, converted through DX. That makes the
@@ -338,19 +350,24 @@ fprintf('%-51s %s\n', '2. frame-axis quality dominates block dlam:', ...
 % NMIN_BLK*L_LONG*rate metres of ramp however many traces span them.
 NX_LEN = NMIN_BLK * H_ntr(L_LONG, DX);   % 5.66 km at 2.83 m
 % The cap is lifted from OPTS's 0.45 because this longer section climbs
-% the ramp 0.283 at the high rate, reaching 0.533, which would rail
-% against 0.45 (quadpolFabricLS returns NaN above 0.98*dlam_max) and make
-% the row measure the cap instead of the aperture. But dlam_max is not
-% only a cap: quadpolFabricLS builds its initial search as
-% dd_grid = linspace(0, dlam_max*gpd, 26), so 0.45 -> 0.60 also coarsens
-% that grid from ~0.018 to ~0.024 dlam per node. E_SHORT_MAX therefore
-% sits BELOW one grid node and is met by the fminsearch refinement, not by
-% the grid - and for the same reason the L_SHORT numbers here are not
-% strictly comparable with verdict 2's, which are fitted at 0.45. Both
-% lengths here see the same cap, so the contrast between them is
-% untouched.
+% the ramp NMIN_BLK*0.0354 = 0.283 at the high rate, reaching 0.533, which
+% would rail against 0.45 (quadpolFabricLS returns NaN above
+% 0.98*dlam_max) and make the row measure the cap instead of the aperture.
+% DERIVED floor: 0.533/0.98 = 0.544, below which the deepest block rails.
+% JUDGEMENT: 0.60, ~10% above that floor, because dlam_max is not only a
+% cap - quadpolFabricLS builds its initial search as
+% dd_grid = linspace(0, dlam_max*gpd, 26), so every bit of headroom bought
+% here coarsens that grid, 0.45 -> 0.60 taking it from ~0.018 to ~0.024
+% dlam per node. E_SHORT_MAX therefore sits BELOW one grid node and is met
+% by the fminsearch refinement, not by the grid - and for the same reason
+% the L_SHORT numbers here are not strictly comparable with verdict 2's,
+% which are fitted at 0.45. Both lengths here see the same cap, so the
+% contrast between them is untouched.
 OPTS_L = OPTS; OPTS_L.dlam_max = 0.60;
-LEN_RATES = [RATES(1), 5e-5];
+% DERIVED: the rate that puts an L_LONG block at the collapse sigma,
+% 11.7/(gpd*707.5*1100) = 5.01e-5, rounded to 5e-5 (sigma 11.68).
+RATE_COLLAPSE = 5e-5;
+LEN_RATES = [RATES(1), RATE_COLLAPSE];
 fprintf('\n%-9s %9s %10s %7s %10s\n', 'rate/km', 'blk_len', ...
   sprintf('sig@%d', Z_BAND(2)), 'nblk', 'med|err|');
 short_ok = true; long_fails = false; enough_blk = true;
