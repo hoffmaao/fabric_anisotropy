@@ -522,11 +522,13 @@ the same way:
   2.83 m trace spacing (from the `CSARP_reference_trajectory` rebuild;
   the shipped qlook coordinates inflated it 3.3x). Three verdicts. The
   pooled frame pass ABSTAINS rather than lies as lateral dlam variation
-  grows - coverage falls 35% -> 5% over 0.010 -> 0.020 dlam/km while the
-  axis stays within 7 deg - and the test asserts the pair, so no rate may
-  combine a profile the pipeline would hand on (at least
-  `min_seg_windows` live windows, the consumer's own rule) with an
-  inaccurate axis. The pooled handoff is nonetheless load-bearing: at a
+  grows - over 0.010 -> 0.020 dlam/km coverage in the quoted 300-1100 m
+  band falls 35% -> 5% and live windows over the whole profile fall
+  16 -> 8 of 34, while the axis stays within 2.3 deg - and the test
+  asserts the pair, so no rate may combine a profile the pipeline would
+  hand on (at least `min_seg_windows` live windows, counted over the same
+  window population `ptt.quadpolFrameTheta` gates on) with an inaccurate
+  axis. The pooled handoff is nonetheless load-bearing: at a
   modest 0.010 dlam/km the frame axis is only ~3 deg off, yet blocks
   handed it recover dlam ~12x worse than blocks handed the true axis -
   which is what the segmented frame pass (`ptt.quadpolFrameTheta`)
