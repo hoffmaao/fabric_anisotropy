@@ -526,26 +526,26 @@ the same way:
   falls 35% -> 5% and live windows over the whole profile fall 16 -> 8 of
   34, while the band axis error on every row still scorable stays at
   3.2-5.5 deg - and the test asserts the pair, so no rate may combine a
-  profile the pipeline would hand on with an inaccurate axis. The two halves deliberately take
-  different window populations: liveness over the full grid, because that
-  is what `ptt.quadpolFrameTheta` gates its `min_seg_windows` on, and the
-  axis error over the 300-1100 m band, because `sigma = gpd*ddlam*z` grows
-  with depth and shallow windows would dilute a deep-only lie below the
-  bound. A rate whose band holds too few live windows to average is exempt
-  from the axis bound - that is abstention, not a lie - so the mildest
-  rate is required to be both handed on and scored, which is what keeps
-  the bound from going hollow. The pooled handoff is nonetheless
-  load-bearing: at a modest 0.010 dlam/km the frame axis is only ~3 deg
-  off over that same 300-1100 m band, yet blocks
-  handed it recover dlam ~12x worse than blocks handed the true axis -
-  which is what the segmented frame pass (`ptt.quadpolFrameTheta`)
-  exists to fix. And block length has margin: with the axis held true the
-  collapse is governed by `sigma = gpd*ddlam*z` alone, so `L_max`
-  scales as 1/L and the 125 m re-cut buys exactly the length ratio
-  354/125 = 2.83x - 14.5x headroom over EastGRIP's expected ~0.01
-  dlam/km instead of 5.1x. Its header records why it was rebuilt on the
-  real geometry, which invalidated the block-size premise it was written
-  for rather than just rescaling it.
+  profile the pipeline would hand on with an inaccurate axis. The two
+  halves deliberately take different window populations: liveness over
+  the full grid, because that is what `ptt.quadpolFrameTheta` gates its
+  `min_seg_windows` on, and the axis error over the 300-1100 m band,
+  because `sigma = gpd*ddlam*z` grows with depth and shallow windows
+  would dilute a deep-only lie below the bound. A rate whose band holds
+  too few live windows to average is exempt from the axis bound - that is
+  abstention, not a lie - so the mildest rate is required to be both
+  handed on and scored, which is what keeps the bound from going hollow.
+  The pooled handoff is nonetheless load-bearing: at a modest 0.010
+  dlam/km the frame axis is only ~3 deg off over that same 300-1100 m
+  band, yet blocks handed it recover dlam ~12x worse than blocks handed
+  the true axis - which is what the segmented frame pass
+  (`ptt.quadpolFrameTheta`) exists to fix. And block length has margin:
+  with the axis held true the collapse is governed by
+  `sigma = gpd*ddlam*z` alone, so `L_max` scales as 1/L and the 125 m
+  re-cut buys exactly the length ratio 354/125 = 2.83x - 14.5x headroom
+  over EastGRIP's expected ~0.01 dlam/km instead of 5.1x. Its header
+  records why it was rebuilt on the real geometry, which invalidated the
+  block-size premise it was written for rather than just rescaling it.
 - `test_quadpol_segmented.m` - the segmented frame pass
   (`ptt.quadpolFrameTheta` + `ptt.thetaProfileAt`) against the two
   properties the design must have: a SUPERSET (a laterally-uniform frame

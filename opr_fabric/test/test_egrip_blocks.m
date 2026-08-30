@@ -35,8 +35,8 @@
 %     coverage in the 300-1100 m band falls 35% -> 5% (7 live band windows
 %     -> 1) and live windows over the whole profile fall 16 -> 8 of 34,
 %     while the BAND axis error on every row still scorable stays at
-%     3.2-5.5 deg. This is the
-%     project's abstain-rather-than-report-the-prior rule holding where it
+%     3.2-5.5 deg. This is the project's
+%     abstain-rather-than-report-the-prior rule holding where it
 %     matters most, because the pipeline hands the frame axis to EVERY
 %     block: a lie propagates to a whole section, abstention does not.
 %     The verdict asserts the PAIR, not coverage alone: no rate may
@@ -60,20 +60,20 @@
 %     stops the bound going hollow. Measured: all three rates keep 16, 14
 %     and 8 live windows against the 5 the consumer requires; 0.010 and
 %     0.014 keep 7 live band windows each and are held to the 10 deg bound
-%     at 3.2 and 5.5 deg, while 0.020 keeps 1 and is exempt.
-%     Nothing else guards this, and a change that made the fit confident
+%     at 3.2 and 5.5 deg, while 0.020 keeps 1 and is exempt. Nothing
+%     else guards this, and a change that made the fit confident
 %     under lateral variation would be a silent, section-wide regression.
 %
 %  2. THE POOLED HANDOFF IS LOAD-BEARING. It needs no dead frame to hurt.
 %     At a MODEST 0.010 dlam/km the frame axis is only ~3 deg off over the
 %     300-1100 m band - the same figure verdict 1 reports for that rate,
 %     over the same population, and the one MAX_AXIS_DEG is bracketed
-%     against - yet
-%     blocks handed that profile recover dlam ~12x worse than blocks handed
-%     the true axis (med|err| 0.025 vs 0.002). Frame-axis quality dominates
-%     block dlam accuracy by an order of magnitude; the laterally-segmented
-%     frame pass (ptt.quadpolFrameTheta) is the fix, and
-%     test_quadpol_segmented.m asserts its rescue.
+%     against - yet blocks handed that profile recover dlam ~12x worse
+%     than blocks handed the true axis (med|err| 0.025 vs 0.002).
+%     Frame-axis quality dominates block dlam accuracy by an order of
+%     magnitude; the laterally-segmented frame pass
+%     (ptt.quadpolFrameTheta) is the fix, and test_quadpol_segmented.m
+%     asserts its rescue.
 %
 %  3. BLOCK LENGTH HAS MARGIN, AND 125 m IS THE RIGHT TARGET. With the axis
 %     held true so length is the only variable, sigma alone governs the
@@ -114,8 +114,9 @@ DX = 2.83;                     % EastGRIP trace spacing, reference-trajectory
 % too: 1000 traces would be 2.83 km today and something else tomorrow,
 % which is how the original test came to be pinning 9 m artefacts.
 % JUDGEMENT: long enough that the frame pass pools a realistic aperture,
-% short enough that three of them fit the runtime. The real frame is
-% ~5.8 km; nothing here depends on the exact value.
+% short enough that three of them fit the runtime. The validation frame
+% measures 6.1 km (run_quadpol_pipeline.m owns that number); nothing here
+% depends on the exact value.
 FRAME_M = 2830;
 NX = round(FRAME_M / DX);
 x = (0:NX-1) * DX;
