@@ -112,17 +112,33 @@ DX = 2.83;                     % EastGRIP trace spacing, reference-trajectory
 % under a re-measured spacing if the length it acts over is held fixed
 % too: 1000 traces would be 2.83 km today and something else tomorrow,
 % which is how the original test came to be pinning 9 m artefacts.
-FRAME_M = 2830;                % frame-pass aperture; the real frame ~5.8 km
+% JUDGEMENT: long enough that the frame pass pools a realistic aperture,
+% short enough that three of them fit the runtime. The real frame is
+% ~5.8 km; nothing here depends on the exact value.
+FRAME_M = 2830;
 NX = round(FRAME_M / DX);
 x = (0:NX-1) * DX;
-DL0 = 0.25;                    % EGRIP-core-like contrast
+DL0 = 0.25;                    % EGRIP-core-like contrast (0.2-0.35)
 L_SHORT = 125;                 % BLK_TARGET_M, the pipeline's re-cut
-L_LONG = 708;                  % the length verdict 3 drives to collapse
+% JUDGEMENT: verdict 3 needs one length that collapses and one that does
+% not. Any L reaches the failure sigma at rate = sigma/(gpd*L*z_max), so
+% the pair (L_LONG, 0.050 dlam/km) is one of a family; 708 m is picked as
+% ~2x the 354 m that 125 traces span at this spacing, near enough to the
+% pipeline's old cut to be recognisable and far enough from L_SHORT to
+% separate cleanly.
+L_LONG = 708;
 % The depth band every score in this file is taken over: verdict 1's axis
-% error, verdict 1's coverage fraction, and the block dlam H_blocks
-% medians. One owner, passed to H_blocks, so "the band the blocks consume"
-% stays one range rather than two that happen to agree.
+% error and coverage, and the block dlam H_blocks medians. One owner,
+% passed to H_blocks, so "the band the blocks consume" stays one range
+% rather than two that happen to agree. JUDGEMENT: the depth range where
+% this column carries usable fabric signal - shallower than 300 m the
+% birefringent phase has barely accumulated, deeper than 1100 m the
+% coherence is gone at the rates swept here.
 Z_BAND = [300 1100];
+% Reference depth for verdict 1's reported sigma. Diagnostic only - no
+% verdict reads it - and it is mid-band rather than at the band top so the
+% column describes the bulk of the fitted range.
+Z_SIG = 800;
 
 % Verdict 1 asks two questions of one fit, and they take DIFFERENT window
 % populations on purpose. Do not unify them: doing so silently loosens the
@@ -141,25 +157,42 @@ MIN_SEG_W = 5;
 %   window range H_blocks scores block dlam over and verdict 2 measures its
 %   12x in. sigma = gpd*ddlam*z grows with depth, so shallow windows are
 %   trivially right; averaging them into the axis error pulls it toward
-%   truth and would let a deep-only lie pass. The bound is set from
-%   verdict 2, which measures a ~3 deg band error already costing 12x in
-%   block dlam: 10 deg is unambiguously a bad handoff, and it is far below
-%   the ~97 deg lie the 9 m geometry produced.
+%   truth and would let a deep-only lie pass. JUDGEMENT, bracketed rather
+%   than derived: verdict 2 measures a ~3 deg band error already costing
+%   12x in block dlam, so 10 deg is unambiguously a bad handoff, and it is
+%   far below the ~97 deg lie the 9 m geometry produced. The mechanism
+%   fixes no particular angle, only that 3 already hurts and 97 is fatal.
 MAX_AXIS_DEG = 10;
 %   ...but only where there IS a band axis to judge. The claim is that no
 %   rate pairs USABLE coverage with an INACCURATE axis, so a band holding
 %   one or two live windows makes no claim at all: that is the abstention
 %   this verdict exists to reward, and failing it on an unaveraged angle -
 %   or on a NaN - would punish the estimator for doing the right thing.
-%   The minimum is what makes a circular mean mean something rather than
-%   what keeps a row passing: five samples is the smallest set whose mean
-%   is not swung past the bound by one outlier at the ~6 deg scale these
-%   windows scatter over, and it is the same count ptt.quadpolFrameTheta
-%   requires of a whole profile before it will treat it as usable.
+%   DERIVED: n-1 windows at truth plus one arbitrary outlier displace the
+%   doubled-angle phasor mean by at most 0.5*asin(1/(n-1)) - 15.0 deg at
+%   n = 3, 9.74 at n = 4, 7.24 at n = 5 - so n = 4 is where a single rogue
+%   window can no longer carry the mean past MAX_AXIS_DEG on its own.
+%   JUDGEMENT: 5, one above that, because clearing the bound by 0.26 deg
+%   is not clearance. At 5 the worst case sits 2.8 deg under it.
 MIN_BAND_W = 5;
 % Smallest number of DISJOINT block apertures a verdict-3 median may rest
 % on. Eight, not more, because the dlam cap bounds it - see verdict 3.
 NMIN_BLK = 8;
+% Verdict 2's bar: the frame-axis handoff must cost at least this factor
+% in block dlam. DERIVED as a floor, not a target - the mechanism gives no
+% particular ratio, only that it is large. JUDGEMENT: 5x, well under the
+% 12x measured, so the verdict asserts "an order of magnitude" without
+% pinning a number that noise or a solver tweak would move.
+HANDOFF_RATIO = 5;
+% Verdict 3's bars. JUDGEMENT both: the short block must recover dlam to
+% E_SHORT_MAX and the long one must miss by more than E_LONG_MIN, and the
+% gap between them is the whole content of the verdict. E_SHORT_MAX is
+% 4% of DL0, an order of magnitude above the 0.001 measured; E_LONG_MIN is
+% 5x E_SHORT_MAX and ~1/8 of the 0.391 measured. Neither is a prediction
+% of the mechanism - sigma sets WHETHER a block collapses, not how far -
+% so both are placed in the wide empty gap between the two outcomes.
+E_SHORT_MAX = 0.010;
+E_LONG_MIN = 0.05;
 
 LEAK_C = 0.30 * exp(0.7i);
 LEAK_D = 0.35;
@@ -180,24 +213,28 @@ fprintf(['geometry: %.2f m spacing, %d traces (%.2f km), %d m block = ' ...
 % a lie as a handed-on profile with a large angular error. Only the second
 % is dangerous, and it is what the 9 m geometry used to produce.
 RATES = [1.0 1.4 2.0] * 1e-5;          % dlam per metre
-fin = nan(size(RATES)); ang = nan(size(RATES));
+ang = nan(size(RATES));
 nlive = zeros(size(RATES)); nband = zeros(size(RATES));
+nwb = 0;                               % band windows on the solver's grid
 TH_DEG = rad2deg(THETA_TRUE);
-fprintf('%-9s %10s %9s %6s %6s %7s %7s %11s\n', 'rate/km', 'frame_ddl', ...
-  'sig@800', 'band', 'live', 'handed', 'scored', 'axis error');
+fprintf('%-9s %10s %9s %11s %6s %7s %7s %11s\n', 'rate/km', 'frame_ddl', ...
+  sprintf('sig@%d', Z_SIG), 'band live', 'live', 'handed', 'scored', ...
+  'axis error');
 for k = 1:numel(RATES)
   [S, DL_X] = H_synth(RATES(k), NX, DX, Nz, z, THETA_TRUE, DL0, ...
     gpd, LEAK_C, LEAK_D, NA);
   fr = ptt.quadpolFabricLS(S, z, OPTS);
   ok = isfinite(fr.theta0);
   % nlive is the CONSUMER's population - every window of the profile
-  % thetaProfileAt would interpolate - while fin, nband and ang are the
-  % deep band the blocks are scored over; see MIN_SEG_W / MAX_AXIS_DEG
-  % above for why the two questions do not share a population
+  % thetaProfileAt would interpolate - while nband and ang are the deep
+  % band the blocks are scored over; see MIN_SEG_W / MAX_AXIS_DEG above
+  % for why the two questions do not share a population. Coverage has one
+  % owner, nband: the reported percentage is derived from it rather than
+  % accumulated beside it.
   m = fr.zw > Z_BAND(1) & fr.zw < Z_BAND(2);
+  nwb = nnz(m);
   nlive(k) = nnz(ok);
   nband(k) = nnz(ok & m);
-  fin(k) = mean(ok(m));
   if nband(k) >= MIN_BAND_W
     th = mod(rad2deg(angle(mean(exp(2i*fr.theta0(ok & m)))))/2, 180);
     ang(k) = min(abs(th - TH_DEG), 180 - abs(th - TH_DEG));
@@ -205,8 +242,9 @@ for k = 1:numel(RATES)
   else
     ang(k) = NaN; as = '(abstains)';
   end
-  fprintf('%-9.3f %10.4f %9.1f %5.0f%% %6d %7s %7s %11s\n', RATES(k)*1000, ...
-    RATES(k)*x(end), gpd*RATES(k)*x(end)*800, 100*fin(k), nlive(k), ...
+  fprintf('%-9.3f %10.4f %9.1f %4d/%-2d %3.0f%% %6d %7s %7s %11s\n', ...
+    RATES(k)*1000, RATES(k)*x(end), gpd*RATES(k)*x(end)*Z_SIG, ...
+    nband(k), nwb, 100*nband(k)/nwb, nlive(k), ...
     H_yn(nlive(k) >= MIN_SEG_W), H_yn(nband(k) >= MIN_BAND_W), as);
   % only the first rate's frame is reused (verdict 2); holding all three
   % would pin ~180 MB of synthetic per rate for nothing
@@ -232,7 +270,7 @@ handed = nlive >= MIN_SEG_W;
 scored = nband >= MIN_BAND_W;
 lies = handed & scored & ~(ang < MAX_AXIS_DEG);
 ok_abstain = handed(1) && scored(1) && nlive(end) < nlive(1) && ...
-  fin(end) < fin(1) && ~any(lies);
+  nband(end) < nband(1) && ~any(lies);
 fprintf(['\nhanded on (>= %d live windows of %d) at %d of %d rates, of ' ...
   'which %d have >= %d live band windows and are held to the %.0f deg ' ...
   'axis bound\n'], MIN_SEG_W, numel(fr1.zw), nnz(handed), numel(RATES), ...
@@ -258,7 +296,7 @@ e_true = H_blocks(S1, z, DLX1, NX, DX, OPTS, THETA_TRUE, fr1.pedestal, ...
 clear S1 DLX1
 fprintf(['\n%.0f m blocks at %.3f dlam/km: med|err| %.3f with the FRAME ' ...
   'axis, %.3f with the TRUE axis\n'], lb, RATES(1)*1000, e_frame, e_true);
-ok_handoff = e_frame > 5 * e_true;
+ok_handoff = e_frame > HANDOFF_RATIO * e_true;
 fprintf('%-51s %s\n', '2. frame-axis quality dominates block dlam:', ...
   H_tick(ok_handoff));
 
@@ -305,16 +343,16 @@ NX_LEN = NMIN_BLK * H_ntr(L_LONG, DX);   % 5.66 km at 2.83 m
 % the row measure the cap instead of the aperture. But dlam_max is not
 % only a cap: quadpolFabricLS builds its initial search as
 % dd_grid = linspace(0, dlam_max*gpd, 26), so 0.45 -> 0.60 also coarsens
-% that grid from ~0.018 to ~0.024 dlam per node. The e < 0.010 asserted on
-% the 125 m rows therefore sits BELOW one grid node and is met by the
-% fminsearch refinement, not by the grid - and for the same reason these
-% 125 m numbers are not strictly comparable with verdict 2's, which are
-% fitted at 0.45. Both lengths here see the same cap, so the contrast
-% between them is untouched.
+% that grid from ~0.018 to ~0.024 dlam per node. E_SHORT_MAX therefore
+% sits BELOW one grid node and is met by the fminsearch refinement, not by
+% the grid - and for the same reason the L_SHORT numbers here are not
+% strictly comparable with verdict 2's, which are fitted at 0.45. Both
+% lengths here see the same cap, so the contrast between them is
+% untouched.
 OPTS_L = OPTS; OPTS_L.dlam_max = 0.60;
 LEN_RATES = [RATES(1), 5e-5];
-fprintf('\n%-9s %9s %10s %7s %10s\n', ...
-  'rate/km', 'blk_len', 'sig@1100', 'nblk', 'med|err|');
+fprintf('\n%-9s %9s %10s %7s %10s\n', 'rate/km', 'blk_len', ...
+  sprintf('sig@%d', Z_BAND(2)), 'nblk', 'med|err|');
 short_ok = true; long_fails = false; enough_blk = true;
 for k = 1:numel(LEN_RATES)
   rk = LEN_RATES(k);
@@ -332,8 +370,8 @@ for k = 1:numel(LEN_RATES)
     % disjoint apertures; a section too short for the length silently
     % yields fewer, and H_blocks reports 0 rather than one clamped block
     enough_blk = enough_blk && nb >= NMIN_BLK;
-    if L == L_SHORT, short_ok = short_ok && e < 0.010; end
-    if L == L_LONG && k == 2, long_fails = e > 0.05; end
+    if L == L_SHORT, short_ok = short_ok && e < E_SHORT_MAX; end
+    if L == L_LONG && k == 2, long_fails = e > E_LONG_MIN; end
   end
   clear Sk Dk
 end
