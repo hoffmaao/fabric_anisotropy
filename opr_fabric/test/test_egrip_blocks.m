@@ -32,9 +32,9 @@
 %  1. THE FRAME PASS ABSTAINS RATHER THAN LIES. As lateral variation grows
 %     the pooled fit gives up - finite window fraction falls - instead of
 %     returning a confident wrong axis. Measured 0.010 -> 0.020 dlam/km:
-%     coverage in the 300-1100 m band falls 35% -> 5% and live windows
-%     over the whole profile fall 16 -> 8 of 34, while the BAND axis error
-%     never exceeds 6.8 deg. This is the
+%     coverage in the 300-1100 m band falls 35% -> 5% (7 live band windows
+%     -> 1) and live windows over the whole profile fall 16 -> 8 of 34,
+%     while the BAND axis error never exceeds 6.8 deg. This is the
 %     project's abstain-rather-than-report-the-prior rule holding where it
 %     matters most, because the pipeline hands the frame axis to EVERY
 %     block: a lie propagates to a whole section, abstention does not.
@@ -52,12 +52,14 @@
 %     sigma = gpd*ddlam*z grows with depth, so the shallow windows are
 %     trivially right and averaging them in would let a deep-only lie pass
 %     under the bound. Two questions, two populations, on purpose - see
-%     MIN_SEG_W and MAX_AXIS_DEG below. It matters which: all three rates
-%     keep 16, 14 and 8 live windows against the 5 the consumer requires,
-%     so every row is a profile the pipeline would propagate and the
-%     10 deg bound is evaluated on every one of them, against measured
-%     band errors of 3.2, 5.5 and 6.8 deg - none is excused as abstention,
-%     which is what counting only the band would have done to 0.020.
+%     MIN_SEG_W and MAX_AXIS_DEG below. The axis bound applies only where
+%     the band holds enough live windows to average - fewer is the
+%     abstention this verdict rewards, not a lie to catch - so the first
+%     rate is REQUIRED to be both handed on and scored, which is what
+%     stops the bound going hollow. Measured: all three rates keep 16, 14
+%     and 8 live windows against the 5 the consumer requires; 0.010 and
+%     0.014 keep 7 live band windows each and are held to the 10 deg bound
+%     at 3.2 and 5.5 deg, while 0.020 keeps 1 and is exempt.
 %     Nothing else guards this, and a change that made the fit confident
 %     under lateral variation would be a silent, section-wide regression.
 %
@@ -116,6 +118,11 @@ x = (0:NX-1) * DX;
 DL0 = 0.25;                    % EGRIP-core-like contrast
 L_SHORT = 125;                 % BLK_TARGET_M, the pipeline's re-cut
 L_LONG = 708;                  % the length verdict 3 drives to collapse
+% The depth band every score in this file is taken over: verdict 1's axis
+% error, verdict 1's coverage fraction, and the block dlam H_blocks
+% medians. One owner, passed to H_blocks, so "the band the blocks consume"
+% stays one range rather than two that happen to agree.
+Z_BAND = [300 1100];
 
 % Verdict 1 asks two questions of one fit, and they take DIFFERENT window
 % populations on purpose. Do not unify them: doing so silently loosens the
@@ -130,17 +137,26 @@ L_LONG = 708;                  % the length verdict 3 drives to collapse
 %   would happily propagate.
 MIN_SEG_W = 5;
 %
-%   IS IT ACCURATE WHERE IT MATTERS? - the DEEP BAND, 300-1100 m, the same
+%   IS IT ACCURATE WHERE IT MATTERS? - the DEEP BAND (Z_BAND), the same
 %   window range H_blocks scores block dlam over and verdict 2 measures its
 %   12x in. sigma = gpd*ddlam*z grows with depth, so shallow windows are
 %   trivially right; averaging them into the axis error pulls it toward
 %   truth and would let a deep-only lie pass. The bound is set from
 %   verdict 2, which measures a ~3 deg band error already costing 12x in
-%   block dlam: 10 deg is unambiguously a bad handoff, it is 1.5x above
-%   this test's worst measured band error (6.8 deg at 0.020 dlam/km, over
-%   a single live window), and it is far below the ~97 deg lie the 9 m
-%   geometry produced.
+%   block dlam: 10 deg is unambiguously a bad handoff, and it is far below
+%   the ~97 deg lie the 9 m geometry produced.
 MAX_AXIS_DEG = 10;
+%   ...but only where there IS a band axis to judge. The claim is that no
+%   rate pairs USABLE coverage with an INACCURATE axis, so a band holding
+%   one or two live windows makes no claim at all: that is the abstention
+%   this verdict exists to reward, and failing it on an unaveraged angle -
+%   or on a NaN - would punish the estimator for doing the right thing.
+%   The minimum is what makes a circular mean mean something rather than
+%   what keeps a row passing: five samples is the smallest set whose mean
+%   is not swung past the bound by one outlier at the ~6 deg scale these
+%   windows scatter over, and it is the same count ptt.quadpolFrameTheta
+%   requires of a whole profile before it will treat it as usable.
+MIN_BAND_W = 5;
 % Smallest number of DISJOINT block apertures a verdict-3 median may rest
 % on. Eight, not more, because the dlam cap bounds it - see verdict 3.
 NMIN_BLK = 8;
@@ -156,7 +172,7 @@ OPTS = struct('fc', fc, 'psi_step_deg', 4, 'win_short_m', 10, ...
   'theta_step_deg', 4);
 
 fprintf(['geometry: %.2f m spacing, %d traces (%.2f km), %d m block = ' ...
-  '%d traces\n\n'], DX, NX, NX*DX/1000, L_SHORT, round(L_SHORT/DX));
+  '%d traces\n\n'], DX, NX, NX*DX/1000, L_SHORT, H_ntr(L_SHORT, DX));
 
 %% verdict 1: the frame pass abstains rather than lies
 % Three rates spanning the transition. Reported together because they are
@@ -165,32 +181,33 @@ fprintf(['geometry: %.2f m spacing, %d traces (%.2f km), %d m block = ' ...
 % is dangerous, and it is what the 9 m geometry used to produce.
 RATES = [1.0 1.4 2.0] * 1e-5;          % dlam per metre
 fin = nan(size(RATES)); ang = nan(size(RATES));
-nlive = zeros(size(RATES));
+nlive = zeros(size(RATES)); nband = zeros(size(RATES));
 TH_DEG = rad2deg(THETA_TRUE);
-fprintf('%-9s %10s %9s %8s %6s %7s %11s\n', 'rate/km', 'frame_ddl', ...
-  'sig@800', 'band', 'live', 'handed', 'axis error');
+fprintf('%-9s %10s %9s %6s %6s %7s %7s %11s\n', 'rate/km', 'frame_ddl', ...
+  'sig@800', 'band', 'live', 'handed', 'scored', 'axis error');
 for k = 1:numel(RATES)
   [S, DL_X] = H_synth(RATES(k), NX, DX, Nz, z, THETA_TRUE, DL0, ...
     gpd, LEAK_C, LEAK_D, NA);
   fr = ptt.quadpolFabricLS(S, z, OPTS);
   ok = isfinite(fr.theta0);
   % nlive is the CONSUMER's population - every window of the profile
-  % thetaProfileAt would interpolate - while fin and ang are the deep band
-  % the blocks are scored over; see MIN_SEG_W / MAX_AXIS_DEG above for why
-  % the two questions do not share a population
-  m = fr.zw > 300 & fr.zw < 1100;
+  % thetaProfileAt would interpolate - while fin, nband and ang are the
+  % deep band the blocks are scored over; see MIN_SEG_W / MAX_AXIS_DEG
+  % above for why the two questions do not share a population
+  m = fr.zw > Z_BAND(1) & fr.zw < Z_BAND(2);
   nlive(k) = nnz(ok);
+  nband(k) = nnz(ok & m);
   fin(k) = mean(ok(m));
-  if any(ok & m)
+  if nband(k) >= MIN_BAND_W
     th = mod(rad2deg(angle(mean(exp(2i*fr.theta0(ok & m)))))/2, 180);
     ang(k) = min(abs(th - TH_DEG), 180 - abs(th - TH_DEG));
     as = sprintf('%.1f deg', ang(k));
   else
-    ang(k) = NaN; as = '(band NaN)';
+    ang(k) = NaN; as = '(abstains)';
   end
-  fprintf('%-9.3f %10.4f %9.1f %7.0f%% %6d %7s %11s\n', RATES(k)*1000, ...
+  fprintf('%-9.3f %10.4f %9.1f %5.0f%% %6d %7s %7s %11s\n', RATES(k)*1000, ...
     RATES(k)*x(end), gpd*RATES(k)*x(end)*800, 100*fin(k), nlive(k), ...
-    H_yn(nlive(k) >= MIN_SEG_W), as);
+    H_yn(nlive(k) >= MIN_SEG_W), H_yn(nband(k) >= MIN_BAND_W), as);
   % only the first rate's frame is reused (verdict 2); holding all three
   % would pin ~180 MB of synthetic per rate for nothing
   if k == 1, S1 = S; DLX1 = DL_X; fr1 = fr; end
@@ -199,20 +216,28 @@ clear S DL_X fr
 % Coverage must FALL as the ramp grows - on the consumer's population and
 % in the quoted band alike - and no rate may pair a handoff the pipeline
 % would propagate with an inaccurate axis in the band the blocks consume.
-% A handed-on profile with NO live band window fails too: its deep axis is
-% then pure extrapolation from the shallow windows, handed to every block
-% in the section, which is the same harm by another route. The first rate
-% must itself be a live handoff, which is what keeps the axis term
-% binding: a dead estimator cannot satisfy the verdict by abstaining
-% everywhere.
+% A row whose band has fewer than MIN_BAND_W live windows is exempt from
+% the angle: it has no usable band coverage, so there is nothing to lie
+% about, and that is the abstention the verdict rewards.
+%
+% The exemption is what would make the angle term hollow, so the FIRST
+% rate - the mildest lateral variation, where a working estimator must
+% still deliver - is required to be both handed on and scored. That is not
+% the inverted incentive the deep rates get to enjoy: abstaining at
+% 0.010 dlam/km would break this test's premise and verdict 2 with it,
+% while abstaining at 0.020 is the behaviour being asserted. So at least
+% one row is always subject to the bound, by construction rather than by
+% today's numbers.
 handed = nlive >= MIN_SEG_W;
-lies = handed & ~(isfinite(ang) & ang < MAX_AXIS_DEG);
-ok_abstain = handed(1) && nlive(end) < nlive(1) && fin(end) < fin(1) && ...
-  ~any(lies);
-fprintf(['\nhanded on (>= %d live windows of %d) at %d of %d rates; axis ' ...
-  'bound %.0f deg binds on those\n'], MIN_SEG_W, numel(fr1.zw), ...
-  nnz(handed), numel(RATES), MAX_AXIS_DEG);
-fprintf('1. frame pass abstains rather than lies:            %s\n', ...
+scored = nband >= MIN_BAND_W;
+lies = handed & scored & ~(ang < MAX_AXIS_DEG);
+ok_abstain = handed(1) && scored(1) && nlive(end) < nlive(1) && ...
+  fin(end) < fin(1) && ~any(lies);
+fprintf(['\nhanded on (>= %d live windows of %d) at %d of %d rates, of ' ...
+  'which %d have >= %d live band windows and are held to the %.0f deg ' ...
+  'axis bound\n'], MIN_SEG_W, numel(fr1.zw), nnz(handed), numel(RATES), ...
+  nnz(handed & scored), MIN_BAND_W, MAX_AXIS_DEG);
+fprintf('%-51s %s\n', '1. frame pass abstains rather than lies:', ...
   H_tick(ok_abstain));
 
 %% verdict 2: the pooled handoff is load-bearing even when the frame is OK
@@ -226,15 +251,15 @@ th_frame = struct('z', fr1.zw(okw), 'theta', fr1.theta0(okw));
 % hand-built profile: a hand-built window grid has to match the solver's
 % own (z(1)+half : step_m : z(end)-half) to mean what it looks like, and
 % a mismatch is invisible only while the value happens to be constant
-e_frame = H_blocks(S1, z, DLX1, NX, DX, OPTS, th_frame, fr1.pedestal, ...
-  L_SHORT);
+[e_frame, ~, lb] = H_blocks(S1, z, DLX1, NX, DX, OPTS, th_frame, ...
+  fr1.pedestal, L_SHORT, Z_BAND);
 e_true = H_blocks(S1, z, DLX1, NX, DX, OPTS, THETA_TRUE, fr1.pedestal, ...
-  L_SHORT);
+  L_SHORT, Z_BAND);
 clear S1 DLX1
-fprintf(['\n125 m blocks at %.3f dlam/km: med|err| %.3f with the FRAME ' ...
-  'axis, %.3f with the TRUE axis\n'], RATES(1)*1000, e_frame, e_true);
+fprintf(['\n%.0f m blocks at %.3f dlam/km: med|err| %.3f with the FRAME ' ...
+  'axis, %.3f with the TRUE axis\n'], lb, RATES(1)*1000, e_frame, e_true);
 ok_handoff = e_frame > 5 * e_true;
-fprintf('2. frame-axis quality dominates block dlam:         %s\n', ...
+fprintf('%-51s %s\n', '2. frame-axis quality dominates block dlam:', ...
   H_tick(ok_handoff));
 
 %% verdict 3: block length margin, with the axis held true
@@ -273,8 +298,7 @@ fprintf('2. frame-axis quality dominates block dlam:         %s\n', ...
 % below cannot be broken by a re-measured DX - and the cap arithmetic
 % above is already spacing-independent, since NMIN_BLK long blocks climb
 % NMIN_BLK*L_LONG*rate metres of ramp however many traces span them.
-NB_LONG = max(4, round(L_LONG / DX));
-NX_LEN = NMIN_BLK * NB_LONG;   % 5.66 km at 2.83 m: 8 disjoint 708 m blocks
+NX_LEN = NMIN_BLK * H_ntr(L_LONG, DX);   % 5.66 km at 2.83 m
 % The cap is lifted from OPTS's 0.45 because this longer section climbs
 % the ramp 0.283 at the high rate, reaching 0.533, which would rail
 % against 0.45 (quadpolFabricLS returns NaN above 0.98*dlam_max) and make
@@ -297,10 +321,13 @@ for k = 1:numel(LEN_RATES)
   [Sk, Dk] = H_synth(rk, NX_LEN, DX, Nz, z, THETA_TRUE, DL0, ...
     gpd, LEAK_C, LEAK_D, NA);
   for L = [L_SHORT L_LONG]
-    [e, nb] = H_blocks(Sk, z, Dk, NX_LEN, DX, OPTS_L, THETA_TRUE, [], L);
-    NB = max(4, round(L/DX));
-    fprintf('%-9.3f %8.0fm %10.2f %7d %10.3f\n', rk*1000, NB*DX, ...
-      gpd*rk*NB*DX*1100, nb, e);
+    % lb is the aperture H_blocks actually fitted, not a parallel
+    % recomputation of it, so the reported length and sigma describe the
+    % rows below them
+    [e, nb, lb] = H_blocks(Sk, z, Dk, NX_LEN, DX, OPTS_L, THETA_TRUE, ...
+      [], L, Z_BAND);
+    fprintf('%-9.3f %8.0fm %10.2f %7d %10.3f\n', rk*1000, lb, ...
+      gpd*rk*lb*Z_BAND(2), nb, e);
     % the median is only worth its verdict if it rests on NMIN_BLK
     % disjoint apertures; a section too short for the length silently
     % yields fewer, and H_blocks reports 0 rather than one clamped block
@@ -314,7 +341,8 @@ ok_len = short_ok && long_fails && enough_blk;
 if ~enough_blk
   fprintf('   (a row rested on fewer than %d disjoint blocks)\n', NMIN_BLK);
 end
-fprintf('3. 125 m holds where 708 m fails:                   %s\n', ...
+fprintf('%-51s %s\n', ...
+  sprintf('3. %d m holds where %d m fails:', L_SHORT, L_LONG), ...
   H_tick(ok_len));
 
 fails = ~ok_abstain + ~ok_handoff + ~ok_len;
@@ -353,15 +381,26 @@ for f = {'hh','vv','hv','vh'}
 end
 end
 
-function [medae, nblk] = H_blocks(S, z, DL_X, NX, DX, OPTS, th, ped, L)
+function nb = H_ntr(L, DX)
+%H_NTR Traces spanning L metres at spacing DX - the one place this is done.
+% The block aperture, the section length and the printed diagnostics all
+% come through here, so a report can never describe a different aperture
+% than the one fitted.
+nb = max(4, round(L / DX));
+end
+
+function [medae, nblk, len_m] = H_blocks(S, z, DL_X, NX, DX, OPTS, th, ...
+    ped, L, zband)
 %H_BLOCKS Median |dlam error| over blocks of length L metres, axis handed in.
 % Blocks tile the section DISJOINTLY, which is what run_quadpol_pipeline
 % cuts, so nblk is a count of independent apertures and the median means
 % what it looks like. A section too short to hold one whole block returns
 % nblk = 0 and medae = NaN rather than one clamped, shorter block, so the
 % caller's block-count check fails loudly instead of the row silently
-% measuring a different aperture than it reports.
-NB = max(4, round(L / DX));
+% measuring a different aperture than it reports. len_m is the aperture
+% actually fitted, in metres, for the caller to report.
+NB = H_ntr(L, DX);
+len_m = NB * DX;
 nblk = floor(NX / NB);
 if nblk < 1, medae = NaN; nblk = 0; return; end
 dl = nan(1, nblk); tr = nan(1, nblk);
@@ -372,7 +411,7 @@ for b = 1:nblk
   Sb = struct('hh', S.hh(:, j0:j1), 'vv', S.vv(:, j0:j1), ...
     'hv', S.hv(:, j0:j1), 'vh', S.vh(:, j0:j1));
   ob = ptt.quadpolFabricLS(Sb, z, o);
-  m = ob.zw > 300 & ob.zw < 1100;
+  m = ob.zw > zband(1) & ob.zw < zband(2);
   dl(b) = median(ob.dlam(m), 'omitnan');
   tr(b) = mean(DL_X(j0:j1));
 end
