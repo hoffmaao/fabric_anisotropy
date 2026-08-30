@@ -524,9 +524,9 @@ the same way:
   pooled frame pass ABSTAINS rather than lies as lateral dlam variation
   grows - over 0.010 -> 0.020 dlam/km coverage in the 300-1100 m band
   falls 35% -> 5% and live windows over the whole profile fall 16 -> 8 of
-  34, while the band axis error stays within 6.8 deg - and the test
-  asserts the pair, so no rate may combine a profile the pipeline would
-  hand on with an inaccurate axis. The two halves deliberately take
+  34, while the band axis error on every row still scorable stays at
+  3.2-5.5 deg - and the test asserts the pair, so no rate may combine a
+  profile the pipeline would hand on with an inaccurate axis. The two halves deliberately take
   different window populations: liveness over the full grid, because that
   is what `ptt.quadpolFrameTheta` gates its `min_seg_windows` on, and the
   axis error over the 300-1100 m band, because `sigma = gpd*ddlam*z` grows
@@ -534,9 +534,9 @@ the same way:
   bound. A rate whose band holds too few live windows to average is exempt
   from the axis bound - that is abstention, not a lie - so the mildest
   rate is required to be both handed on and scored, which is what keeps
-  the bound from going hollow. The pooled handoff is nonetheless load-bearing: at a
-  modest 0.010 dlam/km the frame axis is only ~3 deg off over that same
-  300-1100 m band, yet blocks
+  the bound from going hollow. The pooled handoff is nonetheless
+  load-bearing: at a modest 0.010 dlam/km the frame axis is only ~3 deg
+  off over that same 300-1100 m band, yet blocks
   handed it recover dlam ~12x worse than blocks handed the true axis -
   which is what the segmented frame pass (`ptt.quadpolFrameTheta`)
   exists to fix. And block length has margin: with the axis held true the
