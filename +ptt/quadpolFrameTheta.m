@@ -16,10 +16,11 @@ function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 % decoheres the pooled fit, and every block then inherits the result.
 % test_egrip_blocks.m measures what that costs at the season's real 2.83 m
 % spacing, and it does NOT need a dead frame to bite: at a modest 0.010
-% dlam/km the pooled axis is only ~3 deg off, yet blocks handed that
-% profile recover dlam ~12x worse than blocks handed the true axis
-% (verdict 2). Push the ramp further and the pooled fit abstains rather
-% than lies - coverage falls, the axis stays within a few degrees
+% dlam/km the pooled axis is only ~3 deg off over the 300-1100 m band,
+% yet blocks handed that profile recover dlam ~12x worse there than
+% blocks handed the true axis (verdict 2). Push the ramp further and the
+% pooled fit abstains rather than lies - coverage falls, the band axis
+% stays within a few degrees
 % (verdict 1) - so the damage is upstream of the blocks either way, and
 % no block size addresses it. Blocks themselves cannot self-rescue -
 % 14-126 traces is too little coherence to estimate theta0 alone; ~2 km

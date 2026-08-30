@@ -20,18 +20,21 @@
 % wrong axis label: at 9 m the frame pass returned a CONFIDENTLY WRONG axis
 % (~97 deg off) and the test asserted that no block size could rescue it.
 % At 2.83 m that does not happen at any ramp rate - see verdict 1 - so the
-% old assertions were pinning an artifact of the inflated geometry. The
-% ramp rate is quoted per km, which is spacing-independent, so the numbers
-% below survive any future re-measurement of the spacing.
+% old assertions were pinning an artifact of the inflated geometry. To
+% keep that from recurring, every geometry below is stated in METRES and
+% converted to traces through DX - frame aperture, block lengths, section
+% length - and ramp rates are quoted per km. So a future re-measurement of
+% the spacing changes the trace counts and nothing else: the same lengths,
+% the same ramp per km, the same block counts.
 %
 % WHAT THIS GUARDS, all three measured at the real geometry:
 %
 %  1. THE FRAME PASS ABSTAINS RATHER THAN LIES. As lateral variation grows
 %     the pooled fit gives up - finite window fraction falls - instead of
 %     returning a confident wrong axis. Measured 0.010 -> 0.020 dlam/km:
-%     coverage in the quoted 300-1100 m band falls 35% -> 5% and live
-%     windows over the whole profile fall 16 -> 8 of 34, while the axis
-%     stays within 2.3 deg of truth throughout. This is the
+%     coverage in the 300-1100 m band falls 35% -> 5% and live windows
+%     over the whole profile fall 16 -> 8 of 34, while the BAND axis error
+%     never exceeds 6.8 deg. This is the
 %     project's abstain-rather-than-report-the-prior rule holding where it
 %     matters most, because the pipeline hands the frame axis to EVERY
 %     block: a lie propagates to a whole section, abstention does not.
@@ -43,19 +46,26 @@
 %     live, and ptt.thetaProfileAt then interpolates that profile into
 %     every block of the segment; below it the segment is marked dead and
 %     the blocks fall back. Borrowing that rule means counting the same
-%     POPULATION it gates on, so the liveness count and the axis error
-%     are taken over the solver's whole window grid (34 windows,
-%     30:40:1350 m), not over the 300-1100 m band the coverage figures
-%     above quote. It matters which: all three rates keep 16, 14 and 8
-%     live windows against the 5 the consumer requires, so every row is a
-%     profile the pipeline would propagate and the 10 deg bound is
-%     evaluated on every one of them - none is excused as abstention,
+%     POPULATION it gates on, so the LIVENESS COUNT is taken over the
+%     solver's whole window grid (34 windows, 30:40:1350 m). The AXIS
+%     ERROR is not: it is taken over the 300-1100 m band, because
+%     sigma = gpd*ddlam*z grows with depth, so the shallow windows are
+%     trivially right and averaging them in would let a deep-only lie pass
+%     under the bound. Two questions, two populations, on purpose - see
+%     MIN_SEG_W and MAX_AXIS_DEG below. It matters which: all three rates
+%     keep 16, 14 and 8 live windows against the 5 the consumer requires,
+%     so every row is a profile the pipeline would propagate and the
+%     10 deg bound is evaluated on every one of them, against measured
+%     band errors of 3.2, 5.5 and 6.8 deg - none is excused as abstention,
 %     which is what counting only the band would have done to 0.020.
 %     Nothing else guards this, and a change that made the fit confident
 %     under lateral variation would be a silent, section-wide regression.
 %
 %  2. THE POOLED HANDOFF IS LOAD-BEARING. It needs no dead frame to hurt.
-%     At a MODEST 0.010 dlam/km the frame axis is only ~3 deg off, yet
+%     At a MODEST 0.010 dlam/km the frame axis is only ~3 deg off over the
+%     300-1100 m band - the same figure verdict 1 reports for that rate,
+%     over the same population, and the one MAX_AXIS_DEG is derived from -
+%     yet
 %     blocks handed that profile recover dlam ~12x worse than blocks handed
 %     the true axis (med|err| 0.025 vs 0.002). Frame-axis quality dominates
 %     block dlam accuracy by an order of magnitude; the laterally-segmented
@@ -95,22 +105,41 @@ THETA_TRUE = deg2rad(35);      % axis, fixed along track (antennas at 0)
 Nz = 2800; dz = 0.5;
 z = (0:Nz-1).' * dz;           % 0..1400 m
 DX = 2.83;                     % EastGRIP trace spacing, reference-trajectory
-NX = 1000;                     % 2.83 km for the frame passes; the real
-x = (0:NX-1) * DX;             % frame is ~5.8 km
+% Every geometry below is fixed in METRES and converted to traces through
+% DX, never the other way round. A ramp rate per km only stays meaningful
+% under a re-measured spacing if the length it acts over is held fixed
+% too: 1000 traces would be 2.83 km today and something else tomorrow,
+% which is how the original test came to be pinning 9 m artefacts.
+FRAME_M = 2830;                % frame-pass aperture; the real frame ~5.8 km
+NX = round(FRAME_M / DX);
+x = (0:NX-1) * DX;
 DL0 = 0.25;                    % EGRIP-core-like contrast
+L_SHORT = 125;                 % BLK_TARGET_M, the pipeline's re-cut
+L_LONG = 708;                  % the length verdict 3 drives to collapse
 
-% ptt.quadpolFrameTheta keeps a segment profile - and ptt.thetaProfileAt
-% then hands it to every block in the segment - only when at least this
-% many theta windows are live (its min_seg_windows default, gated as
-% nnz(isfinite(theta0)) < MIN_SEG_W over the solver's FULL window grid).
-% It is the consumer's definition of a usable handoff, and verdict 1
-% borrows it rather than inventing one - which only means anything if the
-% same population is counted, so verdict 1 counts over the full grid too,
-% not over the 300-1100 m band it reports coverage in.
+% Verdict 1 asks two questions of one fit, and they take DIFFERENT window
+% populations on purpose. Do not unify them: doing so silently loosens the
+% guard, whichever way it is unified.
+%
+%   IS THIS HANDOFF USABLE? - the consumer's question, so the consumer's
+%   population. ptt.quadpolFrameTheta keeps a segment profile, and
+%   ptt.thetaProfileAt then interpolates it into every block, only when at
+%   least min_seg_windows theta windows are live, gated as
+%   nnz(isfinite(theta0)) < MIN_SEG_W over the solver's FULL window grid.
+%   Counting the band instead would call a profile dead that the pipeline
+%   would happily propagate.
 MIN_SEG_W = 5;
-% Above this the axis is wrong enough to matter: verdict 2 measures a
-% 3 deg error costing 12x in block dlam, so 10 deg is already a bad
-% handoff - and it is far below the ~97 deg lie the 9 m geometry produced.
+%
+%   IS IT ACCURATE WHERE IT MATTERS? - the DEEP BAND, 300-1100 m, the same
+%   window range H_blocks scores block dlam over and verdict 2 measures its
+%   12x in. sigma = gpd*ddlam*z grows with depth, so shallow windows are
+%   trivially right; averaging them into the axis error pulls it toward
+%   truth and would let a deep-only lie pass. The bound is set from
+%   verdict 2, which measures a ~3 deg band error already costing 12x in
+%   block dlam: 10 deg is unambiguously a bad handoff, it is 1.5x above
+%   this test's worst measured band error (6.8 deg at 0.020 dlam/km, over
+%   a single live window), and it is far below the ~97 deg lie the 9 m
+%   geometry produced.
 MAX_AXIS_DEG = 10;
 % Smallest number of DISJOINT block apertures a verdict-3 median may rest
 % on. Eight, not more, because the dlam cap bounds it - see verdict 3.
@@ -126,8 +155,8 @@ OPTS = struct('fc', fc, 'psi_step_deg', 4, 'win_short_m', 10, ...
   'win_fit_m', 60, 'step_m', 40, 'dlam_max', 0.45, 'deramped', false, ...
   'theta_step_deg', 4);
 
-fprintf(['geometry: %.2f m spacing, %d traces (%.2f km), 125 m block = ' ...
-  '%d traces\n\n'], DX, NX, NX*DX/1000, round(125/DX));
+fprintf(['geometry: %.2f m spacing, %d traces (%.2f km), %d m block = ' ...
+  '%d traces\n\n'], DX, NX, NX*DX/1000, L_SHORT, round(L_SHORT/DX));
 
 %% verdict 1: the frame pass abstains rather than lies
 % Three rates spanning the transition. Reported together because they are
@@ -145,18 +174,19 @@ for k = 1:numel(RATES)
     gpd, LEAK_C, LEAK_D, NA);
   fr = ptt.quadpolFabricLS(S, z, OPTS);
   ok = isfinite(fr.theta0);
-  % nlive and ang are the CONSUMER's population - every window of the
-  % profile thetaProfileAt would interpolate - while fin reports the
-  % 300-1100 m band the section actually quotes
+  % nlive is the CONSUMER's population - every window of the profile
+  % thetaProfileAt would interpolate - while fin and ang are the deep band
+  % the blocks are scored over; see MIN_SEG_W / MAX_AXIS_DEG above for why
+  % the two questions do not share a population
   m = fr.zw > 300 & fr.zw < 1100;
   nlive(k) = nnz(ok);
   fin(k) = mean(ok(m));
-  if nlive(k) > 0
-    th = mod(rad2deg(angle(mean(exp(2i*fr.theta0(ok)))))/2, 180);
+  if any(ok & m)
+    th = mod(rad2deg(angle(mean(exp(2i*fr.theta0(ok & m)))))/2, 180);
     ang(k) = min(abs(th - TH_DEG), 180 - abs(th - TH_DEG));
     as = sprintf('%.1f deg', ang(k));
   else
-    ang(k) = NaN; as = '(all NaN)';
+    ang(k) = NaN; as = '(band NaN)';
   end
   fprintf('%-9.3f %10.4f %9.1f %7.0f%% %6d %7s %11s\n', RATES(k)*1000, ...
     RATES(k)*x(end), gpd*RATES(k)*x(end)*800, 100*fin(k), nlive(k), ...
@@ -168,9 +198,13 @@ end
 clear S DL_X fr
 % Coverage must FALL as the ramp grows - on the consumer's population and
 % in the quoted band alike - and no rate may pair a handoff the pipeline
-% would propagate with an inaccurate axis. The first rate must itself be a
-% live handoff, which is what keeps the axis term binding: a dead
-% estimator cannot satisfy the verdict by abstaining everywhere.
+% would propagate with an inaccurate axis in the band the blocks consume.
+% A handed-on profile with NO live band window fails too: its deep axis is
+% then pure extrapolation from the shallow windows, handed to every block
+% in the section, which is the same harm by another route. The first rate
+% must itself be a live handoff, which is what keeps the axis term
+% binding: a dead estimator cannot satisfy the verdict by abstaining
+% everywhere.
 handed = nlive >= MIN_SEG_W;
 lies = handed & ~(isfinite(ang) & ang < MAX_AXIS_DEG);
 ok_abstain = handed(1) && nlive(end) < nlive(1) && fin(end) < fin(1) && ...
@@ -182,16 +216,20 @@ fprintf('1. frame pass abstains rather than lies:            %s\n', ...
   H_tick(ok_abstain));
 
 %% verdict 2: the pooled handoff is load-bearing even when the frame is OK
-% The modest rate, whose frame axis is only ~3 deg off - no dead frame
-% needed for the coupling to cost an order of magnitude.
+% The modest rate, whose frame axis is only ~3 deg off over the 300-1100 m
+% band the blocks are scored in (verdict 1's axis-error column for that
+% rate) - no dead frame needed for the coupling to cost an order of
+% magnitude.
 okw = isfinite(fr1.theta0);
 th_frame = struct('z', fr1.zw(okw), 'theta', fr1.theta0(okw));
 % the true axis goes in as the SCALAR the solver documents, not a
 % hand-built profile: a hand-built window grid has to match the solver's
 % own (z(1)+half : step_m : z(end)-half) to mean what it looks like, and
 % a mismatch is invisible only while the value happens to be constant
-e_frame = H_blocks(S1, z, DLX1, NX, DX, OPTS, th_frame, fr1.pedestal, 125);
-e_true = H_blocks(S1, z, DLX1, NX, DX, OPTS, THETA_TRUE, fr1.pedestal, 125);
+e_frame = H_blocks(S1, z, DLX1, NX, DX, OPTS, th_frame, fr1.pedestal, ...
+  L_SHORT);
+e_true = H_blocks(S1, z, DLX1, NX, DX, OPTS, THETA_TRUE, fr1.pedestal, ...
+  L_SHORT);
 clear S1 DLX1
 fprintf(['\n125 m blocks at %.3f dlam/km: med|err| %.3f with the FRAME ' ...
   'axis, %.3f with the TRUE axis\n'], RATES(1)*1000, e_frame, e_true);
@@ -228,7 +266,15 @@ fprintf('2. frame-axis quality dominates block dlam:         %s\n', ...
 % leaves room for (0.588 - 0.25)/0.035 = 9.5 blocks, so 8 clears the rail
 % with margin and 12 would not. Buying more by lifting the cap further is
 % not free - see the grid coupling below.
-NX_LEN = 2000;                 % 5.66 km: 8 disjoint 708 m blocks
+%
+% The section is sized from the LENGTH the verdict needs, never a trace
+% count: NMIN_BLK whole long blocks, converted through DX. That makes the
+% disjoint count exactly NMIN_BLK at any spacing, so the enough_blk check
+% below cannot be broken by a re-measured DX - and the cap arithmetic
+% above is already spacing-independent, since NMIN_BLK long blocks climb
+% NMIN_BLK*L_LONG*rate metres of ramp however many traces span them.
+NB_LONG = max(4, round(L_LONG / DX));
+NX_LEN = NMIN_BLK * NB_LONG;   % 5.66 km at 2.83 m: 8 disjoint 708 m blocks
 % The cap is lifted from OPTS's 0.45 because this longer section climbs
 % the ramp 0.283 at the high rate, reaching 0.533, which would rail
 % against 0.45 (quadpolFabricLS returns NaN above 0.98*dlam_max) and make
@@ -250,7 +296,7 @@ for k = 1:numel(LEN_RATES)
   rk = LEN_RATES(k);
   [Sk, Dk] = H_synth(rk, NX_LEN, DX, Nz, z, THETA_TRUE, DL0, ...
     gpd, LEAK_C, LEAK_D, NA);
-  for L = [125 708]
+  for L = [L_SHORT L_LONG]
     [e, nb] = H_blocks(Sk, z, Dk, NX_LEN, DX, OPTS_L, THETA_TRUE, [], L);
     NB = max(4, round(L/DX));
     fprintf('%-9.3f %8.0fm %10.2f %7d %10.3f\n', rk*1000, NB*DX, ...
@@ -259,8 +305,8 @@ for k = 1:numel(LEN_RATES)
     % disjoint apertures; a section too short for the length silently
     % yields fewer, and H_blocks reports 0 rather than one clamped block
     enough_blk = enough_blk && nb >= NMIN_BLK;
-    if L == 125, short_ok = short_ok && e < 0.010; end
-    if L == 708 && k == 2, long_fails = e > 0.05; end
+    if L == L_SHORT, short_ok = short_ok && e < 0.010; end
+    if L == L_LONG && k == 2, long_fails = e > 0.05; end
   end
   clear Sk Dk
 end
