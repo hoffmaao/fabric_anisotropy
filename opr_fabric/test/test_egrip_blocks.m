@@ -34,7 +34,8 @@
 %     returning a confident wrong axis. Measured 0.010 -> 0.020 dlam/km:
 %     coverage in the 300-1100 m band falls 35% -> 5% (7 live band windows
 %     -> 1) and live windows over the whole profile fall 16 -> 8 of 34,
-%     while the BAND axis error never exceeds 6.8 deg. This is the
+%     while the BAND axis error on every row still scorable stays at
+%     3.2-5.5 deg. This is the
 %     project's abstain-rather-than-report-the-prior rule holding where it
 %     matters most, because the pipeline hands the frame axis to EVERY
 %     block: a lie propagates to a whole section, abstention does not.
@@ -66,8 +67,8 @@
 %  2. THE POOLED HANDOFF IS LOAD-BEARING. It needs no dead frame to hurt.
 %     At a MODEST 0.010 dlam/km the frame axis is only ~3 deg off over the
 %     300-1100 m band - the same figure verdict 1 reports for that rate,
-%     over the same population, and the one MAX_AXIS_DEG is derived from -
-%     yet
+%     over the same population, and the one MAX_AXIS_DEG is bracketed
+%     against - yet
 %     blocks handed that profile recover dlam ~12x worse than blocks handed
 %     the true axis (med|err| 0.025 vs 0.002). Frame-axis quality dominates
 %     block dlam accuracy by an order of magnitude; the laterally-segmented
@@ -86,8 +87,8 @@
 %     instead of 5.1x. That is what run_quadpol_pipeline's
 %     BLK_TARGET_M = 125 m re-cut buys, and this verdict is what
 %     justifies it. Each row's median rests on DISJOINT apertures - 45 at
-%     125 m, 8 at 708 m - and 8 is a cap-imposed ceiling, derived where
-%     NX_LEN is set.
+%     125 m, 8 at 708 m - where 8 sits one below the nine-block ceiling
+%     the dlam cap imposes, derived where NX_LEN is set.
 %
 % The dlam CAP - the other EastGRIP culprit - is guarded by
 % test_egrip_cap.m; the cap is raised here so it cannot mask these.
@@ -165,9 +166,10 @@ MIN_SEG_W = 5;
 MAX_AXIS_DEG = 10;
 %   ...but only where there IS a band axis to judge. The claim is that no
 %   rate pairs USABLE coverage with an INACCURATE axis, so a band holding
-%   one or two live windows makes no claim at all: that is the abstention
-%   this verdict exists to reward, and failing it on an unaveraged angle -
-%   or on a NaN - would punish the estimator for doing the right thing.
+%   fewer than MIN_BAND_W live windows makes no claim at all: that is the
+%   abstention this verdict exists to reward, and failing it on a
+%   thinly-averaged angle - or on a NaN - would punish the estimator for
+%   doing the right thing.
 %   DERIVED: n-1 windows at truth plus one arbitrary outlier displace the
 %   doubled-angle phasor mean by at most 0.5*asin(1/(n-1)) - 15.0 deg at
 %   n = 3, 9.74 at n = 4, 7.24 at n = 5 - so n = 4 is where a single rogue
@@ -186,10 +188,11 @@ MIN_BAND_W = 5;
 % grid - so neither derives the other on its own; see verdict 3.
 NMIN_BLK = 8;
 % Verdict 2's bar: the frame-axis handoff must cost at least this factor
-% in block dlam. DERIVED as a floor, not a target - the mechanism gives no
-% particular ratio, only that it is large. JUDGEMENT: 5x, well under the
-% 12x measured, so the verdict asserts "an order of magnitude" without
-% pinning a number that noise or a solver tweak would move.
+% in block dlam. JUDGEMENT throughout - the mechanism predicts no
+% particular ratio, only that the cost is large, so nothing derives a
+% number here. 5x is a floor set well under the 12x measured, letting the
+% verdict assert "an order of magnitude" without pinning a value that
+% noise or a solver tweak would move.
 HANDOFF_RATIO = 5;
 % Verdict 3's bars. JUDGEMENT both: the short block must recover dlam to
 % E_SHORT_MAX and the long one must miss by more than E_LONG_MIN, and the
@@ -215,15 +218,19 @@ fprintf(['geometry: %.2f m spacing, %d traces (%.2f km), %d m block = ' ...
   '%d traces\n\n'], DX, NX, NX*DX/1000, L_SHORT, H_ntr(L_SHORT, DX));
 
 %% verdict 1: the frame pass abstains rather than lies
-% Three rates spanning the transition. Reported together because they are
-% only meaningful together: abstention shows as a FALLING finite fraction,
-% a lie as a handed-on profile with a large angular error. Only the second
-% is dangerous, and it is what the 9 m geometry used to produce.
+% Reported together because they are only meaningful together: abstention
+% shows as a FALLING finite fraction, a lie as a handed-on profile with a
+% large angular error. Only the second is dangerous, and it is what the
+% 9 m geometry used to produce.
 % JUDGEMENT: three points spanning the transition, from a sweep of
-% 1.0-2.0e-5 that found no lying regime anywhere in it. The ENDS are what
-% the verdict reads - the mildest must still be a scorable handoff, the
-% steepest must have abstained - so they bracket the transition rather
-% than sample it; 1.4 is the midpoint, reported for shape, not asserted.
+% 1.0-2.0e-5 that found no lying regime anywhere in it. Roles differ, and
+% none of the three is decorative. The ENDS alone feed the anchor and
+% monotonicity terms: the mildest must be handed on AND scored, the
+% steepest must have shed coverage on both populations. The AXIS BOUND is
+% elementwise over every row, so 1.0 and 1.4 - both scored, at 7 live band
+% windows each - are equally held to it, at 3.2 and 5.5 deg; only 2.0 is
+% exempt, at 1 live band window. Retuning 1.4 up into the abstaining
+% regime would silently halve the rows carrying the bound.
 RATES = [1.0 1.4 2.0] * 1e-5;          % dlam per metre
 ang = nan(size(RATES));
 nlive = zeros(size(RATES)); nband = zeros(size(RATES));

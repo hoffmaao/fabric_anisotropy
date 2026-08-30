@@ -14,8 +14,8 @@
 %     size - test_egrip_blocks.m verdict 2 costs that out at EastGRIP's
 %     real geometry, where a pooled axis only ~3 deg off over the
 %     300-1100 m band already makes block dlam ~12x worse there. This
-%     test drives the same coupling to its
-%     limit with its OWN construction: a 0.10 along-frame dlam ramp that
+%     test drives the same coupling to its limit with its OWN
+%     construction: a 0.10 along-frame dlam ramp that
 %     kills the pooled frame pass by ~100 m depth, so every block
 %     inherits a dead frame theta0 and no block size rescues the section.
 %     The segmented pass must rescue exactly this case: block dlam
