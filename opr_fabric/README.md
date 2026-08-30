@@ -531,7 +531,10 @@ the same way:
   is what `ptt.quadpolFrameTheta` gates its `min_seg_windows` on, and the
   axis error over the 300-1100 m band, because `sigma = gpd*ddlam*z` grows
   with depth and shallow windows would dilute a deep-only lie below the
-  bound. The pooled handoff is nonetheless load-bearing: at a
+  bound. A rate whose band holds too few live windows to average is exempt
+  from the axis bound - that is abstention, not a lie - so the mildest
+  rate is required to be both handed on and scored, which is what keeps
+  the bound from going hollow. The pooled handoff is nonetheless load-bearing: at a
   modest 0.010 dlam/km the frame axis is only ~3 deg off over that same
   300-1100 m band, yet blocks
   handed it recover dlam ~12x worse than blocks handed the true axis -
