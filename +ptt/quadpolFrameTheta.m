@@ -21,9 +21,9 @@ function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 % blocks handed the true axis (verdict 2). Push the ramp further and the
 % pooled fit abstains rather than lies - coverage falls away, and every
 % rate that still carries enough band coverage to be scored keeps its
-% axis within a few degrees of truth
-% (verdict 1) - so the damage is upstream of the blocks either way, and
-% no block size addresses it. Blocks themselves cannot self-rescue -
+% axis within a few degrees of truth (verdict 1) - so the damage is
+% upstream of the blocks either way, and no block size addresses it.
+% Blocks themselves cannot self-rescue -
 % 14-126 traces is too little coherence to estimate theta0 alone; ~2 km
 % is plenty. So the fix is lateral resolution of the FIRST pass, not the
 % second.

@@ -34,7 +34,7 @@ THETA_TRUE = deg2rad(35);
 DL_TRUE = 0.32;                % EGRIP-core scale, ABOVE the 0.25 default cap
 Nz = 2800; dz = 0.5;
 z = (0:Nz-1).' * dz;
-Nx = 250;                      % 2.25 km at 9 m; lateral structure NONE
+Nx = 250;                      % 0.71 km at 2.83 m; lateral structure NONE
 LEAK_C = 0.30 * exp(0.7i);
 LEAK_D = 0.35;
 NA = 0.5;

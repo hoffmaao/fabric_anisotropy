@@ -89,8 +89,8 @@ end
 % cell rather than approximately.
 %
 % This is only a DEFAULT COUNT, because 125 traces is not a fixed LENGTH.
-% Ridge A traces sit ~1 m apart so a block is ~125 m; EastGRIP's are ~2.8 m
-% and Eastwind's 2.43 m apart, where the same count spans 346 m and 304 m.
+% Ridge A traces sit ~1 m apart so a block is ~125 m; EastGRIP's are 2.83 m
+% and Eastwind's 2.43 m apart, where the same count spans 354 m and 304 m.
 % At a shear margin, where fabric varies over hundreds of metres, that
 % averages genuinely different ice into one block - which depresses dlam and
 % destabilises theta0 exactly as the first EastGRIP validation frame did.
@@ -545,7 +545,7 @@ if nblk_auto
   % metre. That is churn, not a correction: it would invalidate the Ridge A
   % control and the Thwaites dose-response to no purpose. A quarter is wide
   % enough to leave every ~1 m season exactly as it was and still catch
-  % Eastwind's 304 m and EastGRIP's 346 m.
+  % Eastwind's 304 m and EastGRIP's 354 m.
   if isfinite(sp) && sp > 0 && abs(nblk_tr*sp - BLK_TARGET_M) > BLK_TOL*BLK_TARGET_M
     NBLK_TR = max(8, round(BLK_TARGET_M / max(sp, 0.5)));
     fprintf(['block size RE-CUT: %d traces (~%.0f m at %.2f m spacing); ' ...
