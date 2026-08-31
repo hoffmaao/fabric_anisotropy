@@ -258,8 +258,8 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     segments keep the single frame fit) so lateral fabric variation is
     resolved instead of pooled away - the pooled handoff was the
     two-pass design's single point of failure on laterally-varying
-    frames (`test/test_egrip_blocks.m` pins the failure,
-    `test/test_quadpol_segmented.m` the rescue). Each section block
+    frames (`test/test_egrip_blocks.m` pins what the pooled handoff
+    costs, `test/test_quadpol_segmented.m` the rescue). Each section block
     inherits its segment's geographic profile through
     `ptt.thetaProfileAt` and converts it through its OWN heading; the
     per-segment fits are saved beside the frame fields as
@@ -518,19 +518,40 @@ the same way:
   abstains on 100% of windows, and at the pipeline's qlook-mode 0.45 it
   is recovered exactly at both 125- and 14-trace blocks. This is the
   regression for the site-aware `DLAM_MAX` in `run_quadpol_pipeline.m`.
-- `test_egrip_blocks.m` - the two-pass coupling. A POOLED frame pass
-  hands one theta0 to every section block, so a frame pass killed by
-  along-track dlam structure (a 0.10 ramp on an EastGRIP-like column)
-  poisons every block size; the test asserts small blocks do NOT rescue
-  it, keeping that single point of failure pinned as the baseline the
-  segmented frame pass (`ptt.quadpolFrameTheta`) exists to fix. Its
-  header records why it was reframed from the block-size hypothesis it
-  was written for.
+- `test_egrip_blocks.m` - the two-pass coupling, on the season's REAL
+  2.83 m trace spacing (from the `CSARP_reference_trajectory` rebuild;
+  the shipped qlook coordinates inflated it 3.3x). Three verdicts. The
+  pooled frame pass ABSTAINS rather than lies as lateral dlam variation
+  grows - over 0.010 -> 0.020 dlam/km coverage in the 300-1100 m band
+  falls 35% -> 5% and live windows over the whole profile fall 16 -> 8 of
+  34, while the band axis error on every row still scorable stays at
+  3.2-5.5 deg - and the test asserts the pair, so no rate may combine a
+  profile the pipeline would hand on with an inaccurate axis. The two
+  halves deliberately take different window populations: liveness over
+  the full grid, because that is what `ptt.quadpolFrameTheta` gates its
+  `min_seg_windows` on, and the axis error over the 300-1100 m band,
+  because `sigma = gpd*ddlam*z` grows with depth and shallow windows
+  would dilute a deep-only lie below the bound. A rate whose band holds
+  too few live windows to average is exempt from the axis bound - that is
+  abstention, not a lie - so the mildest rate is required to be both
+  handed on and scored, which is what keeps the bound from going hollow.
+  The pooled handoff is nonetheless load-bearing: at a modest 0.010
+  dlam/km the frame axis is only ~3 deg off over that same 300-1100 m
+  band, yet blocks handed it recover dlam ~12x worse than blocks handed
+  the true axis - which is what the segmented frame pass
+  (`ptt.quadpolFrameTheta`) exists to fix. And block length has margin:
+  with the axis held true the collapse is governed by
+  `sigma = gpd*ddlam*z` alone, so `L_max` scales as 1/L and the 125 m
+  re-cut buys exactly the length ratio 354/125 = 2.83x - 14.5x headroom
+  over EastGRIP's expected ~0.01 dlam/km instead of 5.1x. Its header
+  records why it was rebuilt on the real geometry, which invalidated the
+  block-size premise it was written for rather than just rescaling it.
 - `test_quadpol_segmented.m` - the segmented frame pass
   (`ptt.quadpolFrameTheta` + `ptt.thetaProfileAt`) against the two
   properties the design must have: a SUPERSET (a laterally-uniform frame
-  reproduces the pooled architecture's block dlam) and the RESCUE (the
-  `test_egrip_blocks.m` killer ramp recovers - block dlam error
+  reproduces the pooled architecture's block dlam) and the RESCUE (its
+  own killer ramp - 0.10 dlam along the frame, enough to kill the pooled
+  pass outright rather than merely degrade it - recovers: block dlam error
   0.225 -> 0.002, correlation 1.00 - and a mid-frame 45 deg axis step,
   the shear-margin case, resolves to under 3 deg in the pure segments
   with block dlam unbiased).

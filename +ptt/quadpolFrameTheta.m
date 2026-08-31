@@ -13,13 +13,20 @@ function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 % pooling every trace into one theta0(z) handoff: an along-frame change in
 % the fabric (EastGRIP's 6.1 km frame crosses a shear margin mid-way -
 % 19.9 km before the pipeline rebuilt that season's trajectory)
-% decoheres the pooled fit, and every block then inherits its garbage
-% (test_egrip_blocks.m pins this: a 0.10 along-frame dlam ramp kills the
-% frame pass by ~100 m depth and NO block size rescues the section,
-% because the failure is upstream of the blocks). Blocks themselves
-% cannot self-rescue - 14-126 m of traces is too little coherence to
-% estimate theta0 alone; ~2 km is plenty. So the fix is lateral
-% resolution of the FIRST pass, not the second.
+% decoheres the pooled fit, and every block then inherits the result.
+% test_egrip_blocks.m measures what that costs at the season's real 2.83 m
+% spacing, and it does NOT need a dead frame to bite: at a modest 0.010
+% dlam/km the pooled axis is only ~3 deg off over the 300-1100 m band,
+% yet blocks handed that profile recover dlam ~12x worse there than
+% blocks handed the true axis (verdict 2). Push the ramp further and the
+% pooled fit abstains rather than lies - coverage falls away, and every
+% rate that still carries enough band coverage to be scored keeps its
+% axis within a few degrees of truth (verdict 1) - so the damage is
+% upstream of the blocks either way, and no block size addresses it.
+% Blocks themselves cannot self-rescue -
+% 14-126 traces is too little coherence to estimate theta0 alone; ~2 km
+% is plenty. So the fix is lateral resolution of the FIRST pass, not the
+% second.
 %
 % WHAT STAYS FRAME-LEVEL. The pedestal: it is an instrument constant
 % (frame-stable a3 across every surveyed frame, sign set per season), so
