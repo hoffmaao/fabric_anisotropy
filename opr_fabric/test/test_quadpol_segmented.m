@@ -10,21 +10,30 @@
 %     interpolated per block) must give the same block dlam to 0.01, and
 %     the segment axes must track truth.
 %
-%   THE RESCUE (gate b): test_egrip_blocks.m proved the killer: a 0.10
-%     along-frame dlam ramp kills the pooled frame pass by ~100 m depth
-%     and NO block size rescues the section, because every block inherits
-%     the dead frame theta0. The segmented pass must rescue exactly this
-%     case: block dlam med|err| < 0.03 against the local truth and
-%     correlation > 0.7 along the ramp.
+%   THE RESCUE (gate b): the pooled handoff is what fails, not the block
+%     size - test_egrip_blocks.m verdict 2 costs that out at EastGRIP's
+%     real geometry, where a pooled axis only ~3 deg off over the
+%     300-1100 m band already makes block dlam ~12x worse there. This
+%     test drives the same coupling to its limit with its OWN
+%     construction: a 0.10 along-frame dlam ramp that kills the pooled
+%     frame pass by ~100 m depth, so every block inherits a dead frame
+%     theta0 and no block size rescues the section.
+%     The segmented pass must rescue exactly this case: block dlam
+%     med|err| < 0.03 against the local truth and correlation > 0.7 along
+%     the ramp.
 %
 %   LATERAL AXIS (the margin case): a mid-frame 45 deg axis step (what a
 %     shear margin does, and what the EastGRIP movie shows) must appear
 %     in the segment profiles - outer segments within 3 deg of their
 %     truths - while block dlam stays unbiased.
 %
-% Environment: the test_egrip_blocks forward (flat SNR, standard
-% correlated + decorrelated pedestal, 9 m traces, 14-trace blocks, cap
-% 0.45) so case B is the documented failure, bit-comparable.
+% Environment: the same forward model as test_egrip_blocks.m (flat SNR,
+% standard correlated + decorrelated pedestal, cap 0.45) on a GEOMETRY OF
+% ITS OWN - 9 m traces, 14-trace blocks - chosen to hold the pooled frame
+% pass dead across the whole frame, which is what gate b needs to rescue.
+% test_egrip_blocks.m now runs the season's real 2.83 m spacing, where
+% the pooled pass abstains rather than dies, so the two are no longer
+% bit-comparable and neither is asserted against the other's numbers.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_quadpol_segmented.m')"
 clear;
@@ -103,8 +112,9 @@ for ci = 1:size(cases, 1)
   th_prof_old = struct('z', fp.lsq.zw(okf), 'theta', ...
     fp.lsq.theta0(okf) + deg2rad(FOPTS.track_az));
   % the OLD path hands blocks the UNSMOOTHED pooled frame theta0 plus the
-  % pooled frame pedestal - the test_egrip_blocks.m killer convention, so
-  % gate b reproduces the documented failure (the q-weighted smoothing of
+  % pooled frame pedestal - the unsegmented pipeline's convention, the one
+  % test_egrip_blocks.m verdict 2 costs out, so gate b drives the same
+  % coupling to a dead frame (the q-weighted smoothing of
   % fp.th_frame bridges this synthetic ramp and would hide it); the NEW
   % path takes both from the segmented pass (fp.ped_ant may be
   % segment-derived). ped_old is raw quadpolFabricLS output, NaN when it
