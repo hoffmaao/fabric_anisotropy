@@ -32,14 +32,19 @@ function gpd1 = birefringentPhaseRate(fc, eps_perp, deps)
 
 % Three positional scalars of the same type invite a transposed call, and a
 % transposed call here is silent - it returns a plausible number and shifts
-% every modelled phase. eps_perp is a permittivity (> 1) and deps a small
-% anisotropy (< 1), so the common swap cannot survive these checks.
-if ~isscalar(fc) || ~isfinite(fc) || fc <= 0
-  error('ptt:birefringentPhaseRate:fc', 'fc must be a positive scalar Hz');
+% every modelled phase. The ranges below are disjoint, so NO transposition
+% of the three survives them: fc is a radar centre frequency (>= 1 MHz),
+% eps_perp a permittivity of ice (> 1 but nowhere near 100), deps a small
+% anisotropy (< 1). The fc floor is what closes the fc/eps_perp swap -
+% (3.15, 750e6, 0.034) otherwise passes every check and returns a gpd1 some
+% 1.5e10 times too small, a model with effectively no birefringence.
+if ~isscalar(fc) || ~isfinite(fc) || fc < 1e6
+  error('ptt:birefringentPhaseRate:fc', ...
+    'fc must be a scalar centre frequency >= 1e6 Hz, got %g', fc);
 end
-if ~isscalar(eps_perp) || ~isfinite(eps_perp) || eps_perp <= 1
+if ~isscalar(eps_perp) || ~isfinite(eps_perp) || eps_perp <= 1 || eps_perp >= 100
   error('ptt:birefringentPhaseRate:epsPerp', ...
-    'eps_perp must be a scalar permittivity > 1, got %g', eps_perp);
+    'eps_perp must be a scalar permittivity in (1, 100), got %g', eps_perp);
 end
 if ~isscalar(deps) || ~isfinite(deps) || deps <= 0 || deps >= 1
   error('ptt:birefringentPhaseRate:deps', ...

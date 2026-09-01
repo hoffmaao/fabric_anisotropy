@@ -247,6 +247,18 @@ for zi = {m2, m3}
   msg = sprintf('%s %.1f dB over %d rows;', msg, median(d13(m)), nnz(m));
   ok_13 = ok_13 && nnz(m) >= MINROWS && median(d13(m)) < 2;
 end
+% per-zone accounting of WHY the other rows abstained. Each gate answers a
+% different question - 1-3 are properties of the column above, 4 of the
+% depth, 5 of the data - so a shift between them is a real change even when
+% the surviving row count is unmoved.
+for k = 2:3
+  zm = z >= ZONES(k,1) & z <= ZONES(k,2);
+  fprintf('   zone %d r13 rows by gate:', k);
+  for c = 0:5
+    fprintf(' %s=%d', inv.r13_reason_key{c+1}, nnz(inv.r13_reason(zm) == c));
+  end
+  fprintf('\n');
+end
 fprintf('5. eq.-(13) analytic vs fit (anti-phase rows):%s   %s\n', msg, ...
   H_tick(ok_13));
 
