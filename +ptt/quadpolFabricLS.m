@@ -118,6 +118,12 @@ theta0_in = H_opt(opts, 'theta0', []);
 ped_in = H_opt(opts, 'pedestal', 'frame');
 q_min = H_opt(opts, 'q_min', 0.05);
 dlam_min_theta = H_opt(opts, 'dlam_min_theta', 0.01);
+% Constant fabric orientation over the fitted column. Off by default so
+% existing results are unchanged; see the CONSTANT-ORIENTATION MODE block.
+theta_const = H_opt(opts, 'theta_const', false);
+% a window votes on the pooled axis only if its own theta cost curve varies
+% by more than this fraction of its data power - a flat curve has no axis
+pool_q_min = H_opt(opts, 'theta_const_q_min', 0.02);
 th_step = H_opt(opts, 'theta_step_deg', 3);
 
 z = z(:);
@@ -255,6 +261,72 @@ else
     'opts.pedestal must be ''frame'', ''window'', [1 x 3], or a field');
 end
 
+% --- CONSTANT-ORIENTATION MODE. One theta0 for the whole column instead of
+% one per window: the windows vote by their own theta cost curves, which the
+% grid search already computed, and the winner is refit into every window.
+%
+% WHY IT IS OFTEN THE BETTER MODEL. Per-window theta0 spends one free
+% parameter per window on a quantity that at a divide does not vary: Ridge
+% A's frame axis is 96.5 +- 7.4 deg across 36 frames, while its per-window
+% scatter within a frame is ~13 deg - i.e. most of that scatter is
+% estimation noise, not ice. Removing those degrees of freedom leaves the
+% depth-varying quantity that IS physical (delta0 and its gradient, hence
+% dlam) better determined, and hands downstream steps an axis stable enough
+% to condition on.
+%
+% WEIGHTING. Curves are summed in RAW cost, not normalised per window, so a
+% window with strong fabric and high coherence counts for more than a
+% near-isotropic one - which is correct here, because a flat curve carries
+% no axis information and normalising would let it vote as loudly as a
+% sharp one. Windows whose curve is flat within pool_q_min of its own range
+% are excluded outright.
+%
+% WHEN NOT TO USE IT. It is a MODEL ASSUMPTION, not a refinement: where the
+% axis genuinely rotates with depth - Thwaites' margin, EastGRIP - it will
+% return some average of the rotation and the per-window residuals will say
+% so. Check out.theta_const_q (the pooled contrast) and the residual
+% profile before adopting it at a new site.
+if theta_const && isempty(theta0_in)
+  ok_w = all(isfinite(R.cost_th), 2) & isfinite(R.c2) & R.c2 > 0;
+  % a window only votes if its own curve is not flat
+  rng_w = max(R.cost_th, [], 2) - min(R.cost_th, [], 2);
+  ok_w = ok_w & rng_w > pool_q_min * max(R.c2, realmin);
+  if nnz(ok_w) >= 3
+    pooled = sum(R.cost_th(ok_w, :), 1);
+    [~, ib] = min(pooled);
+    th_c = P.th_grid(ib);
+    % pooled contrast, on the same scale q_theta uses per window
+    theta_const_q = (max(pooled) - min(pooled)) / max(sum(R.c2(ok_w)), realmin);
+    % IS THE ASSUMPTION TRUE HERE? The pooled contrast does NOT answer that
+    % - measured on synthetics it came out HIGHER on a rotating column
+    % (0.199) than on a constant one (0.187), because it reports how
+    % sharply the pooled curve is peaked, not whether the windows agreed.
+    % What answers it is the SPREAD of the per-window minima: windows of a
+    % constant column all bottom at the same theta, windows of a rotating
+    % one bottom across the rotation. Reported as a circular standard
+    % deviation of the doubled angle, in degrees.
+    [~, iw] = min(R.cost_th(ok_w, :), [], 2);
+    th_w = P.th_grid(iw);
+    Rw = mean(exp(2i * th_w(:)));
+    theta_spread_deg = rad2deg(sqrt(max(-2*log(max(abs(Rw), realmin)), 0))) / 2;
+    P.th_fix = repmat(th_c, Nw, 1);
+    if isnan(pedestal(1))
+      R = H_fit_windows(Cm, Wc, P, []);
+    else
+      R = H_fit_windows(Cm, Wc, P, pedestal);
+    end
+    R.theta0(:) = th_c;                 % held, not re-estimated
+    n_theta_pool = nnz(ok_w);
+  else
+    th_c = NaN; theta_const_q = NaN; theta_spread_deg = NaN; n_theta_pool = nnz(ok_w);
+    warning('ptt:quadpolFabricLS:noPool', ...
+      ['constant-theta mode: only %d window(s) have a non-flat theta ' ...
+      'curve, need 3; falling back to per-window theta0'], nnz(ok_w));
+  end
+else
+  th_c = NaN; theta_const_q = NaN; theta_spread_deg = NaN; n_theta_pool = 0;
+end
+
 theta0 = R.theta0; dlam = R.dlam / grad_per_dlam; gam = R.gam;
 resid = R.resid; q_theta = R.q_theta; delta0 = R.delta0;
 
@@ -283,6 +355,9 @@ out = struct('zw', zw, 'theta0', theta0, 'dlam', dlam, 'gamma', gam, ...
   'leak', leak_diag, 'pedestal', pedestal, ...
   'resid', resid, 'q_theta', q_theta, 'delta0', delta0, ...
   'theta0_z', theta0_z, 'dlam_z', dlam_z, ...
+  'theta_const', th_c, 'theta_const_q', theta_const_q, ...
+  'theta_spread_deg', theta_spread_deg, ...
+  'theta_const_n', n_theta_pool, ...
   'grad_per_dlam', grad_per_dlam, 'psi', psi);
 
 end
@@ -310,7 +385,8 @@ function R = H_fit_windows(Cm, Wc, P, ped)
 Nw = numel(P.zw);
 R = struct('theta0', nan(Nw,1), 'dlam', nan(Nw,1), 'gam', nan(Nw,1), ...
   'resid', nan(Nw,1), 'q_theta', nan(Nw,1), 'delta0', nan(Nw,1), ...
-  'leak', nan(Nw,1), 'ped_coef', nan(Nw,3));
+  'leak', nan(Nw,1), 'ped_coef', nan(Nw,3), ...
+  'cost_th', nan(Nw, numel(P.th_grid)), 'c2', nan(Nw,1));
 psi = P.psi;
 sb = sin(2 * psi(:));
 s2b = sb.^2;
@@ -393,7 +469,11 @@ for w = 1:Nw
   % isotropic window is flat here and its theta0 means nothing.
   if numel(ths) > 1
     R.q_theta(w) = (max(cost_th) - best.cost) / max(C2, realmin);
+    % the whole theta cost curve, kept so a CONSTANT-orientation fit can
+    % pool it across windows instead of re-running the grid search
+    R.cost_th(w, :) = cost_th(:).';
   end
+  R.c2(w) = C2;
 
   % polish from the best grid node. fminsearch is base MATLAB; the linear
   % nuisances stay closed-form inside the objective, and ddelta is kept

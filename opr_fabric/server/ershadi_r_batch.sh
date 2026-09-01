@@ -15,7 +15,13 @@ PREFIX=${1:-}
 ML=${MATLAB_BIN:-/opt/sw/matlab/2024b/bin/matlab}
 mkdir -p "$FAB/invert_logs" "$FAB/stages/ershadi_r"
 
+# grep -E keeps ONLY exact frame caches: the non-default-depth reruns are
+# named creg_<tag>_z<N>.mat, which the sed below cannot parse, and an
+# unparsed line passes the whole path through as $seg with $frm empty -
+# "10#: invalid integer constant" on one frame of the first Ridge A run.
+# Filtering before the sed is what the other launchers do; matching them.
 ls "$FAB"/stages/quadpol/coreg_cache/creg_${PREFIX}*.mat 2>/dev/null \
+  | grep -E '/creg_[0-9]{8}_[0-9]{2}_[0-9]{3}\.mat$' \
   | sed -E 's|.*/creg_([0-9]{8}_[0-9]{2})_([0-9]{3})\.mat|\1 \2|' \
   | sort -u > "$FAB/ershadi_r_work.txt"
 echo "$(wc -l < "$FAB/ershadi_r_work.txt") frames queued (prefix '$PREFIX')"

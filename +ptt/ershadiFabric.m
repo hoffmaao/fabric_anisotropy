@@ -140,7 +140,16 @@ dphi = imag(conj(Cs) .* dC) ./ max(abs(Cs).^2, realmin);
 % --- eq. (9)/(10) with the square-root form
 psi_grad = (c0 * sqrt(eps_perp) / (2*pi*fc*deps)) * dphi;
 
-% --- (E5) quality gate
+% --- (E5) quality gate.
+% The gate is DESTRUCTIVE and it is applied to the direct chain's own
+% products only. Cn is kept ungated in the output as C_raw, because the
+% strength stage (ptt.ershadiStrength) fits the complex coherence WEIGHTED
+% by |C| rather than thresholded on it: a hard cut at 0.4 removes rows that
+% still carry usable phase - at Ridge A, whose median |C| is 0.47, it voids
+% 61% of deep intervals and leaves the strength profile with nothing to be
+% inferred from. Weighting degrades where the data degrades; a gate falls
+% off a cliff.
+C_raw = Cn;
 bad = Cmag < coh_min;
 psi_grad(bad) = NaN;
 phi(bad) = NaN;
@@ -169,7 +178,7 @@ theta(flip) = mod(theta(flip) + pi/2, pi);
 dlam = abs(dl_at);
 
 out = struct('psi', psi, 'dP_hh', dP_hh, 'dP_hv', dP_hv, 'phi', phi, ...
-  'Cmag', Cmag, 'psi_grad', psi_grad, 'dlam', dlam, 'theta', theta(:), ...
+  'Cmag', Cmag, 'C_raw', C_raw, 'psi_grad', psi_grad, 'dlam', dlam, 'theta', theta(:), ...
   'theta_quality', theta_quality, 'coh_min', coh_min, ...
   'deramped', deramped, 'fc', fc, 'eps_perp', eps_perp, 'deps', deps, ...
   'win_m', win_m);
