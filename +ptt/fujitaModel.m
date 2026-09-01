@@ -40,10 +40,28 @@ function out = fujitaModel(layers, z, psi, opts)
 %             .theta   physical axis azimuth, radians, mod pi
 %             .r_db    20log10(Gamma_y/Gamma_x) at the layer's bottom
 %                      boundary (and at every depth within it)
+%             .gx_db   OPTIONAL amplitude of Gamma_x, dB re the unit
+%                      reference (default 0): the layer's absolute
+%                      scattering strength. Every eq.-(12)/eq.-(7)
+%                      observable is INVARIANT to it by construction -
+%                      power anomalies are normalized over azimuth and the
+%                      coherence is a ratio - so it exists for the power
+%                      PROFILE below, which is where relative reflection
+%                      strengths live.
 %   z       depth axis (m), column
 %   psi     sweep azimuths (radians, row or column)
 %   opts    .fc (750e6), .eps_perp (3.15, the paper's value),
 %           .deps (0.034), .win_m (30, eq.-7 window, match the data path)
+%           .bed OPTIONAL struct('z_m', depth, 'gx_db', amp, 'r_db', 0):
+%                a single strong interface terminating the domain - the
+%                ice-bed reflection, tens of dB above the internals
+%                (Fujita's Table-2 internals sit at Gamma_x = 1e-12;
+%                a bed amplitude coefficient of 0.1-0.3 is typical). The
+%                row CONTAINING bed z_m scatters with the bed's Gamma in
+%                the local layer frame; every row BELOW it returns NaN in
+%                all fields, because the domain ends at the bed - sub-bed
+%                returns are the thing the movies grey out, not a
+%                prediction this model should make.
 %
 % Output fields (Nz x Npsi unless noted)
 %   s_hh, s_vv, s_hv   complex scattering amplitudes (relative units)
@@ -51,6 +69,11 @@ function out = fujitaModel(layers, z, psi, opts)
 %   C                  eq. (7) coherence over win_m
 %   phi                angle(C)
 %   Cmag               abs(C)
+%   P_hh_db            azimuthal-mean RELATIVE power profile (Nz x 1),
+%                      10log10(mean_psi |s_hh|^2): internals sit at their
+%                      gx_db and the bed spikes above them - the relative
+%                      strength of the reflections, which no normalized
+%                      observable can show
 %   gpd1               the one-way phase rate this evaluation used (scalar)
 %
 % See also ptt.ershadiFabric, ptt.ershadiInverse.
@@ -92,10 +115,27 @@ s_hh = complex(zeros(Nz, Np));
 s_vv = complex(zeros(Nz, Np));
 s_hv = complex(zeros(Nz, Np));
 
+% optional bed: a single strong interface; the row containing it takes the
+% bed's Gamma, rows below it have no return at all
+bed = H_opt(opts, 'bed', []);
+bed_row = 0;
+if ~isempty(bed)
+  if ~isfield(bed, 'z_m') || ~isfield(bed, 'gx_db')
+    error('ptt:fujitaModel:bed', 'opts.bed needs z_m and gx_db');
+  end
+  if ~isfield(bed, 'r_db') || isempty(bed.r_db), bed.r_db = 0; end
+  bed_row = find(z >= bed.z_m, 1);
+  if isempty(bed_row), bed_row = 0; end   % bed below the axis: no effect
+end
+
 % per-depth layer index and boundary products
 Pacc = repmat(eye(2), 1, 1);            % product of the FULL layers above
 li = 1;
 for iz = 1:Nz
+  if bed_row > 0 && iz > bed_row
+    s_hh(iz,:) = NaN; s_vv(iz,:) = NaN; s_hv(iz,:) = NaN;
+    continue                             % the domain ends at the bed
+  end
   while li < NL && z(iz) >= tops(li+1)
     % close layer li: multiply its full-thickness A into the accumulator
     d = tops(li+1) - tops(li);
@@ -104,8 +144,14 @@ for iz = 1:Nz
   end
   d = z(iz) - tops(li);
   P = H_A(layers(li), d, gpd1) * Pacc;
-  r_amp = 10^(layers(li).r_db / 20);
-  G = H_R(layers(li).theta) * diag([1, r_amp]) * H_R(layers(li).theta).';
+  if bed_row > 0 && iz == bed_row
+    gx = 10^(bed.gx_db / 20);
+    r_amp = 10^(bed.r_db / 20);
+  else
+    gx = 10^(H_gx(layers(li)) / 20);
+    r_amp = 10^(layers(li).r_db / 20);
+  end
+  G = H_R(layers(li).theta) * (gx * diag([1, r_amp])) * H_R(layers(li).theta).';
   M = P.' * G * P;                       % physical two-way Jones at z
   % sweep in the paper's R S R' sense (ershadiFabric E1): psi -> -psi
   cc = cos(-psi); ss = sin(-psi);
@@ -135,8 +181,19 @@ out.phi = angle(Cn);
 out.Cmag = abs(Cn);
 out.s_hh = s_hh; out.s_vv = s_vv; out.s_hv = s_hv;
 out.psi = psi;
+% relative reflection strength vs depth: internals at their gx_db, the bed
+% spiking above them. 10log10 of mean power = 20log10 of amplitude scale,
+% so a +30 dB gx_db bed reads ~+30 dB here.
+out.P_hh_db = 10*log10(max(mean(abs(s_hh).^2, 2), realmin));
+if bed_row > 0
+  out.P_hh_db(bed_row+1:end) = NaN;
+end
 out.gpd1 = gpd1;
 
+end
+
+function g = H_gx(L)
+if isfield(L, 'gx_db') && ~isempty(L.gx_db), g = L.gx_db; else, g = 0; end
 end
 
 function A = H_A(L, d, gpd1)
