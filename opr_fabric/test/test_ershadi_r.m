@@ -55,8 +55,10 @@ rng(11);
 C = ptt.constants();
 fc = 750e6;
 eps_perp = 3.15;                        % the paper's value, as ershadiFabric
-c0 = C.c * 1e9;
-gpd1 = pi * fc * C.deps / (sqrt(eps_perp) * c0);   % ONE-way rad/m per dlam
+% ONE-way rad/m per unit dlam, from the single owner the model and the
+% inversion's anti-phase gate both read - writing it out here again is the
+% desync this test would then be unable to see.
+gpd1 = ptt.birefringentPhaseRate(fc, eps_perp, C.deps);
 
 Nz = 2401; dz = 0.5;
 z = (0:Nz-1).' * dz;                    % 0..1200 m
@@ -195,7 +197,9 @@ for k = 1:3
   tt = H_zone_med(inv.theta, z, ZONES(k, :));
   th_err(k) = abs(angle(exp(2i*(tt - TRUTH(k).theta)))) / 2;
 end
-fprintf('   staging cycles used: %d of %d\n', inv.n_cycles_used, 3);
+fprintf(['   staging cycles used: %d of %d, best cycle %d, ' ...
+  'any cycle worsened: %d\n'], inv.n_cycles_used, 3, inv.cycle_best, ...
+  inv.cycle_worsened);
 fprintf(['   fitted r_db per zone: %+5.1f %+5.1f %+5.1f ' ...
   '(truth 0 / +10 / -10)\n'], r_med);
 fprintf('   theta error per zone: %4.1f %4.1f %4.1f deg\n', rad2deg(th_err));

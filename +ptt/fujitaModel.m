@@ -51,6 +51,7 @@ function out = fujitaModel(layers, z, psi, opts)
 %   C                  eq. (7) coherence over win_m
 %   phi                angle(C)
 %   Cmag               abs(C)
+%   gpd1               the one-way phase rate this evaluation used (scalar)
 %
 % See also ptt.ershadiFabric, ptt.ershadiInverse.
 
@@ -60,11 +61,11 @@ eps_perp = H_opt(opts, 'eps_perp', 3.15);
 deps = H_opt(opts, 'deps', 0.034);
 win_m = H_opt(opts, 'win_m', 30);
 
-C0 = ptt.constants();
-c0 = C0.c * 1e9;
 % ONE-WAY relative phase per metre per unit dlam; the down+up sandwich
 % doubles it, recovering the two-way gpd the rest of the toolbox uses.
-gpd1 = pi * fc * deps / (sqrt(eps_perp) * c0);
+% ptt.ershadiInverse locates its eq.-(13) anti-phase depths with the same
+% call, so the two cannot drift apart.
+gpd1 = ptt.birefringentPhaseRate(fc, eps_perp, deps);
 
 z = z(:);
 Nz = numel(z);
@@ -134,6 +135,7 @@ out.phi = angle(Cn);
 out.Cmag = abs(Cn);
 out.s_hh = s_hh; out.s_vv = s_vv; out.s_hv = s_hv;
 out.psi = psi;
+out.gpd1 = gpd1;
 
 end
 
