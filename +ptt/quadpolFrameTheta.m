@@ -108,6 +108,16 @@ NBLK_ROT = H_opt(opts, 'nblk_rot', 200);
 PSI_STEP_SEG = H_opt(opts, 'psi_step_seg_deg', 2);
 track_az = H_opt(opts, 'track_az', []);
 MIN_SEG_W = H_opt(opts, 'min_seg_windows', 5);
+% CONSTANT AXIS WITH DEPTH, PER SEGMENT. The segment is already the lateral
+% unit, so this makes the model "one orientation per place, free to change
+% along the survey" - which is what a divide fabric actually does, and what
+% the depth smoothing below has been approximating with a kernel instead of
+% stating. Off by default: switching it on changes every fitted theta0, so
+% it is a decision per survey, not a default. At a site whose axis rotates
+% with depth (Thwaites' margin, EastGRIP) it is the WRONG model and the
+% per-window profile should be kept - check the pooled contrast
+% out.theta_const_q and the residual profile before adopting it.
+TH_CONST = H_opt(opts, 'theta_const', false);
 % grid/window pass-throughs, so tests can trade resolution for speed while
 % the pipeline keeps the estimator defaults
 PASS_THRU = {'psi_step_deg', 'theta_step_deg', 'win_short_m', ...
@@ -207,6 +217,7 @@ for s = 1:nseg
   if isempty(Mg), continue; end
   os = segbase;
   os.pedestal = H_ped_field(ped_ant, az_tr, js, PSI_FIT);
+  os.theta_const = TH_CONST;   % one axis per SEGMENT, constant in depth
   o = ptt.quadpolFabricLS(struct('M', Mg), z, os);
   if nnz(isfinite(o.theta0)) < MIN_SEG_W, continue; end
   th_raw(:, s) = o.theta0;

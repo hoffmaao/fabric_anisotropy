@@ -234,7 +234,18 @@ if isempty(fitset)
 end
 
 % --- accepted dlam and initial theta per interval (3.5.3/3.5.4)
-dlam_int = zeros(Nint, 1);
+% NaN, not zero. An interval with no usable dlam has an UNKNOWN one, and
+% zero is a specific physical claim - no birefringence - that makes the
+% forward model's dP_HH collapse to the reflection-ratio term alone, so
+% the r stage then absorbs whatever azimuthal structure is present
+% (on Ridge A, the heading-dependent antenna pedestal) and reports it as
+% scattering anisotropy. Measured: 61% of deep Ridge A intervals fell to
+% the zero initialisation because ershadiFabric NaNs its dlam below the
+% |C| > 0.4 gate and the site's median |C| is 0.47, and the resulting
+% r profiles split by heading family at 6.8 dB - a pedestal artefact that
+% reads exactly like the COF-scattering signature being tested for.
+% Intervals that stay NaN are excluded from the fit below.
+dlam_int = nan(Nint, 1);
 th0_int = zeros(Nint, 1);
 th0_res = zeros(Nint, 1);
 for k = 1:Nint
@@ -257,6 +268,39 @@ for k = 1:Nint
 end
 r0_int = zeros(Nint, 1);                 % "The initial guess for r0dB is zero"
 
+% --- dlam is ACCEPTED, never fitted (3.5.4), so an interval without one has
+% nothing to fit r against: the forward would model an isotropic column and
+% the r stage would absorb whatever azimuthal structure is present instead.
+% TWO ARRAYS, because two different needs. Intervals ABOVE the fit band
+% exist only to accumulate phase down to the rows being fitted, and a NaN
+% there makes the whole forward NaN - so the MODEL runs on a filled profile
+% (linear between known intervals, held at the ends). The REPORTED dlam_int
+% keeps its NaNs: what was measured and what was assumed for propagation
+% must never be the same array. Fitting is confined to measured intervals.
+dlam_known = isfinite(dlam_int) & dlam_int > 0;
+dlam_fwd = dlam_int;
+if any(dlam_known)
+  kk = find(dlam_known);
+  if isscalar(kk)
+    dlam_fwd(:) = dlam_int(kk);
+  else
+    dlam_fwd = interp1(zc_int(kk), dlam_int(kk), zc_int, 'linear', 'extrap');
+  end
+  dlam_fwd = max(dlam_fwd, 0);
+  dlam_fwd(dlam_known) = dlam_int(dlam_known);
+else
+  dlam_fwd(:) = 0;
+end
+fitset = fitset(dlam_known(fitset));
+if isempty(fitset)
+  error('ptt:ershadiInverse:noDlam', ...
+    ['no interval in the fit band has an accepted dlam - every one was ' ...
+    'gated out upstream (ptt.ershadiFabric NaNs dlam below its coh_min, ' ...
+    'default 0.4). Lower coh_min, lengthen interval_m so each interval ' ...
+    'catches usable rows, or narrow z_fit to the depths the coherence ' ...
+    'actually supports.']);
+end
+
 % --- observation fields, decimated and standardized once
 iz = find(band); iz = iz(1:dec_z:end);
 ip = 1:dec_p:numel(fr.psi);
@@ -270,7 +314,7 @@ std_of = @(A) deal_std(A);
 nrm = {@(A) (A - mu1)/s1, @(A) (A - mu2)/s2, @(A) (A - mu3)/s3};
 obs_n = {nrm{1}(obs.phi), nrm{2}(obs.hh), nrm{3}(obs.hv)};
 
-cost = @(th_all, r_all, w) H_cost(th_all, r_all, dlam_int, edges, ...
+cost = @(th_all, r_all, w) H_cost(th_all, r_all, dlam_fwd, edges, ...
   zsub, psi_fit, fwd, obs_n, nrm, w, []);
 
 % Per-interval row sets for the LAYER-BY-LAYER stages, padded by the
@@ -291,7 +335,7 @@ for k = 1:Nint
   rows_pad{k} = (p0:p1).';
   keep_of{k} = r_ - p0 + 1;
 end
-costk = @(th_all, r_all, w, k) H_cost(th_all, r_all, dlam_int, edges, ...
+costk = @(th_all, r_all, w, k) H_cost(th_all, r_all, dlam_fwd, edges, ...
   zsub(rows_pad{k}), psi_fit, fwd, ...
   {obs_n{1}(rows_of{k}, :), obs_n{2}(rows_of{k}, :), obs_n{3}(rows_of{k}, :)}, ...
   nrm, w, keep_of{k});
@@ -303,6 +347,37 @@ oopt = optimoptions('fmincon', 'Display', 'off', 'Algorithm', ...
 th = th0_int; rdb = r0_int;
 TH_GRID = deg2rad(0:3:177);
 R_GRID = (-30:1.5:30);
+
+% --- theta supplied and HELD, rather than fitted.
+% Ershadi fit theta because the direct chain was the only axis estimate
+% they had. On this instrument it is not the best one: the published
+% chain's cross-polarized argmin is antenna-locked by a flat pedestal
+% (88.8 +- 2.0 deg over 36 Ridge A frames, 0.1 +- 0.7 at Thwaites - axes
+% pinned to the antenna frame across sites with different ice), which is
+% why ptt.quadpolFabricLS exists. Where a trusted axis profile is
+% available, handing it in is both more faithful to what is known and
+% better conditioned: the theta stage needs an interval to carry a large
+% share of the phase reaching its rows (see the leverage note above), a
+% condition Ridge A's dlam ~0.06 column does not meet at any interval
+% length that also resolves r. Fitting theta there DESTROYS a good initial
+% guess - measured on 20250108_02_009, stable 86-98 deg guesses were
+% thrown to 13, 27 and 139 deg - while r, being local to the reflector,
+% is well posed at the same interval length.
+% Supply as radians, one per interval (or a scalar for the whole column).
+th_fix = H_opt(opts, 'theta_int_fixed', []);
+if ~isempty(th_fix)
+  th_fix = th_fix(:);
+  if isscalar(th_fix), th_fix = repmat(th_fix, Nint, 1); end
+  if numel(th_fix) ~= Nint
+    error('ptt:ershadiInverse:thetaFixed', ...
+      'theta_int_fixed has %d values for %d intervals', ...
+      numel(th_fix), Nint);
+  end
+  bad = ~isfinite(th_fix);
+  th_fix(bad) = th0_int(bad);       % fall back per interval, not wholesale
+  th = mod(th_fix, pi);
+end
+fit_theta = isempty(th_fix);
 
 % --- which intervals can constrain their OWN theta at all.
 % An interval's axis is visible only through the birefringent phase it
@@ -322,7 +397,7 @@ R_GRID = (-30:1.5:30);
 % so it separates the two regimes this synthetic spans. It is not derived.
 MIN_TH_PHASE = H_opt(opts, 'min_theta_phase_rad', 2.0);
 gpd1_fwd = ptt.birefringentPhaseRate(fwd.fc, fwd.eps_perp, fwd.deps);
-dphi_own = 2 * gpd1_fwd * dlam_int(:) .* diff(edges(:));
+dphi_own = 2 * gpd1_fwd * dlam_fwd(:) .* diff(edges(:));
 th_ident = dphi_own >= MIN_TH_PHASE;
 
 % --- staged fit, cycled. Each J0/J pair brackets its own stage: J0 is
@@ -361,6 +436,7 @@ for cyc = 1:n_cycles
   if isnan(J0(cyc, 1)), J0(cyc, 1) = cost(th, rdb, w_th); end
   exmin = Inf;
   for k = fitset(:).'
+    if ~fit_theta, break; end            % theta supplied and held
     if isempty(rows_of{k}), continue; end
     if ~th_ident(k), continue; end       % unidentifiable: hold at th0
     Jg = arrayfun(@(t) costk(H_place(th, k, t), rdb, w_th, k), TH_GRID);
@@ -505,7 +581,7 @@ J0 = J0(1:n_used, :); J = J(1:n_used, :); ex = ex(1:n_used, :);
 % unknowable projection, so it MUST abstain the column below it. That is
 % correct abstention, not a defect. The two report separately below.
 Lint = diff(edges);
-dphi_int = 2 * gpd1 * dlam_int .* Lint;   % two-way phase each interval adds
+dphi_int = 2 * gpd1 * dlam_fwd .* Lint;   % two-way phase each interval adds
 coax_min = cos(2 * deg2rad(r13_coax_deg));
 w_ap = pi - acos(r13_cos_max);            % anti-phase half-window, rad
 neg_bound = r13_neg_frac * w_ap;
@@ -527,7 +603,7 @@ for k = 1:Nint
   if demoted, small(:) = false; end
   act = find(~small);
   jj = act(act < k);
-  cum_dl(k) = sum(dlam_int(jj) .* Lint(jj) .* ...
+  cum_dl(k) = sum(dlam_fwd(jj) .* Lint(jj) .* ...
     cos(2 * (th0_int(jj) - th0_int(k))));
   ta = th0_int(act);
   ok_axis = all(th0_res(act) >= r13_axis_res_min);
@@ -552,7 +628,7 @@ for i = find(band).'
     r13_reason(i) = gate(k);
     continue;
   end
-  delta2 = 2 * gpd1 * (cum_dl(k) + dlam_int(k) * (z(i) - edges(k)));
+  delta2 = 2 * gpd1 * (cum_dl(k) + dlam_fwd(k) * (z(i) - edges(k)));
   if cos(delta2) > r13_cos_max
     r13_reason(i) = 4;
     continue;
@@ -577,7 +653,8 @@ out = struct('z_int', zc_int, 'theta_int', th, 'r_db_int', rdb, ...
   'r13_gate', gate, ...
   'J0', J0, 'J', J, 'exitflag', ex, 'n_cycles_used', n_used, ...
   'cycle_best', cyc_best, 'cycle_worsened', worsened, ...
-  'theta_fitted', th_ident, 'theta_phase_rad', dphi_own, ...
+  'theta_fitted', th_ident & fit_theta, 'theta_phase_rad', dphi_own, ...
+  'theta_was_supplied', ~fit_theta, ...
   'edges', edges, 'fitset', fitset);
 
 end
