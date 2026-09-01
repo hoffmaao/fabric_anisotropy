@@ -88,7 +88,8 @@ function out = ershadiInverse(fr, z, opts)
 %         .r13_neg_frac (0.2) an interval is NEGLIGIBLE, and so exempt from
 %              both the co-axial test and the phase sum, when its worst-case
 %              contribution is under this fraction of the anti-phase
-%              half-window; the exempted total is held under the same bound
+%              half-window; if the exempted total reaches that same bound
+%              the exemption is withdrawn and they are checked instead
 %         .r13_axis_res_min (0.5) an interval's axis counts as DETERMINED
 %              when its doubled-angle resultant length reaches this; below
 %              it the axis is unknowable and the column below abstains
@@ -103,7 +104,7 @@ function out = ershadiInverse(fr, z, opts)
 %   .r13_reason                     per-row code naming the gate that fired,
 %                                   indexing .r13_reason_key: 0 resolved,
 %                                   1 coaxial veto, 2 undefined axis,
-%                                   3 unchecked negligible phase,
+%                                   3 demoted small intervals unreconciled,
 %                                   4 off anti-phase, 5 nodes unresolvable.
 %                                   NaN outside the band. 1-3 are properties
 %                                   of the column, 4 of the depth, 5 of the
@@ -143,6 +144,17 @@ max_iter = H_opt(opts, 'max_iter', 150);
 n_cycles = H_opt(opts, 'n_cycles', 3);
 cycle_tol = H_opt(opts, 'cycle_tol', 1e-3);
 r13_cos_max = H_opt(opts, 'r13_cos_max', -0.85);
+% Out of range this fails SILENTLY rather than loudly: acos(-1.5) is
+% complex, so the half-window and the negligible bound derived from it are
+% complex too, and MATLAB's < then compares real parts only - nothing is
+% ever negligible, the closure check never fires, and the anti-phase test
+% never abstains, so the gate quietly disables itself with no error.
+if ~isscalar(r13_cos_max) || ~isreal(r13_cos_max) || ...
+    ~isfinite(r13_cos_max) || r13_cos_max <= -1 || r13_cos_max >= 1
+  error('ptt:ershadiInverse:r13CosMax', ...
+    'r13_cos_max must be a real scalar in (-1, 1), got %s', ...
+    mat2str(r13_cos_max));
+end
 r13_coax_deg = H_opt(opts, 'r13_coax_deg', 15);
 r13_neg_frac = H_opt(opts, 'r13_neg_frac', 0.2);
 r13_axis_res_min = H_opt(opts, 'r13_axis_res_min', 0.5);
@@ -174,6 +186,12 @@ Nint = numel(edges) - 1;
 % Exact centres, not edges + int_m/2: the append above can leave a SHORT
 % final interval whose centre is not half an interval below its top.
 zc_int = 0.5 * (edges(1:end-1) + edges(2:end));
+% Single owner of "which interval does this row belong to". discretize
+% closes the LAST bin on the right, so the row at exactly edges(end) lands
+% in interval Nint instead of falling through every half-open z < edges(k+1)
+% test and silently becoming NaN in dlam_int's median, in theta/r_db, and in
+% the r13 reason accounting.
+kz = discretize(z, edges);
 fitset = find(zc_int >= zfit(1));                    % intervals we optimize
 if isempty(fitset)
   error('ptt:ershadiInverse:fitset', ...
@@ -186,7 +204,7 @@ dlam_int = zeros(Nint, 1);
 th0_int = zeros(Nint, 1);
 th0_res = zeros(Nint, 1);
 for k = 1:Nint
-  m = z >= edges(k) & z < edges(k+1);
+  m = kz == k;
   d = fr.dlam(m); d = d(isfinite(d));
   if ~isempty(d), dlam_int(k) = median(d); end
   t = fr.theta(m); t = t(isfinite(t));
@@ -368,8 +386,9 @@ J0 = J0(1:n_used, :); J = J(1:n_used, :); ex = ex(1:n_used, :);
 % the phase cannot decorrelate the projection either, so it must not veto).
 % CLOSURE, which is the whole point: dropping them is only sound while
 % their contributions cannot ADD UP, so the SUM of all exempted worst cases
-% is held under the same bound. Exceed it and the row abstains rather than
-% accumulating many small unchecked shifts into one large one.
+% is held under the same bound. Exceed it and the exemption is WITHDRAWN -
+% every small interval is demoted back into the checked set, so many small
+% unchecked shifts can never accumulate into one large one.
 % The reference interval k is never exempt whatever phase it carries - its
 % axis is the frame cum_dl projects onto and the arc H_r13 reads.
 %
@@ -390,16 +409,30 @@ gate = zeros(Nint, 1);
 for k = 1:Nint
   small = dphi_int(1:k) < neg_bound;
   small(k) = false;
+  % Closure failure means STOP EXEMPTING, not abstain. Discarding the row
+  % would throw away coverage the co-axial test might well have granted -
+  % four 50 m intervals at dlam = 0.006 each sit under the bound yet total
+  % 0.36 rad, and they may be perfectly co-axial - and it would leave the
+  % row's delta2 short by exactly the amount that tripped the gate. Demoting
+  % them into the active set restores the full phase AND subjects them to
+  % the same axis and co-axiality tests, so nothing unchecked accumulates
+  % either way; only a demoted set that then fails those tests abstains.
+  demoted = sum(dphi_int(small)) >= neg_bound;
+  if demoted, small(:) = false; end
   act = find(~small);
   jj = act(act < k);
   cum_dl(k) = sum(dlam_int(jj) .* Lint(jj) .* ...
     cos(2 * (th0_int(jj) - th0_int(k))));
   ta = th0_int(act);
-  if sum(dphi_int(small)) >= neg_bound
+  ok_axis = all(th0_res(act) >= r13_axis_res_min);
+  ok_coax = all(abs(cos(2 * (ta - ta.'))) >= coax_min, 'all');
+  if ok_axis && ok_coax
+    gate(k) = 0;
+  elseif demoted
     gate(k) = 3;
-  elseif any(th0_res(act) < r13_axis_res_min)
+  elseif ~ok_axis
     gate(k) = 2;
-  elseif ~all(abs(cos(2 * (ta - ta.'))) >= coax_min, 'all')
+  else
     gate(k) = 1;
   end
 end
@@ -407,8 +440,8 @@ end
 r13 = nan(numel(z), 1);
 r13_reason = nan(numel(z), 1);
 for i = find(band).'
-  k = find(z(i) >= edges(1:end-1) & z(i) < edges(2:end), 1);
-  if isempty(k), continue; end
+  k = kz(i);
+  if isnan(k), continue; end
   if gate(k) ~= 0
     r13_reason(i) = gate(k);
     continue;
@@ -422,12 +455,12 @@ for i = find(band).'
   r13_reason(i) = 5 * isnan(r13(i));
 end
 r13_reason_key = {'resolved', 'coaxial veto', 'undefined axis', ...
-  'unchecked negligible phase', 'off anti-phase', 'nodes unresolvable'};
+  'demoted unreconciled', 'off anti-phase', 'nodes unresolvable'};
 
 % expand to rows
 th_row = nan(numel(z), 1); r_row = nan(numel(z), 1);
 for k = 1:Nint
-  m = z >= edges(k) & z < edges(k+1);
+  m = kz == k;
   th_row(m) = th(k); r_row(m) = rdb(k);
 end
 
