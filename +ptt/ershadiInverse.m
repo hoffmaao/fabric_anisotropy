@@ -85,16 +85,39 @@ function out = ershadiInverse(fr, z, opts)
 %         .r13_coax_deg (15)  co-axial gate for the eq.-(13) estimate: how
 %              far, modulo 90 deg, two interval axes above the row may lie
 %              before the scalar phase accumulation stops being meaningful
+%         .r13_neg_frac (0.2) an interval is NEGLIGIBLE, and so exempt from
+%              both the co-axial test and the phase sum, when its worst-case
+%              contribution is under this fraction of the anti-phase
+%              half-window; the exempted total is held under the same bound
+%         .r13_axis_res_min (0.5) an interval's axis counts as DETERMINED
+%              when its doubled-angle resultant length reaches this; below
+%              it the axis is unknowable and the column below abstains
 %         .max_iter (150)     fmincon iteration cap per stage
 %
 % Output
 %   .z_int, .theta_int, .r_db_int   per-interval fitted values
 %   .theta, .r_db                   the same, expanded to the z rows
 %   .dlam_int                       the accepted dlam per interval
-%   .r13_db                         eq.-(13) analytic r per depth row (NaN
-%                                   off anti-phase, where the stack above
-%                                   is not co-axial, or where nodes are not
-%                                   resolvable)
+%   .r13_db                         eq.-(13) analytic r per depth row, NaN
+%                                   wherever any gate abstained
+%   .r13_reason                     per-row code naming the gate that fired,
+%                                   indexing .r13_reason_key: 0 resolved,
+%                                   1 coaxial veto, 2 undefined axis,
+%                                   3 unchecked negligible phase,
+%                                   4 off anti-phase, 5 nodes unresolvable.
+%                                   NaN outside the band. 1-3 are properties
+%                                   of the column, 4 of the depth, 5 of the
+%                                   data - they are not interchangeable
+%   .r13_reason_key                 cellstr naming codes 0..5
+%   .r13_gate                       the per-interval code 0..3 behind them
+%   .theta0_int                     the INITIAL-GUESS theta per interval -
+%                                   returned because r13 is conditioned on
+%                                   it, so measuring theta_int against it is
+%                                   how a caller confirms that an r13-vs-fit
+%                                   disagreement really is a drifted or
+%                                   flipped theta stage
+%   .theta0_res                     doubled-angle resultant length behind
+%                                   each theta0_int (0 = no axis at all)
 %   .J0, .J                         cost immediately before/after each
 %                                   stage, [n_cycles_used x 2], columns
 %                                   [theta stage, r stage] - so each pair
@@ -121,6 +144,8 @@ n_cycles = H_opt(opts, 'n_cycles', 3);
 cycle_tol = H_opt(opts, 'cycle_tol', 1e-3);
 r13_cos_max = H_opt(opts, 'r13_cos_max', -0.85);
 r13_coax_deg = H_opt(opts, 'r13_coax_deg', 15);
+r13_neg_frac = H_opt(opts, 'r13_neg_frac', 0.2);
+r13_axis_res_min = H_opt(opts, 'r13_axis_res_min', 0.5);
 
 % The forward constants are NOT free here: fr.dlam was produced by
 % ptt.ershadiFabric under a particular fc/eps_perp/deps and is accepted
@@ -159,13 +184,21 @@ end
 % --- accepted dlam and initial theta per interval (3.5.3/3.5.4)
 dlam_int = zeros(Nint, 1);
 th0_int = zeros(Nint, 1);
+th0_res = zeros(Nint, 1);
 for k = 1:Nint
   m = z >= edges(k) & z < edges(k+1);
   d = fr.dlam(m); d = d(isfinite(d));
   if ~isempty(d), dlam_int(k) = median(d); end
   t = fr.theta(m); t = t(isfinite(t));
   if ~isempty(t)
-    th0_int(k) = mod(angle(mean(exp(2i * t))) / 2, pi);
+    % the doubled-angle resultant LENGTH is the direct measure of whether
+    % this interval has an axis at all: ptt.ershadiFabric resolves theta's
+    % 90 deg polarity branch row by row from sign(psi_grad), so an interval
+    % whose rows split between the branches cancels to a near-zero
+    % resultant at an essentially arbitrary angle
+    R2 = mean(exp(2i * t));
+    th0_int(k) = mod(angle(R2) / 2, pi);
+    th0_res(k) = abs(R2);
   elseif k > 1
     th0_int(k) = th0_int(k-1);
   end
@@ -319,31 +352,77 @@ J0 = J0(1:n_used, :); J = J(1:n_used, :); ex = ex(1:n_used, :);
 % It does NOT bound the residual accumulated-phase error, which grows with
 % depth and with how much phase the off-axis intervals carry - one more
 % reason r13 is a cross-check and not a measurement.
+%
+% ONE DEFINITION OF NEGLIGIBLE, used by both gates. An interval is
+% negligible when its OWN worst-case phase contribution dphi_int is small
+% against the quantity the gate protects - the anti-phase half-window
+% w_ap = pi - acos(r13_cos_max) - and never as a percentage of the column
+% total. A relative rule is what makes the two gates disagree with each
+% other: at 1% of this test's own 51.2 rad budget the exemption is 0.51 rad
+% = 29.3 deg, against a half-window of 0.555 rad = 31.8 deg, so an interval
+% could shift the gate by 92% of its half-width while never having to be
+% co-axial with anything.
+% A negligible interval is then treated consistently on BOTH sides: it is
+% dropped from cum_dl (so it contributes no unchecked phase) and it is
+% exempt from the pairwise co-axiality test (an interval that cannot move
+% the phase cannot decorrelate the projection either, so it must not veto).
+% CLOSURE, which is the whole point: dropping them is only sound while
+% their contributions cannot ADD UP, so the SUM of all exempted worst cases
+% is held under the same bound. Exceed it and the row abstains rather than
+% accumulating many small unchecked shifts into one large one.
+% The reference interval k is never exempt whatever phase it carries - its
+% axis is the frame cum_dl projects onto and the arc H_r13 reads.
+%
+% NEGLIGIBLE PHASE AND UNDEFINED AXIS ARE DIFFERENT, and only the first is
+% an exemption. An interval with meaningful phase but no determined axis
+% (th0_res below r13_axis_res_min - its rows split across ershadiFabric's
+% 90 deg polarity branches, the weak-fabric case) genuinely has an
+% unknowable projection, so it MUST abstain the column below it. That is
+% correct abstention, not a defect. The two report separately below.
 Lint = diff(edges);
 dphi_int = 2 * gpd1 * dlam_int .* Lint;   % two-way phase each interval adds
 coax_min = cos(2 * deg2rad(r13_coax_deg));
+w_ap = pi - acos(r13_cos_max);            % anti-phase half-window, rad
+neg_bound = r13_neg_frac * w_ap;
+
 cum_dl = zeros(Nint, 1);
-coax_ok = false(Nint, 1);
+gate = zeros(Nint, 1);
 for k = 1:Nint
-  if k > 1
-    cum_dl(k) = sum(dlam_int(1:k-1) .* Lint(1:k-1) .* ...
-      cos(2 * (th0_int(1:k-1) - th0_int(k))));
-  end
-  % only intervals that actually carry phase can move the gate, so an
-  % interval with dlam ~ 0 does not veto the row on the strength of an
-  % axis the data never constrained
-  act = find(dphi_int(1:k) > 0.01 * max(sum(dphi_int(1:k)), realmin));
+  small = dphi_int(1:k) < neg_bound;
+  small(k) = false;
+  act = find(~small);
+  jj = act(act < k);
+  cum_dl(k) = sum(dlam_int(jj) .* Lint(jj) .* ...
+    cos(2 * (th0_int(jj) - th0_int(k))));
   ta = th0_int(act);
-  coax_ok(k) = all(abs(cos(2 * (ta - ta.'))) >= coax_min, 'all');
+  if sum(dphi_int(small)) >= neg_bound
+    gate(k) = 3;
+  elseif any(th0_res(act) < r13_axis_res_min)
+    gate(k) = 2;
+  elseif ~all(abs(cos(2 * (ta - ta.'))) >= coax_min, 'all')
+    gate(k) = 1;
+  end
 end
+
 r13 = nan(numel(z), 1);
+r13_reason = nan(numel(z), 1);
 for i = find(band).'
   k = find(z(i) >= edges(1:end-1) & z(i) < edges(2:end), 1);
-  if isempty(k) || ~coax_ok(k), continue; end
+  if isempty(k), continue; end
+  if gate(k) ~= 0
+    r13_reason(i) = gate(k);
+    continue;
+  end
   delta2 = 2 * gpd1 * (cum_dl(k) + dlam_int(k) * (z(i) - edges(k)));
-  if cos(delta2) > r13_cos_max, continue; end
+  if cos(delta2) > r13_cos_max
+    r13_reason(i) = 4;
+    continue;
+  end
   r13(i) = H_r13(fr.dP_hh(i, :), fr.psi, mod(-th0_int(k), pi));
+  r13_reason(i) = 5 * isnan(r13(i));
 end
+r13_reason_key = {'resolved', 'coaxial veto', 'undefined axis', ...
+  'unchecked negligible phase', 'off anti-phase', 'nodes unresolvable'};
 
 % expand to rows
 th_row = nan(numel(z), 1); r_row = nan(numel(z), 1);
@@ -354,6 +433,9 @@ end
 
 out = struct('z_int', zc_int, 'theta_int', th, 'r_db_int', rdb, ...
   'dlam_int', dlam_int, 'theta', th_row, 'r_db', r_row, 'r13_db', r13, ...
+  'theta0_int', th0_int, 'theta0_res', th0_res, ...
+  'r13_reason', r13_reason, 'r13_reason_key', {r13_reason_key}, ...
+  'r13_gate', gate, ...
   'J0', J0, 'J', J, 'exitflag', ex, 'n_cycles_used', n_used, ...
   'cycle_best', cyc_best, 'cycle_worsened', worsened, ...
   'edges', edges, 'fitset', fitset);
