@@ -43,11 +43,24 @@ function out = ershadiInverse(fr, z, opts)
 %   - r = Gamma_y/Gamma_x with r_dB = 20*log10(r) - the amplitude
 %     convention their eq. (13) fixes (see ptt.fujitaModel).
 %
-% Also returned: the eq. (13) ANALYTIC estimate r = 1/tan^2(AD/2) as an
-% optimization-free cross-check, evaluated only where two co-polarization
-% nodes are resolvable in dP_HH AND the accepted dlam profile puts that
-% depth near ANTI-PHASE, which is the only place the relation holds (see
-% the r13 block below for the measured off-anti-phase bias).
+% Also returned: the eq. (13) ANALYTIC estimate r = 1/tan^2(AD/2). It is
+% OPTIMIZER-INDEPENDENT but DATA-CHAIN-CONDITIONED - not "optimization
+% free", because it needs an axis to resolve eq. (13)'s arc ambiguity and
+% an accumulated phase to find the anti-phase depths. Both are taken from
+% ptt.ershadiFabric: the initial-guess theta (th0_int, their 3.5.3 recipe
+% of dP_HV minima disambiguated by phase polarity) and the accepted dlam.
+% Neither is ever taken from the FITTED theta, and that is the whole point:
+%   CAN catch - a theta stage that flips 90 deg or drifts from its initial
+%     guess. Conditioning on the fitted theta instead would move the
+%     admitted rows and flip the arc in step with the fit, so eq. (13)
+%     would return ~1/r exactly where the r stage also returned ~1/r; the
+%     cross-check would confirm the error rather than expose it.
+%   CANNOT catch - an error already in the initial-guess chain itself. If
+%     ershadiFabric's theta or dlam is wrong, r13 is wrong the same way and
+%     agrees with a fit that inherited the same wrong start.
+% Evaluated only where two co-pol nodes resolve in dP_HH, the depth is near
+% ANTI-PHASE, and the stack above is near CO-AXIAL - see the r13 block for
+% all three gates and the measurements behind them.
 %
 % Inputs
 %   fr    output struct of ptt.ershadiFabric (needs psi, dP_hh, dP_hv,
@@ -69,6 +82,9 @@ function out = ershadiInverse(fr, z, opts)
 %              override: it would rescale every modelled phase with nothing
 %              in the cost to reveal it.
 %         .r13_cos_max (-0.85) anti-phase gate for the eq.-(13) estimate
+%         .r13_coax_deg (15)  co-axial gate for the eq.-(13) estimate: how
+%              far, modulo 90 deg, two interval axes above the row may lie
+%              before the scalar phase accumulation stops being meaningful
 %         .max_iter (150)     fmincon iteration cap per stage
 %
 % Output
@@ -76,7 +92,8 @@ function out = ershadiInverse(fr, z, opts)
 %   .theta, .r_db                   the same, expanded to the z rows
 %   .dlam_int                       the accepted dlam per interval
 %   .r13_db                         eq.-(13) analytic r per depth row (NaN
-%                                   off anti-phase or where nodes are not
+%                                   off anti-phase, where the stack above
+%                                   is not co-axial, or where nodes are not
 %                                   resolvable)
 %   .J0, .J                         cost immediately before/after each
 %                                   stage, [n_cycles_used x 2], columns
@@ -84,6 +101,11 @@ function out = ershadiInverse(fr, z, opts)
 %                                   brackets that stage alone
 %   .exitflag                       fmincon exit flags, same shape
 %   .n_cycles_used                  staging cycles actually run
+%   .cycle_best                     index of the cycle whose end point is
+%                                   returned; < n_cycles_used means a later
+%                                   cycle was worse and was discarded
+%   .cycle_worsened                 true if any cycle raised the combined
+%                                   staged cost
 %
 % See also ptt.fujitaModel, ptt.ershadiFabric.
 
@@ -98,6 +120,7 @@ max_iter = H_opt(opts, 'max_iter', 150);
 n_cycles = H_opt(opts, 'n_cycles', 3);
 cycle_tol = H_opt(opts, 'cycle_tol', 1e-3);
 r13_cos_max = H_opt(opts, 'r13_cos_max', -0.85);
+r13_coax_deg = H_opt(opts, 'r13_coax_deg', 15);
 
 % The forward constants are NOT free here: fr.dlam was produced by
 % ptt.ershadiFabric under a particular fc/eps_perp/deps and is accepted
@@ -108,8 +131,7 @@ fwd = struct('fc', H_const(opts, fr, 'fc', 750e6), ...
   'deps', H_const(opts, fr, 'deps', 0.034), ...
   'win_m', H_const(opts, fr, 'win_m', 30));
 
-C0 = ptt.constants();
-gpd1 = pi * fwd.fc * fwd.deps / (sqrt(fwd.eps_perp) * C0.c * 1e9);
+gpd1 = ptt.birefringentPhaseRate(fwd.fc, fwd.eps_perp, fwd.deps);
 
 z = z(:);
 band = z >= zfit(1) & z <= zfit(2);
@@ -178,8 +200,21 @@ lb_r = -30 * ones(nf, 1);  ub_r = 30 * ones(nf, 1);       % +-30 dB
 % --- staged fit, cycled. Each J0/J pair brackets its own stage: J0 is
 % evaluated at the parameters the stage STARTS from, so J0 - J is that
 % stage's improvement and nothing else.
+%
+% BEST-SO-FAR, not last. A cycle is not a descent step on the combined
+% cost: stage 1 minimizes the w_theta cost at the PREVIOUS r, which can
+% raise the w_r cost, and stage 2 then only guarantees J(cyc,2) <=
+% J0(cyc,2) = the w_r cost at the new theta and the old r - a quantity that
+% may already exceed the previous cycle's J(cyc,2). The same holds for the
+% w_theta cost across the r update. So a cycle can end strictly worse than
+% the one before it, and the break below fires on "did not improve by
+% cycle_tol", which is true for a worsening cycle too. Keeping the best
+% (th, rdb, Jtot) triple means convergence and divergence do not have to be
+% told apart by luck: the worse iterate is discarded either way.
 J0 = nan(n_cycles, 2); J = nan(n_cycles, 2); ex = zeros(n_cycles, 2);
 Jtot_prev = Inf;
+Jtot_best = Inf; th_best = th; rdb_best = rdb; cyc_best = 0;
+worsened = false;
 n_used = 0;
 for cyc = 1:n_cycles
   n_used = cyc;
@@ -198,12 +233,17 @@ for cyc = 1:n_cycles
     lb_r, ub_r, [], oopt);
   rdb = H_place(rdb, fitset, p2);
 
-  % converged when a whole cycle no longer buys a relative cycle_tol of the
-  % summed staged cost at the cycle's own end point
-  % isfinite guard: the first cycle has no predecessor, and Inf - J <= Inf
-  % would otherwise be true and break before any cycling happened.
   Jth_end = cost(th, rdb, w_th);
   Jtot = Jth_end + J(cyc, 2);
+  if Jtot < Jtot_best
+    Jtot_best = Jtot; th_best = th; rdb_best = rdb; cyc_best = cyc;
+  end
+  worsened = worsened || Jtot > Jtot_prev;
+
+  % converged when a whole cycle no longer buys a relative cycle_tol of the
+  % summed staged cost at the cycle's own end point.
+  % isfinite guard: the first cycle has no predecessor, and Inf - J <= Inf
+  % would otherwise be true and break before any cycling happened.
   if isfinite(Jtot_prev) && ...
       Jtot_prev - Jtot <= cycle_tol * max(abs(Jtot_prev), realmin)
     break;
@@ -211,13 +251,26 @@ for cyc = 1:n_cycles
   Jtot_prev = Jtot;
   if cyc < n_cycles, J0(cyc+1, 1) = Jth_end; end
 end
+th = th_best; rdb = rdb_best;
 J0 = J0(1:n_used, :); J = J(1:n_used, :); ex = ex(1:n_used, :);
 
 % --- eq. (13) analytic r from the co-pol node angular distance, where two
-% nodes are resolvable in a depth row of dP_HH; optimization-free check.
-% The node pair defines two arcs (AD and pi - AD) and eq. (13) applied to
-% the wrong one returns 1/r - the axis says which arc is which, since the
-% nodes straddle it. The FITTED theta (sweep frame: -theta) disambiguates.
+% nodes are resolvable in a depth row of dP_HH. The node pair defines two
+% arcs (AD and pi - AD) and eq. (13) applied to the wrong one returns 1/r -
+% the axis says which arc is which, since the nodes straddle it.
+%
+% CONDITIONED ON th0_int, NEVER ON THE FITTED theta. Both the arc below and
+% the phase accumulation use the initial-guess axis, which ptt.ershadiFabric
+% derived from the data alone. Using the fitted theta would make this agree
+% with the fit by construction in exactly the case worth catching: theta is
+% bounded [0, pi] and the EDML w_theta = [0 1 0] configuration fits it
+% against dP_HH, which is near-symmetric under theta -> theta + 90, so the
+% stage can land an interval 90 deg off. At a flipped axis every
+% cos(2*dtheta) below changes sign, relocating the admitted rows, AND the
+% arc test flips so eq. (13) returns 1/r - while the r stage, fitting at
+% that same flipped axis, returns ~1/r too. The two errors would cancel and
+% verdict the flip as agreement. Off th0_int they do not cancel, so the
+% flip shows up as an r13-vs-fit disagreement.
 %
 % RESTRICTED TO ANTI-PHASE. r = 1/tan^2(AD/2) holds only where the two-way
 % birefringent phase delta is pi: there |s_hh|^2 = (cos^2 - r sin^2)^2 has
@@ -242,21 +295,54 @@ J0 = J0(1:n_used, :); J = J(1:n_used, :); ex = ex(1:n_used, :);
 % exactly the geometry this retrieval is aimed at - the EDML-shaped profile
 % whose deep zone sits at theta + 90 - and eq. (13) would then be read off
 % node. Each interval is therefore projected onto the reference interval's
-% axis with cos(2*dtheta), which is +1 and -1 at 0 and 90 deg and the
-% correct leading behaviour between.
+% axis with cos(2*dtheta).
+%
+% AND THAT PROJECTION IS ONLY VALID NEAR 0 OR 90 DEG, so rows whose stack
+% above is not near co-axial ABSTAIN. cos(2*dtheta) is EXACT at 0 and 90
+% deg - R(90) diag(e^{ix}, e^{-ix}) R(90)' = diag(e^{-ix}, e^{ix}), a clean
+% sign flip - but it is degenerate in between, not merely approximate. At
+% dtheta = 45 deg it contributes exactly zero, because
+% R(45) diag(e^{ix}, e^{-ix}) R(45)' = [cos x, i sin x; i sin x, cos x]:
+% the accumulated DIAGONAL phase difference really is zero, but the layer's
+% whole effect has moved into the off-diagonal coupling that this scalar
+% accumulation discards, and "anti-phase" stops predicting where the co-pol
+% nodes sit at all. Modelling that coupling is not the job of a
+% cross-check, so the gate abstains instead: every pair of contributing
+% intervals above the row must lie within r13_coax_deg of each other modulo
+% 90 deg. Modulo 90 because 90 deg IS co-axial - same eigen-axes, swapped
+% labels - which is what keeps the EDML-shaped deep zone admissible.
+% CONSEQUENCE, stated plainly: at sites where the axis rotates gradually
+% with depth - Dome C, EDML, Thwaites - r13 abstains over most of the
+% column. That is correct behaviour, not a defect; the fitted profile is
+% the product there and r13 simply has nothing valid to say.
+% The gate removes the regime where the scalar accumulation is meaningless.
+% It does NOT bound the residual accumulated-phase error, which grows with
+% depth and with how much phase the off-axis intervals carry - one more
+% reason r13 is a cross-check and not a measurement.
 Lint = diff(edges);
+dphi_int = 2 * gpd1 * dlam_int .* Lint;   % two-way phase each interval adds
+coax_min = cos(2 * deg2rad(r13_coax_deg));
 cum_dl = zeros(Nint, 1);
-for k = 2:Nint
-  cum_dl(k) = sum(dlam_int(1:k-1) .* Lint(1:k-1) .* ...
-    cos(2 * (th(1:k-1) - th(k))));
+coax_ok = false(Nint, 1);
+for k = 1:Nint
+  if k > 1
+    cum_dl(k) = sum(dlam_int(1:k-1) .* Lint(1:k-1) .* ...
+      cos(2 * (th0_int(1:k-1) - th0_int(k))));
+  end
+  % only intervals that actually carry phase can move the gate, so an
+  % interval with dlam ~ 0 does not veto the row on the strength of an
+  % axis the data never constrained
+  act = find(dphi_int(1:k) > 0.01 * max(sum(dphi_int(1:k)), realmin));
+  ta = th0_int(act);
+  coax_ok(k) = all(abs(cos(2 * (ta - ta.'))) >= coax_min, 'all');
 end
 r13 = nan(numel(z), 1);
 for i = find(band).'
   k = find(z(i) >= edges(1:end-1) & z(i) < edges(2:end), 1);
-  if isempty(k), continue; end
+  if isempty(k) || ~coax_ok(k), continue; end
   delta2 = 2 * gpd1 * (cum_dl(k) + dlam_int(k) * (z(i) - edges(k)));
   if cos(delta2) > r13_cos_max, continue; end
-  r13(i) = H_r13(fr.dP_hh(i, :), fr.psi, mod(-th(k), pi));
+  r13(i) = H_r13(fr.dP_hh(i, :), fr.psi, mod(-th0_int(k), pi));
 end
 
 % expand to rows
@@ -269,6 +355,7 @@ end
 out = struct('z_int', zc_int, 'theta_int', th, 'r_db_int', rdb, ...
   'dlam_int', dlam_int, 'theta', th_row, 'r_db', r_row, 'r13_db', r13, ...
   'J0', J0, 'J', J, 'exitflag', ex, 'n_cycles_used', n_used, ...
+  'cycle_best', cyc_best, 'cycle_worsened', worsened, ...
   'edges', edges, 'fitset', fitset);
 
 end
