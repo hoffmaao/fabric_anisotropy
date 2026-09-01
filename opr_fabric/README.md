@@ -486,6 +486,22 @@ the same way:
   truth, so any difference between the two implementations is theirs rather
   than the test's. Passes `deramped = false` because the synthetic is a model
   and not radar data, which is the distinction the paper itself draws.
+- `test_ershadi_r.m` - the paper's Sect.-3.5 stage, `ptt.fujitaModel` +
+  `ptt.ershadiInverse` (its header carries the `matlab -batch` line; the
+  fit is `fmincon`, so this one is not an Octave run), on a three-zone
+  EDML-shaped truth (an isotropic lid over two anisotropic-scattering
+  zones of opposite sign and perpendicular axes). The forward model is
+  checked FIRST against an independent closed form for one uniform layer,
+  so a convention or sign error fails before
+  any optimizer runs; then r and theta recovery per zone, a null control
+  that speckle must not turn into anisotropy, and the eq.-(13) analytic r
+  against the fit on the anti-phase rows - with a floor on how many rows
+  each strong zone must resolve, so a gate regression cannot pass by
+  silently having nothing left to compare. Its noise level is deliberately
+  low (`NA = 0.08`): the co-pol nodes carry the r information, and the
+  first run measured what an amplitude floor that fills them does - r
+  compressed from 10 to 5-8 dB - so the level is set to test the estimator
+  rather than the clip, and its header records why.
 - `test_rotations.m` - `ptt.rotateMoments` against `ptt.rotatePolarization`.
   The 4x4 shortcut is only sound if it is the same linear map, and the two
   are written out independently, so a transcription slip would rotate the
