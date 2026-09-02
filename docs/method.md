@@ -137,9 +137,44 @@ units).
     that file is a place the paper differs and is marked (E1)-(E5) in the
     header, including why the birefringence coefficient carries sqrt(eps')
     rather than the printed eps'. Note this is the paper's DIRECT stage
-    only; their published profiles additionally pass through a constrained
-    nonlinear fit of the Fujita model (their Sect. 3.5) drawn on a
-    continuous depth parameterization, which is why they show no gaps.
+    only; the constrained nonlinear fit of the Fujita model their published
+    profiles additionally pass through (their Sect. 3.5) is
+    `ptt.ershadiInverse` below, which is why the output struct also records
+    the constants the call ran under: `dlam` is derived from them, so a
+    step that accepts it without re-fitting must propagate phase under the
+    same ones.
+  - `ptt.fujitaModel` - the layered forward model of Fujita et al. (2006,
+    J. Glaciol. 52, 407), in the form Ershadi et al. fit it (their eq. 5):
+    per-depth, per-azimuth scattering amplitudes, eq.-(12) power anomalies
+    and the eq.-(7) coherence, for a stack of uniform layers each with its
+    own `dlam`, axis and reflection ratio. Its header owns the conventions
+    it was pinned to - the sweep sense shared with `ptt.ershadiFabric`, the
+    unconjugated model coherence, and `r_dB = 20*log10(Gamma_y/Gamma_x)`,
+    the amplitude convention fixed by reproducing the paper's Fig. 4 from
+    their eq. (13).
+  - `ptt.ershadiInverse` - the Sect.-3.5 step on top of that model: a
+    constrained fit of piecewise-constant theta and reflection-ratio
+    profiles to the observables `ptt.ershadiFabric` extracts, with `dlam`
+    ACCEPTED from the phase gradient and never re-fit (3.5.4). Staged by
+    the paper's Table-3 0/1 weight rows and cycled, since theta and r are
+    coupled in both observables. Carries the eq. (13) analytic
+    r = 1/tan^2(AD/2) alongside as an optimizer-independent cross-check,
+    conditioned on the INITIAL-guess axis rather than the fitted one so a
+    flipped theta stage cannot confirm itself; it abstains off anti-phase
+    and off a co-axial column, and the header owns each gate.
+    `opr_fabric/test/test_ershadi_r.m` is the regression for both files.
+    VALIDATED ON SYNTHETICS ONLY so far. The reflection ratio is read off
+    the co-pol nodes, and that test measured what an amplitude floor which
+    fills those nodes does to it (|r| compressed from 10 dB to 5-8), which
+    is the prediction for real frames under the instrument pedestal
+    recorded below: running this on data needs pedestal-corrected fields,
+    or the pedestal carried in the forward model.
+  - `ptt.birefringentPhaseRate` - the one owner of the one-way relative
+    phase per metre per unit `dlam`. `ptt.fujitaModel` propagates phase
+    with it and `ptt.ershadiInverse` places its eq.-(13) anti-phase depths
+    with it, and a retrieval that disagrees with the model it is scored
+    against lands on different depths, so the constant is not written out
+    at either call site.
   - `ptt.quadpolFabricLS` - the least-squares replacement for the direct
     chain's weak point. ershadiFabric takes the fabric axis from the
     cross-polarized minimum; on this system that minimum is antenna-locked

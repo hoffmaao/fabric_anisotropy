@@ -62,7 +62,12 @@ function out = ershadiFabric(S, z, opts)
 %         coh_min (0.4), deramped (true)
 %
 % Output fields: psi, dP_hh, dP_hv, phi, Cmag, psi_grad, dlam, theta,
-%   theta_quality
+%   theta_quality, plus the constants this call ran under - coh_min,
+%   deramped, fc, eps_perp, deps, win_m. The last four are RECORDED rather
+%   than merely defaulted because dlam is derived from them (eq. 9): any
+%   downstream step that accepts dlam without re-fitting it, such as
+%   ptt.ershadiInverse, has to propagate phase under the same constants,
+%   and a mismatch there is a silent rescale with nothing to reveal it.
 
 if nargin < 3, opts = struct(); end
 fc = H_opt(opts, 'fc', 750e6);
@@ -166,7 +171,8 @@ dlam = abs(dl_at);
 out = struct('psi', psi, 'dP_hh', dP_hh, 'dP_hv', dP_hv, 'phi', phi, ...
   'Cmag', Cmag, 'psi_grad', psi_grad, 'dlam', dlam, 'theta', theta(:), ...
   'theta_quality', theta_quality, 'coh_min', coh_min, ...
-  'deramped', deramped);
+  'deramped', deramped, 'fc', fc, 'eps_perp', eps_perp, 'deps', deps, ...
+  'win_m', win_m);
 
 end
 
