@@ -246,6 +246,92 @@ units).
     validated on a 90-deg arc; the header owns the detail, and
     `opr_fabric/test/test_quadpol_segmented.m` /
     `test_quadpol_curved.m` are its regressions.
+    CONSTANT ORIENTATION WITH DEPTH (`opts.theta_const`, off by
+    default; the pipeline's `theta_const=true` writes `_ct` products
+    beside the defaults, never over them): one axis per segment, voted
+    from the per-window theta cost curves the grid search already
+    computes, then refit into every window. The vote pools curves
+    NORMALISED by each window's data power and takes only windows the
+    free fit would trust (q_min / dlam_min_theta): measured on Ridge A
+    frame 009, a raw-cost vote let seven near-surface windows (86% of
+    the data power, exactly where the co-pol reference offset makes the
+    model wrong) put the axis 6 deg off the column and raise the block
+    residual by 0.06; normalised and trusted, the axis lands on the
+    column's 96 deg with or without a depth cut and the residual FALLS
+    (0.160 -> 0.138 per window). Whether the assumption holds at a site
+    is `theta_spread_deg`, the contrast-weighted circular spread of the
+    trusted windows' own minima (2-6 deg on Ridge A, 1.7 vs 20.7 on the
+    constant/rotating synthetics of `test_quadpol_const_theta.m`); the
+    pooled contrast `theta_const_q` is NOT that diagnostic and is not
+    read as one. Where the axis rotates with depth (Thwaites' margin,
+    EastGRIP) the mode is the wrong model and measured 6x worse.
+  - `ptt.quadpolJackknife` - standard errors of a pooled segment fit by
+    delete-one jackknife over the heading sub-blocks whose weighted mean
+    is the segment's moment matrix. Every replicate re-votes the axis
+    (or refits every window's theta0) on a +-15 deg grid around the
+    full-data axis and refits dlam, so se_dlam carries the axis's own
+    uncertainty; nothing assumes a noise model, which matters because a
+    90-azimuth coherence field synthesised from 16 moments in 60 m
+    windows on a 15 m step is far too correlated for a Jacobian
+    covariance to be honest. Blocks (125 traces, nothing to jackknife)
+    get a SPLIT-HALF instead in the pipeline: refit on each half with
+    the axis held, half the difference is one draw of the block's error,
+    pooled over +-30 m and +-8 blocks into `sec_se_dlam_ls`. Both are
+    calibrated by coverage on known-truth synthetics in
+    `opr_fabric/test/test_quadpol_uncertainty.m`, which also reports the
+    estimator's BIAS separately - a standard error does not cover bias,
+    and the test refuses to let the two be confused. On that synthetic
+    the dlam bias is noise-induced and positive (+0.0035 at the test's
+    noise with no pedestal, 0 without noise, +0.0006-0.0010 with the
+    leakage pedestal present, whose nuisance terms absorb most of it);
+    real data carry the pedestal, so quote dlam with a ~0.003 systematic
+    until a per-SNR characterisation replaces that number.
+  - `ptt.quadpolFabricPower` - fabric from the co-polarised POWER
+    extinction pattern, with no use of the HH-VV phase or coherence.
+    Built (2 Sep 2026) for ice where that coherence is gone: the Thwaites
+    margin measures as depolarised at the single-look level, so every
+    phase estimator abstains there, while each channel's power still
+    carries the interference of the two eigenmodes. Pass A fits the full
+    azimuth pattern per 150 m window - the axis (mod 90, resolved to mod
+    180 by the reflection ratio r_db when |r_db| exceeds r_db_min), the
+    ratio, and the antenna-frame pedestal - and pass B fits dlam from the
+    NODE SERIES: the power within +-10 deg of theta0 +- 45 deg, normalised
+    per row by the delta-free combination DC + cos 4(psi - theta0) =
+    (r1^2 + r2^2)/2, as n + a cos delta(z). kappa = a/n is the node
+    visibility, the power-only counterpart of |C| (0.3-0.4 on Ridge A
+    009, where |C| is 0.4-0.5). What was tried and rejected is in the
+    header: mean-over-azimuth normalisation (divides by a delta-dependent
+    quantity, dlam 0.4x), a reflection-ratio-tied interference amplitude
+    (forces full node depth, dlam 3x low), and a full-shape pass B on
+    real data (trades depth modulation for shape misfit). The rate enters
+    only through cos delta, so the sign of ddelta is not observable and
+    dlam is a magnitude. LIMITATION measured on equalised WAIS blocks: the
+    node series also oscillates with the layering's reflection ratio, so
+    on the near-isotropic frame 20240120_03 (coherence dlam 0.003) the
+    power fit reports |dlam| 0.07-0.14, and a variance-explained gate
+    does not separate that from real fabric. The axis (mod 90) and the
+    visibility kappa are the robust power products; a power-only |dlam|
+    is for ice where the HH-VV pair is dead and the fabric strong, and
+    reads ~40% high even there. OPEN: on 009 the node spacing above 800 m implies
+    up to 2x the coherence estimator's dlam (0.10 vs 0.05 at 500-800 m)
+    while the two agree to 10% below; unresolved, and worth a look before
+    either is quoted there.
+  - `ptt.equaliseChannels` - range-dependent per-channel gain
+    equalisation of antenna-frame moments from two physical constraints:
+    reciprocity (|HV|^2 = |VH|^2 at every range fixes the cross-pol
+    chains) and the firn (VV anchored to HH at 160-500 m, then given the
+    V-receiver's range dependence measured on the cross-pol ratio). Built
+    2 Sep 2026 after the block moments showed WAIS Divide
+    (2023_Antarctica_Ground) at VH/HV +17 dB above a 640-720 m seam and
+    +29 dB below it, VV/HH +22 -> -17 dB, and EastGRIP milder but of the
+    same kind, while Ridge A is within 3 dB. Unequalised, WAIS's
+    synthesized co-pol power peaks at the H antenna and nulls at V at
+    every depth and both estimators read the antennas as the fabric
+    axis; equalised, the coherence LS holds 113-116 deg with 9 deg spread
+    and dlam 0.11, and the power pattern's extremes leave the antennas.
+    A moment-level stand-in for raw-channel chan_equal (M_kl scales by
+    g_k g_l, so the same table applies to the channels). Applying the
+    full cross-pol gain to VV over-corrects; the header records that.
   - `ptt.thetaProfileAt` - the per-block handoff from that frame pass:
     the segment profiles interpolated at a block's along-track position
     on the doubled-angle phasor, with robust q-weighted end rows because

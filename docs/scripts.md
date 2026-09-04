@@ -180,6 +180,88 @@ comparing HDF5 object references, which never match.
   or lost a usable deep contrast. This is what measured the
   heading-wrap resweep above; it needs both product generations staged
   locally, so it re-makes that measurement only where they are.
+- `scripts/compare_const_theta.py` - run on mem1 (h5py): differences
+  every `_ct` (constant-orientation) product against its default twin
+  over the quotable 200-1500 m band, and states per site whether the
+  assumption holds. It compares the SEGMENT profiles the blocks inherit
+  (`ls_theta_seg`) and the BLOCK fits (`sec_dlam_ls`, `sec_resid_ls`),
+  not the frame-pooled pass, which constant mode never touches on a
+  multi-segment frame - an earlier version read `ls_theta0_geo` and
+  reported two products identical while the block residual had moved by
+  0.05. The verdict is the contrast-weighted per-window axis spread
+  before holding (`th_spread_seg`), with the residual cost as the second
+  opinion; the pooled contrast is printed but never read as evidence.
+  Its thresholds are provisional until the three Thwaites control frames
+  in `opr_fabric/server/const_theta_batch.sh` (the known rotating column,
+  run precisely because the assumption is wrong there) calibrate them
+  against the divides. That batch writes `_ct` products for every cached
+  frame with a season root except the rest of Thwaites (`DRY=1` only
+  builds the work list), runs from the repo directory and makes MATLAB
+  prove which pipeline it loaded, because a stale work-root copy once
+  silently dropped the `_ct` tag and overwrote a default product.
+- `scripts/prototypes/coreg_lag_diag.py`, `coreg_alongtrack_diag.py`,
+  `coreg_ramp_diag.py` - the 2 Sep 2026 measurement of WHY the Thwaites
+  margin loses HH-VV coherence, run locally on a shipped
+  `CSARP_polarimetric` product (`~/projects/polarimetry_thwaites/data/`):
+  raw vs registered coherence with the applied offset field and the depth
+  phase gradient; the HH-VV cross-correlation as a function of range LAG
+  in 60 m windows (the correlation the tile pick actually faces);
+  coherence against along-track window length with the lateral phase
+  gradient; and block coherence with and without a local along-track
+  phase-ramp compensation. Verdict on 20240108_01_001: a single lag peak
+  everywhere, dead at all lags where coherence is dead, so range
+  coregistration is not the loss; the western fringe fan is depolarised
+  at the single-look level (true |C| below ~0.2 at 40-60 dB SNR), the east
+  is the 45-deg blind geometry the quad-pol synthesis handles, and below
+  ~1400 m it is SNR. `ptt.coregistration` (a package copy of the toolbox
+  function, reachable through `ptt.coregisterChannels` with `impl='ptt'`)
+  keeps the one real defect found - a quadratic peak refinement that
+  leaves its patch and applies -21.8 bin shifts - behind `peak_clamp_en`.
+- `scripts/figures/power_pattern_figs.py` - the power-extinction figure
+  set: Ridge A 009's pattern P(psi, z) with axis and nodes, its node series
+  and dlam against the coherence estimator; three Thwaites margin blocks'
+  patterns; and the margin context panel - raw |C|, power-only node
+  visibility kappa, power |dlam| where kappa allows over the coherence
+  chain's blocks, and the birefringent delay predicted from the fitted
+  fabric drawn over the toolbox's measured tile offsets. Inputs are the
+  scratch products of `power_figdata.m` (power fits on the moment dumps)
+  and `coreg_lag_diag.py`.
+- `opr_fabric/server/dump_block_moments.m` - per-frame along-track block
+  moment matrices from the coreg cache, antenna AND geographic frame,
+  with block position and heading (positions from the polarimetric
+  product, or from the section product's blocks for the qlook seasons).
+  A frame becomes tens of MB that every moment-level estimator runs on
+  in minutes on a laptop, on identical blocks;
+  `scripts/prototypes/block_estimator_compare.m` runs the coherence LS
+  (free and held axis) and the power extinction fit on them, equalising
+  the channels first (`ptt.equaliseChannels`) and rotating the power
+  fit's pedestal basis by the block heading.
+- `opr_fabric/server/egrip_records_resync.m` - re-syncs the
+  2024_Greenland_Ground2 records to the final GPS with the toolbox's
+  `records_update`, in a PRIVATE support tree (~/scratch/opr_support_egrip,
+  gps symlinked to the group directory), driven by each records file's
+  own stored parameters. Every day's gps file is cresis-final_2025 now,
+  but the records of 20240620_01 onward were still arena-field with
+  positions in the Gulf of Guinea (median shift on re-sync 8,725 km).
+  CAUTION recorded in the header: records_update also regenerates the
+  reference trajectory under the DATA output path, and its first run
+  (before that path was overridden) rewrote the production
+  CSARP_reference_trajectory/ref_20240620_02.mat; the override now sends
+  everything to <private>/opr_data. The channel products for those
+  segments are still the stale ones until they are reprocessed from the
+  re-synced records.
+- `opr_fabric/server/gnss_despike.m` - repairs isolated bad fixes in a
+  ground-traverse GNSS solution, writing to a private support tree with
+  `gps_source` suffixed `+despike`. A sample is a spike when it departs
+  from a running-median local trend by more than `dev_max` metres, NOT
+  when the speed implied from the previous fix is high: that speed test is
+  sample-rate dependent and fails silently, flagging 14229 non-spikes in
+  EastGRIP's 20 Hz solution while missing its maximum entirely, and
+  working at Kamb's 1 Hz. Runs longer than `max_run` are reported and left,
+  since a sustained excursion is more likely real than a glitch. Used for
+  Kamb (2022_Antarctica_Ground), which has no post-processed solution to
+  re-sync to; EastGRIP needed `egrip_records_resync.m` instead and is
+  clean by this test.
 - `scripts/make_bed_by_block.py` - builds the `bed_by_block.json` that
   `quadpol_depth_movie.py` masks its blocks with, from the `CSARP_layer`
   picks, given one or more season roots holding `CSARP_layer/<day_seg>/`.
