@@ -147,11 +147,12 @@ fprintf('   constant orientation is falsifiable, not assumed:      %s\n', H_tick
 % ---- verdict 5: correlated azimuth noise, the real-data case
 % Synthesized azimuths are linear combinations of four measured channels,
 % so their noise lives in a four-dimensional azimuthal subspace rather
-% than in Np independent samples. A diagonal C_d counts every azimuth as
-% fresh evidence and must therefore report sigmas that are too tight. The
-% n_indep_psi option is the correction, and this verdict is what makes it
-% honest instead of decorative: it has to move the calibration ratio
-% toward 1, on noise built to break it.
+% than in Np independent samples. The HYPOTHESIS behind opts.n_indep_psi
+% was that a diagonal C_d, counting every azimuth as fresh evidence, must
+% therefore report sigmas that are too tight, and that setting n_indep_psi
+% = 4 would move the calibration ratio back toward 1. This verdict tests
+% that hypothesis on noise built to break it; what it measures is below,
+% and it is not what was expected.
 R5 = 16;
 [d_naive, d_corr, s_naive, s_corr] = deal(nan(R5,1));
 CORR = BASE; CORR.n_indep_psi = 4;
@@ -170,9 +171,9 @@ fprintf('   assuming independence: reported/empirical %.2f\n', rn);
 fprintf('   with n_indep_psi = 4:  reported/empirical %.2f\n', rc);
 % MEASURED, and not what was expected. Confining the noise to four
 % azimuthal modes does NOT make the diagonal posterior optimistic: the
-% naive ratio comes out near 1.3, slightly conservative, while applying
+% naive ratio comes out near 1.15, slightly conservative, while applying
 % n_indep_psi = 4 multiplies it by sqrt(Np/4) = 2.1 and overshoots to
-% about 2.8. So azimuth redundancy is not the thing that threatens these
+% about 2.4. So azimuth redundancy is not the thing that threatens these
 % error bars, and n_indep_psi must stay OFF by default. It is kept as a
 % documented option for data that really does repeat samples, and this
 % verdict is what stops anyone turning it on by reflex.

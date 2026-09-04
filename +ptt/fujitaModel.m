@@ -42,12 +42,15 @@ function out = fujitaModel(layers, z, psi, opts)
 %                      boundary (and at every depth within it)
 %             .gx_db   OPTIONAL amplitude of Gamma_x, dB re the unit
 %                      reference (default 0): the layer's absolute
-%                      scattering strength. Every eq.-(12)/eq.-(7)
-%                      observable is INVARIANT to it by construction -
-%                      power anomalies are normalized over azimuth and the
-%                      coherence is a ratio - so it exists for the power
-%                      PROFILE below, which is where relative reflection
-%                      strengths live.
+%                      scattering strength. dP_hh and dP_hv are invariant
+%                      to it exactly, being normalized over azimuth WITHIN
+%                      a row. The eq.-(7) coherence is invariant within a
+%                      row for the same reason (it is a ratio), but its
+%                      win_m depth window MIXES rows, so a layered gx_db
+%                      profile does reweight C over the ~win_m straddling
+%                      each layer boundary - it is not invariant there.
+%                      gx_db exists for the power PROFILE below, which is
+%                      where relative reflection strengths live.
 %   z       depth axis (m), column
 %   psi     sweep azimuths (radians, row or column)
 %   opts    .fc (750e6), .eps_perp (3.15, the paper's value),
@@ -61,7 +64,13 @@ function out = fujitaModel(layers, z, psi, opts)
 %                the local layer frame; every row BELOW it returns NaN in
 %                all fields, because the domain ends at the bed - sub-bed
 %                returns are the thing the movies grey out, not a
-%                prediction this model should make.
+%                prediction this model should make. The eq.-(7) coherence
+%                is windowed over the rows ABOVE the bed only, so the NaN
+%                band is exactly the sub-bed rows and does not bleed
+%                (nw-1)/2 rows upward; the bed's own row and the ~win_m/2
+%                above it are still window EDGE values, damped by the
+%                zero padding at the truncation exactly as the bottom of
+%                a bedless depth axis is.
 %
 % Output fields (Nz x Npsi unless noted)
 %   s_hh, s_vv, s_hv   complex scattering amplitudes (relative units)
@@ -167,15 +176,27 @@ out.dP_hh = 20*log10(max(A_hh, realmin) ./ max(mean(A_hh, 2), realmin));
 out.dP_hv = 20*log10(max(A_hv, realmin) ./ max(mean(A_hv, 2), realmin));
 
 % --- eq. (7) coherence over the same depth window as the data path; the
-% model is deterministic so the window only mimics the data's smoothing
+% model is deterministic so the window only mimics the data's smoothing.
+% THE WINDOW IS FORMED ABOVE THE BED, NOT ACROSS IT. conv2 propagates a NaN
+% over the whole kernel reach, so running it on a column whose sub-bed rows
+% are NaN would blank C, phi and Cmag for the (nw-1)/2 rows ABOVE the bed
+% too - a 15 m band at the default win_m = 30 that a caller would read as
+% decoherence rather than as the model's own boundary handling. Truncating
+% at bed_row instead leaves every row more than (nw-1)/2 above the bed
+% bit-identical (the kernel never reaches the cut) and gives the rows next
+% to the bed the same zero-padded edge treatment the bottom of a bedless
+% depth axis already gets.
 dz = median(abs(diff(z)));
 nw = max(3, 2*floor(win_m / max(dz, eps) / 2) + 1);
 k = ones(nw, 1) / nw;
-num = conv2(real(s_hh .* conj(s_vv)), k, 'same') + ...
-  1i*conv2(imag(s_hh .* conj(s_vv)), k, 'same');
-den = sqrt(max(conv2(abs(s_hh).^2, k, 'same'), 0) .* ...
-  max(conv2(abs(s_vv).^2, k, 'same'), 0));
-Cn = num ./ max(den, realmin);
+if bed_row > 0, iw = 1:bed_row; else, iw = 1:Nz; end
+sh = s_hh(iw, :); sv = s_vv(iw, :);
+num = conv2(real(sh .* conj(sv)), k, 'same') + ...
+  1i*conv2(imag(sh .* conj(sv)), k, 'same');
+den = sqrt(max(conv2(abs(sh).^2, k, 'same'), 0) .* ...
+  max(conv2(abs(sv).^2, k, 'same'), 0));
+Cn = nan(Nz, Np);
+Cn(iw, :) = num ./ max(den, realmin);
 out.C = Cn;
 out.phi = angle(Cn);
 out.Cmag = abs(Cn);

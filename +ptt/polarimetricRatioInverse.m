@@ -196,7 +196,7 @@ z_dn = linspace(z(1), z(end), n_d).';
 
 % --- pack observed ratios (dB)
 phi_obs = H_opt(obs, 'phi', []);
-[d_obs, idx, tags] = H_pack_obs(P, use, clip_db, phi_obs, w_phi);
+[d_obs, idx, tags, is_ph] = H_pack_obs(P, use, clip_db, phi_obs, w_phi);
 if isempty(d_obs)
   error('ptt:polarimetricRatioInverse:empty', 'no finite ratio observations');
 end
@@ -217,7 +217,15 @@ Gam = zeros(0, numel(m0));
 Gam = [Gam; H_d2(n_r, numel(m0), ip.r) * eta_r];
 Gam = [Gam; H_d2(n_d, numel(m0), ip.d) * eta_d];
 GtG = Gam.' * Gam;
-loss = @(mm) sum((d_obs - fwd(mm)).^2) + sum((Gam*mm).^2);
+% RESIDUAL, not a plain difference: the phi entries are ANGLES (scaled into
+% the dB least-squares by w_phi), and the instrument phase offset this file
+% carries as a free constant puts them near the +-pi branch cut routinely.
+% Differencing there scores a true misfit of ~0 as ~2*pi*w_phi and lets
+% those entries drag theta0 - the failure ptt.fabricGLS measured (its
+% wrapping took chi2/dof from ~2200 to order 1) and fixes the same way.
+% out.rms already wrapped; now the objective agrees with the diagnostic.
+resid = @(mm) H_resid(d_obs, fwd(mm), is_ph, w_phi);
+loss = @(mm) sum(resid(mm).^2) + sum((Gam*mm).^2);
 
 % --- MULTI-START, because this loss is strongly multi-modal and a single
 % Gauss-Newton lands wherever it was pointed. Two separate reasons:
@@ -254,7 +262,7 @@ n_try = min(n_start, numel(ord));
 best_m = []; best_L = inf; best_hist = []; best_conv = false; best_it = 0;
 for q = 1:n_try
   m = m0; m(ip.th) = cand(ord(q), 1); m(ip.d) = cand(ord(q), 2);
-  [m, L, conv, it] = H_solve(m, fwd, d_obs, GtG, loss, ip, max_iter);
+  [m, L, conv, it] = H_solve(m, resid, GtG, loss, ip, max_iter);
   if L(end) < best_L
     best_L = L(end); best_m = m; best_hist = L; best_conv = conv; best_it = it;
   end
@@ -273,7 +281,9 @@ out = struct('theta0', mod(m(ip.th), pi), ...
   'alias_unresolved', ~any(strcmp(use, 'phi')));
 out.rms = struct();
 for k = 1:numel(use)
-  R = H_ratio_db(P, use{k}, clip_db, phi_obs, w_phi) - M.(use{k});
+  Mk = M.(use{k});
+  if ~strcmp(use{k}, 'phi'), Mk = max(Mk, clip_db); end
+  R = H_ratio_db(P, use{k}, clip_db, phi_obs, w_phi) - Mk;
   if strcmp(use{k}, 'phi'), R = w_phi * angle(exp(1i*R/w_phi)); end
   out.rms.(matlab.lang.makeValidName(use{k})) = sqrt(mean(R(isfinite(R)).^2));
 end
@@ -283,13 +293,14 @@ end
 end
 
 % -------------------------------------------------------------------------
-function [m, L, converged, it] = H_solve(m, fwd, d_obs, GtG, loss, ip, max_iter)
+function [m, L, converged, it] = H_solve(m, resid, GtG, loss, ip, max_iter)
 L = nan(max_iter+1, 1); L(1) = loss(m);
 converged = false; it = 0;
 for it = 1:max_iter
-  G = H_jac(fwd, m, numel(d_obs));
+  r0 = resid(m);
+  G = H_jac(resid, m, numel(r0));
   A = G.'*G + GtG;
-  b = G.'*(d_obs - fwd(m)) - GtG*m;
+  b = G.'*r0 - GtG*m;
   dm = A \ b;
   if ~all(isfinite(dm)), break; end
   a = 1; ok = false;
@@ -342,15 +353,17 @@ for k = 1:numel(use)
 end
 end
 
-function [d, idx, tags] = H_pack_obs(P, use, clip_db, phi, w_phi)
-d = []; idx = struct(); tags = {};
+function [d, idx, tags, is_ph] = H_pack_obs(P, use, clip_db, phi, w_phi)
+d = []; idx = struct(); tags = {}; is_ph = [];
 for k = 1:numel(use)
   R = H_ratio_db(P, use{k}, clip_db, phi, w_phi);
   g = isfinite(R);
   idx.(matlab.lang.makeValidName(use{k})) = g;
   d = [d; R(g)]; %#ok<AGROW>
+  is_ph = [is_ph; repmat(strcmp(use{k}, 'phi'), nnz(g), 1)]; %#ok<AGROW>
   tags{end+1} = use{k}; %#ok<AGROW>
 end
+is_ph = logical(is_ph);
 end
 
 function R = H_ratio_db(P, name, clip_db, phi, w_phi)
@@ -377,10 +390,17 @@ R(~isfinite(R)) = NaN;
 R = max(R, clip_db);
 end
 
-function v = H_pack_pred(M, use, idx, clip_db) %#ok<INUSD>
+function v = H_pack_pred(M, use, idx, clip_db)
+% The floor is applied to the MODEL as it is to the data (H_ratio_db).
+% Flooring only the data leaves the model free to run to 10log10(realmin)
+% at its own power nulls, generating hundreds of dB of residual at exactly
+% the cells the clip exists to neutralise, and the fit then trades
+% theta0/dlam to move a null whose depth it cannot know. 'phi' is a phase,
+% not a ratio, and is never floored.
 v = [];
 for k = 1:numel(use)
   R = M.(use{k});
+  if ~strcmp(use{k}, 'phi'), R = max(R, clip_db); end
   g = idx.(matlab.lang.makeValidName(use{k}));
   v = [v; R(g)]; %#ok<AGROW>
 end
@@ -397,14 +417,22 @@ m(ip.d) = max(m(ip.d), 0);
 m(ip.ped) = min(max(m(ip.ped), 0), 5);
 end
 
-function G = H_jac(fwd, m, nd)
-np = numel(m); G = zeros(nd, np); f0 = fwd(m);
+function G = H_jac(resid, m, nd)
+% Jacobian of the FORWARD, differenced through the residual so the phase
+% wrap is inside it: d(resid)/dm = -d(fwd)/dm away from the branch cut, and
+% at the cut the wrapped difference is the one the objective actually uses.
+np = numel(m); G = zeros(nd, np); r0 = resid(m);
 for j = 1:np
   h = max(1e-7, 1e-4*abs(m(j)));
   mp = m; mp(j) = mp(j) + h;
-  G(:, j) = (fwd(mp) - f0) / h;
+  G(:, j) = -(resid(mp) - r0) / h;
 end
 G(~isfinite(G)) = 0;
+end
+
+function r = H_resid(d, g, is_ph, w_phi)
+r = d - g;
+r(is_ph) = w_phi * angle(exp(1i * r(is_ph) / w_phi));
 end
 
 function v = H_opt(o, f, d)

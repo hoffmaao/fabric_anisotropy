@@ -191,7 +191,7 @@ if any(strcmp(use, 'hh')) && strcmpi(az_src, 'synthetic')
 end
 
 % --- pack the data vector and weights
-[d_obs, w_obs, idx] = H_pack(obs, use, Nz, Np, clip_db);
+[d_obs, w_obs, idx, is_ph] = H_pack(obs, use, Nz, Np, clip_db);
 if isempty(d_obs)
   error('ptt:polarimetricInverse:empty', 'every observable row is non-finite');
 end
@@ -211,7 +211,7 @@ if theta0_scan
   for q = 1:numel(th_try)
     mt = m; mt(1) = th_try(q);
     mt_pred = H_pack_pred(H_forward(mt, psi, dpsi, z, z_nodes, Nz, Np), use, idx, clip_db);
-    Lq = sum(w_obs .* (d_obs - mt_pred).^2);
+    Lq = sum(w_obs .* H_resid(d_obs, mt_pred, is_ph).^2);
     if Lq < best, best = Lq; th_best = th_try(q); end
   end
   m(1) = th_best;
@@ -225,17 +225,25 @@ end
 GtG_reg = eta^2 * (Gam.' * Gam);
 
 fwd = @(mm) H_pack_pred(H_forward(mm, psi, dpsi, z, z_nodes, Nz, Np), use, idx, clip_db);
-loss = @(mm) sum(w_obs .* (d_obs - fwd(mm)).^2) + eta^2 * sum((Gam*mm).^2);
+% RESIDUAL, not a plain difference: obs.phi entries are ANGLES, and a model
+% and datum straddling +-pi differ by ~2pi where the true misfit is ~0.
+% Those cells sit where the phase is near the branch cut rather than where
+% the model is wrong, so differencing them drags theta0 - the failure
+% ptt.fabricGLS measured and wraps away. out.resid already wrapped; the
+% objective now agrees with it.
+resid = @(mm) H_resid(d_obs, fwd(mm), is_ph);
+loss = @(mm) sum(w_obs .* resid(mm).^2) + eta^2 * sum((Gam*mm).^2);
 
 L = nan(max_iter+1, 1);
 L(1) = loss(m);
 converged = false;
 it = 0;
 for it = 1:max_iter
-  G = H_jac(fwd, m, numel(d_obs));
+  r0 = resid(m);
+  G = H_jac(resid, m, numel(r0));
   W = spdiags(w_obs, 0, numel(w_obs), numel(w_obs));
   A = G.' * W * G + GtG_reg;
-  b = G.' * W * (d_obs - fwd(m)) - GtG_reg * m;
+  b = G.' * W * r0 - GtG_reg * m;
   dm = A \ b;
   if ~all(isfinite(dm)), warn{end+1} = 'singular normal equations; stopped'; break; end %#ok<AGROW>
   % step halving: never accept an update that raises the loss
@@ -298,8 +306,8 @@ P.phi = atan2(r .* sdp .* (1 - t4), ...
               r .* cdp .* (1 + t4) + t2 .* (1 + r.^2));
 end
 
-function [d, w, idx] = H_pack(obs, use, Nz, Np, clip_db)
-d = []; w = []; idx = struct();
+function [d, w, idx, is_ph] = H_pack(obs, use, Nz, Np, clip_db)
+d = []; w = []; idx = struct(); is_ph = [];
 for k = 1:numel(use)
   f = use{k};
   switch f
@@ -312,7 +320,9 @@ for k = 1:numel(use)
   idx.(f) = good;
   d = [d; O(good)]; %#ok<AGROW>
   w = [w; wf(good)]; %#ok<AGROW>
+  is_ph = [is_ph; repmat(strcmp(f, 'phi'), nnz(good), 1)]; %#ok<AGROW>
 end
+is_ph = logical(is_ph);
 end
 
 function v = H_pack_pred(P, use, idx, clip_db)
@@ -333,20 +343,26 @@ function w = H_w(obs, name, Nz, Np)
 if isfield(obs, name) && ~isempty(obs.(name)), w = obs.(name); else, w = ones(Nz, Np); end
 end
 
-function G = H_jac(fwd, m, nd)
+function G = H_jac(resid, m, nd)
 % Numeric Jacobian. Nymand derives these analytically (his appendix E);
 % finite differences are used here because the forward model is cheap on
 % our grids and an analytic Jacobian that disagrees with the forward is a
-% silent bias, whereas this cannot disagree by construction.
+% silent bias, whereas this cannot disagree by construction. It is
+% differenced THROUGH the residual so the phase wrap is inside it.
 np = numel(m);
 G = zeros(nd, np);
-f0 = fwd(m);
+r0 = resid(m);
 for j = 1:np
   h = max(1e-6, 1e-4 * abs(m(j)));
   mp = m; mp(j) = mp(j) + h;
-  G(:, j) = (fwd(mp) - f0) / h;
+  G(:, j) = -(resid(mp) - r0) / h;
 end
 G(~isfinite(G)) = 0;
+end
+
+function r = H_resid(d, g, is_ph)
+r = d - g;
+r(is_ph) = angle(exp(1i * r(is_ph)));   % wrap the phase entries
 end
 
 function th = H_theta_from_hv(obs, psi, use)

@@ -23,6 +23,23 @@ function J = quadpolJackknife(Msub, nsub, z, os, ref, opts)
 % leave that range would sit at its edge, and that is reported in
 % J.n_edge so it is not silent.
 %
+% A RESTRICTED GRID IS NOT A WEAKER FIT. ptt.quadpolFabricLS scores an
+% axis by q_theta, the cost contrast across whatever grid it was given
+% normalised by the data power, and over a +-15 deg span that contrast is
+% a small fraction of the same window's full-range value - not because
+% the axis is worse determined but because the grid was narrowed to sit
+% on the minimum. Gated on the same q_min as a full 0-180 search, free
+% mode throws replicate values away for having been narrow-searched, and
+% silently: n_edge does not cover it, and a window that loses enough
+% replicates returns NaN from H_circ_se with nothing saying why.
+% MEASURED in test_quadpol_uncertainty verdict D: 88% of replicate theta0
+% values survive the gate on a clean synthetic, 100% without it, and the
+% loss grows as the fabric weakens and q_theta approaches q_min.
+% quadpolFabricLS therefore exempts a caller-supplied theta_grid from the
+% q_min / dlam_min_theta abstention: whether a window has an axis at all
+% was decided by the full fit passed in as `ref`, and the replicate only
+% measures how far it moves.
+%
 % Inputs
 %   Msub   cell of [Nt x 4 x 4] sub-block moment matrices (same frame,
 %          same rotation convention, as summed into the full fit)

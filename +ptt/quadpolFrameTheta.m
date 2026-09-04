@@ -252,6 +252,16 @@ if nseg == 1
     % moments (identical up to the track rotation on a straight line, and
     % exactly the curved path otherwise), around the frame's own axis.
     [~, Msub, nsub] = H_geo_moments(T, az_tr, 1:Nx, NBLK_ROT, CHAN);
+  else
+    Msub = {}; nsub = [];
+  end
+  % Same floor as the per-segment loop below: a delete-one jackknife needs
+  % at least three sub-blocks to have a variance at all, and with fewer
+  % ptt.quadpolJackknife either indexes an empty cell or spends a full
+  % estimator pass on a degenerate replicate to return all-NaN. A short
+  % frame reaches this branch now that the pipeline asks for a jackknife
+  % unconditionally, so it must decline rather than fail.
+  if JACK && numel(Msub) >= 3
     og = segbase;
     og.pedestal = H_ped_field(ped_ant, az_tr, 1:Nx, PSI_FIT);
     ref = lsq;

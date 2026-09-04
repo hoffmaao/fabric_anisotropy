@@ -64,7 +64,7 @@ def load():
     frames = []
     for fn in sorted(glob.glob(os.path.join(DATA, 'quadpol_section_*.mat'))):
         tag = os.path.basename(fn)[len('quadpol_section_'):-len('.mat')]
-        if re.search(r'_z\d+$', tag) or not qs.in_site(SITE, tag):
+        if re.search(r'_z\d+$', tag):
             continue
         rfn = os.path.join(DATA, 'ershadi_r', 'ershadi_r_%s.mat' % tag)
         if not os.path.exists(rfn):
@@ -73,6 +73,13 @@ def load():
             r = f['res']
             la = np.array(r['sec_lat']).ravel()
             lo = np.array(r['sec_lon']).ravel()
+            lat = float(np.array(r['lat']).ravel()[0])
+            lon = float(np.array(r['lon']).ravel()[0])
+        # membership is decided on the frame's own centre, as every other
+        # figure does it - a site may be pinned by segment, by season or by
+        # a position box, and only in_site knows which
+        if not qs.in_site(CFG, lat, lon, tag):
+            continue
         with h5py.File(rfn) as f:
             rr = f['res']
             edges = np.array(rr['edges']).ravel()

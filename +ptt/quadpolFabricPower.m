@@ -166,7 +166,7 @@ psi = (0:psi_step:180-psi_step) * pi/180;
 A = ptt.quadpolAzimuth(M, psi);
 % the two co-pol powers are the same pattern a quarter turn apart
 % (T_vv(psi) = T_hh(psi + 90)); using both doubles the looks
-P = (A.Phh + A.Pvv(:, H_shift(psi))) / 2;
+P = (A.Phh + H_quarter(A.Pvv, psi)) / 2;
 Pm = mean(P, 2);
 Pn = P ./ max(Pm, realmin);                % azimuth-normalised power
 Pn(~isfinite(Pn)) = NaN;
@@ -262,6 +262,12 @@ if nnz(okw) >= 2
   ph = interp1(zw(okw), exp(2i*th(okw)), z, 'linear');
   theta0_z = mod(angle(ph)/2, pi);
 end
+% dlam keeps its abstention NaNs, as ptt.quadpolFabricLS does: interpolating
+% over the FULL window grid fills between measured neighbours but never
+% bridges across an abstained window (the r2_min null test abstains by
+% design), so the section - and the figure, which paints NaN white - can
+% tell abstained cells from measured ones. The theta branch above bridges
+% deliberately, because the axis is the column's and not the window's.
 okd = isfinite(R.dlam);
 if nnz(okd) >= 2
   dlam_z = interp1(zw, R.dlam, z, 'linear');
@@ -304,11 +310,25 @@ end
 th_row = angle(phz) / 2;
 end
 
-function idx = H_shift(psi)
-% index of psi + 90 deg on the (periodic, uniform) sweep grid
+function Q = H_quarter(Pn, psi)
+%H_QUARTER Pn resampled at psi + 90 deg on the (periodic, uniform, period
+% 180 deg) sweep grid. An index shift is a quarter turn only when the step
+% DIVIDES 90: at the default psi_step_deg = 2 (Np = 90) it does, but
+% psi_step_deg = 4 gives Np = 45 and the nearest shift is 92 deg, which
+% averages the two co-pol patterns 2 deg out of register and smears the
+% azimuthal shape the whole estimator reads. Shift exactly where the grid
+% allows it, interpolate where it does not.
 Np = numel(psi);
-q = round(Np / 2);
-idx = mod((0:Np-1) + q, Np) + 1;
+q = Np / 2;                              % 90 deg in samples
+if abs(q - round(q)) < 1e-9
+  idx = mod((0:Np-1) + round(q), Np) + 1;
+  Q = Pn(:, idx);
+else
+  i0 = floor(q); f = q - i0;
+  ia = mod((0:Np-1) + i0, Np) + 1;
+  ib = mod((0:Np-1) + i0 + 1, Np) + 1;
+  Q = (1 - f) * Pn(:, ia) + f * Pn(:, ib);
+end
 end
 
 function R = H_fit_windows(Pn, P, ped, rdb)
