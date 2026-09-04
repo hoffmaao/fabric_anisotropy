@@ -33,6 +33,11 @@ function [T, info] = coregisterChannels(S, ref, opts)
 %   opts  passed to `coregistration`; defaults below match polarimetric.m
 %           Tt 51, Tx 101, overlap_t 25, overlap_x 25,
 %           search_t 5, search_x 5, one_dim_search_en true
+%         impl ('toolbox' default: the OPR function; 'ptt': the package
+%           copy ptt.coregistration, identical unless its own options are
+%           set) and, for 'ptt' only, peak_clamp_en (false) and
+%           peak_contrast_min (0) - see ptt.coregistration for what they
+%           fix and for the margin measurement that motivated the copy
 %
 % Output
 %   T     struct of coregistered channels, ref passed through untouched
@@ -41,7 +46,16 @@ function [T, info] = coregisterChannels(S, ref, opts)
 
 if nargin < 2 || isempty(ref), ref = 'hh'; end
 if nargin < 3, opts = struct(); end
-if exist('coregistration', 'file') ~= 2
+impl = H_opt(opts, 'impl', 'toolbox');
+if strcmpi(impl, 'ptt')
+  coreg_fn = @ptt.coregistration;
+  extra = {'peak_clamp_en', logical(H_opt(opts, 'peak_clamp_en', false)), ...
+    'peak_contrast_min', H_opt(opts, 'peak_contrast_min', 0)};
+else
+  coreg_fn = @coregistration;
+  extra = {};
+end
+if strcmpi(impl, 'toolbox') && exist('coregistration', 'file') ~= 2
   error('ptt:coregisterChannels:toolbox', ...
     ['the OPR toolbox function `coregistration` is not on the path; add ' ...
      'opr/matlab/processing (the startup script does this on the ' ...
