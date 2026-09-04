@@ -89,6 +89,28 @@ SITES = {
     'thwaites': dict(lat=-76.45, lon=-107.67, title='Thwaites margin',
                      z_band=(200.0, 1200.0), z_deep=(1000.0, 1450.0),
                      vmax=0.13, movie=(200.0, 1050.0), win=150.0, step=20.0),
+    # THE KAMB LINE. The January 2023 traverse leg that leaves WAIS Divide
+    # camp on a bearing of about 200 deg and runs 84 km southwest, into the
+    # Ross-side catchment that drains through Kamb Ice Stream, then returns
+    # on 21 January. It is matched by SEGMENT, not by position, and it has
+    # to be: the leg sits 0.9 deg from the WAIS Divide centre below, well
+    # inside the 2 deg radius, so on position alone every frame of it is
+    # absorbed into the camp grid and labelled WAIS Divide - which is what
+    # happened the first time a figure was made from 20230120_05.
+    #
+    # NAMING, stated so nobody is misled by it later: this is the line
+    # TOWARD Kamb, in its upper catchment. The Kamb Ice Stream trunk is at
+    # about -82.4, -135.5, which is 518 km from WAIS Divide camp, and the
+    # farthest point of this leg is still 440 km from it
+    # (scripts/figures/kamb_or_wais.py, figs/kamb_or_wais.png). Nothing
+    # here is a measurement of the trunk, and a section from it must not be
+    # presented as one.
+    'kamb': dict(lat=-79.90, lon=-113.20, title='Kamb line',
+                 segs=('20230118_11', '20230118_13', '20230120_04',
+                       '20230120_05', '20230121_02', '20230121_03',
+                       '20230121_04'),
+                 z_band=(200.0, 1200.0), z_deep=(1000.0, 1450.0),
+                 vmax=0.25, movie=(200.0, 1400.0), win=150.0, step=20.0),
     'wais_divide': dict(lat=-79.22, lon=-111.59, title='WAIS Divide',
                         z_band=(200.0, 1200.0), z_deep=(1000.0, 1450.0),
                         vmax=0.06, movie=(200.0, 700.0), win=150.0, step=20.0),
@@ -128,6 +150,14 @@ def get(site):
 def in_site(cfg, la, lo, tag=None):
     """Is this frame inside the named site?
 
+    A site may pin `segs`, a tuple of day_seg strings, and then membership
+    is decided by the segment ALONE - position is not consulted at all.
+    That is for a site which is a chosen subset of a larger survey rather
+    than a separate place: the Kamb line leaves WAIS Divide camp and stays
+    within its radius the whole way, so no box can separate the two.
+    Sites pinning `segs` must be declared BEFORE the survey they sit
+    inside, since callers take the first match.
+
     A site may pin `years`, in which case the tag's season must match too.
     Position alone cannot separate Eastwind from the McMurdo Ice Shelf
     transect: they overlap spatially and are told apart by season.
@@ -136,6 +166,12 @@ def in_site(cfg, la, lo, tag=None):
     few km at these latitudes - at Ridge A's 86.6 S it is 6.7 km, so the
     same physical radius spans far more degrees than it does at 76 S.
     """
+    if cfg.get('segs'):
+        # a segment-pinned site needs the tag; without one it cannot match,
+        # rather than silently falling through to its position box
+        if tag is None:
+            return False
+        return any(tag.startswith(sg) for sg in cfg['segs'])
     if cfg.get('years') and tag is not None:
         if tag[:4] not in cfg['years']:
             return False
