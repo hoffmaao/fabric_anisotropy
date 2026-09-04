@@ -24,10 +24,16 @@
 %      holds at a new site. It must be several times larger on the rotating
 %      column. The pooled contrast theta_const_q does NOT do this and is
 %      not asserted on: measured, it came out HIGHER on the rotating column
-%      (0.199) than the constant one (0.187), because it reports how
+%      (0.225) than the constant one (0.219), because it reports how
 %      sharply the POOLED curve peaks rather than whether the windows
 %      agreed with each other. That is exactly the distinction between a
 %      diagnostic and a number that merely looks like one.
+%      The vote and the spread use only windows the free fit would trust
+%      and pool curves normalised by their own data power: on Ridge A
+%      frame 009 a raw-cost vote let seven near-surface windows (86% of
+%      the data power) put the axis 6 deg off the column, and unweighted
+%      minima of untrusted windows reported a 15 deg spread where the
+%      trusted ones agree to 2-6 deg.
 %   4. OFF BY DEFAULT: without the option the outputs are bit-identical to
 %      the previous behaviour, so nothing already computed moves.
 %
