@@ -57,6 +57,17 @@
 %      bed, and every NORMALIZED observable (dP_hh, phi) is invariant to a
 %      uniform +7 dB gx_db shift while P_hh_db moves by exactly +7 - the
 %      relative strength of reflections lives in P_hh_db and nowhere else.
+%      AND THE NaN STOPS AT THE BED. The eq.-(7) coherence is a conv2 over
+%      a win_m kernel, and conv2 spreads a NaN over the whole kernel
+%      reach, so forming it across the sub-bed NaNs blanks C, phi and
+%      Cmag for the (nw-1)/2 rows ABOVE the bed as well - a 15 m band at
+%      win_m = 30, which a caller reads as decoherence rather than as the
+%      model's own boundary handling. The window is therefore formed over
+%      the rows above the bed only. Both halves are asserted, because
+%      trimming the window is only correct if it changes nothing away
+%      from the bed: C at bed_row and every row above it is finite, and
+%      further than half a window above the bed it is BIT-IDENTICAL to
+%      the same column modelled with no bed at all.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_ershadi_seven.m')"
 clear;
@@ -221,6 +232,19 @@ ok_bed = abs(spike - 30) < 3 && ...
   all(isnan(fmb.P_hh_db(ib+1:end))) && all(all(isnan(fmb.s_hh(ib+1:end, :))));
 fprintf('\n3a. bed spikes %+5.1f dB over internals, NaN below:      %s\n', ...
   spike, H_tick(ok_bed));
+% the coherence window must not bleed the sub-bed NaNs upward, and must
+% leave everything more than half a window above the bed untouched
+fmn = ptt.fujitaModel(layers, z, psi, rmfield(BEDOPT, 'bed'));
+dzb = median(abs(diff(z)));
+nwb = max(3, 2*floor(30 / max(dzb, eps) / 2) + 1);
+hb = (nwb - 1) / 2;
+c_below = all(isnan(fmb.C(ib+1:end, :)), 'all');
+c_above = all(isfinite(fmb.C(max(ib-hb,1):ib, :)), 'all');
+d_far = max(abs(fmb.C(1:max(ib-hb-1,1), :) - fmn.C(1:max(ib-hb-1,1), :)), [], 'all');
+ok_band = c_below && c_above && d_far == 0;
+fprintf(['3c. the bed NaN band is the sub-bed rows and no more:   %s ' ...
+  '(C finite through bed_row and the %d rows above; |dC| vs no bed %.0e)\n'], ...
+  H_tick(ok_band), hb, d_far);
 % invariance: a uniform gx_db shift moves ONLY the power profile. UNIFORM
 % includes the bed: shifting internals alone changes the bed-to-internal
 % CONTRAST, and coherence rows within the smoothing window of the bed see
@@ -237,7 +261,7 @@ ok_inv = d_dp < 1e-9 && d_ph < 1e-9 && max(abs(d_pw)) < 1e-9;
 fprintf(['3b. normalized observables invariant to gx_db shift:    %s ' ...
   '(dP %.1e, phi %.1e)\n'], H_tick(ok_inv), d_dp, d_ph);
 
-fails = ~ok_sym + ~ok_cpe + ~ok_r + ~ok_th + ~ok_cond + ~ok_bed + ~ok_inv;
+fails = ~ok_sym + ~ok_cpe + ~ok_r + ~ok_th + ~ok_cond + ~ok_bed + ~ok_inv + ~ok_band;
 fprintf('\n%s (%.1f min)\n', H_tick(fails == 0), toc(t0)/60);
 if fails > 0
   error('test_ershadi_seven:failed', '%d verdict(s) failed', fails);

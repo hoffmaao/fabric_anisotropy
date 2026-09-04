@@ -27,6 +27,19 @@
 %     in the segment profiles - outer segments within 3 deg of their
 %     truths - while block dlam stays unbiased.
 %
+%   A SHORT FRAME MUST DECLINE, NOT CRASH (gate d). The pipeline asks for
+%     a jackknife unconditionally, so a frame too short to resample
+%     reaches the single-segment branch. A delete-one jackknife needs at
+%     least three sub-blocks to have a variance at all; the per-segment
+%     loop has always guarded on that, the nseg == 1 branch did not.
+%     Under 16 traces there are NO sub-blocks and ptt.quadpolJackknife
+%     indexed Msub{1} straight into "Index exceeds array bounds"; with
+%     one or two it ran a degenerate replicate - a moment matrix of
+%     essentially zero, since Mtot - Msub{1}*nsub(1) cancels - and spent
+%     a full estimator pass to return the all-NaN it could have returned
+%     for nothing. Verdict: the call returns, jack_n is 0 (declined, not
+%     attempted) and the standard errors are NaN.
+%
 % Environment: the same forward model as test_egrip_blocks.m (flat SNR,
 % standard correlated + decorrelated pedestal, cap 0.45) on a GEOMETRY OF
 % ITS OWN - 9 m traces, 14-trace blocks - chosen to hold the pooled frame
@@ -169,6 +182,34 @@ for ci = 1:size(cases, 1)
   fprintf('  -> %s\n', H_tick(okc));
   fails = fails + ~okc;
 end
+
+%% gate d: a frame too short to resample declines instead of failing
+rng(3);
+Nxs = 14;                              % under the 16-trace sub-block floor
+Ss = struct();
+dels = 2 * cumsum(0.05*ones(numel(z),1)) * median(diff(z)) * gpd / 2;
+rs = (randn(numel(z),Nxs) + 1i*randn(numel(z),Nxs))/sqrt(2);
+cs = cos(deg2rad(35)); ss_ = sin(deg2rad(35)); exs = exp(1i*dels);
+Ss.hh = (cs^2*exs + ss_^2) .* rs;
+Ss.vv = (ss_^2*exs + cs^2) .* rs;
+Ss.hv = (cs*ss_*(exs - 1)) .* rs;
+Ss.vh = Ss.hv;
+for f = {'hh','vv','hv','vh'}
+  Ss.(f{1}) = Ss.(f{1}) + 0.3*(randn(numel(z),Nxs) + 1i*randn(numel(z),Nxs));
+end
+SOPTS = FOPTS; SOPTS.jackknife = true;
+okd = false;
+try
+  fps = ptt.quadpolFrameTheta(Ss, z, zeros(1,Nxs), (0:Nxs-1)*9, SOPTS);
+  okd = fps.nseg == 1 && all(fps.jack_n == 0) && ...
+    all(isnan(fps.se_theta_seg(:))) && all(isnan(fps.se_dlam_seg(:)));
+  fprintf('\nshort frame (%d traces): nseg %d, jack_n %s, se all NaN %d\n', ...
+    Nxs, fps.nseg, mat2str(fps.jack_n), all(isnan(fps.se_theta_seg(:))));
+catch ME
+  fprintf('\nshort frame (%d traces) RAISED %s: %s\n', Nxs, ME.identifier, ME.message);
+end
+fprintf('  -> %s\n', H_tick(okd));
+fails = fails + ~okd;
 
 fprintf('\n%s (%.1f min)\n', H_tick(fails == 0), toc(t0)/60);
 if fails > 0

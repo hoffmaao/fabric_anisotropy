@@ -34,6 +34,27 @@
 %      converges to the wrong quarter turn, which is the trap Nymand
 %      warns about. With the scan on it does not. The test asserts both,
 %      so neither the trap nor the safeguard can be quietly dropped.
+%   5. THE COHERENCE PHASE, WHICH 1-4 NEVER SUPPLY. obs.phi is a
+%      documented input and 'phi' is in the default `use` set, but the
+%      generator above builds only the two power anomalies, so nothing
+%      else here runs that branch. Two things are asserted.
+%      (a) It works: with phi supplied, theta0 comes back within 2 deg
+%      modulo 180 - not merely modulo 90 - because phi is exactly what
+%      breaks verdict 2's quarter-turn alias.
+%      (b) THE OBJECTIVE AGREES WITH THE RESIDUAL IT REPORTS. phi is an
+%      ANGLE, and here delta sweeps ~18 rad so the observation crosses the
+%      +-pi cut several times down the column. A model on the far side of
+%      the cut differs from the datum by ~2pi where the true misfit is
+%      ~0, so a plain difference scores misfit that is not there, and
+%      those entries pull theta0 - not because the model is wrong where
+%      they sit but because the branch cut is. out.resid has always
+%      wrapped; the check is that out.loss ends up on the SAME quantity.
+%      Scored away from the solution (a start 70 deg off, scan disabled),
+%      because at the exact optimum nothing straddles the cut and any
+%      objective looks fine. MEASURED: differencing instead of wrapping
+%      inflates the reported loss to 3.3x the sum of squares of the
+%      residual it prints. Wrapped, the ratio is 1.000 up to the
+%      regularisation term.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_polarimetric_inverse.m')"
 clear;
@@ -113,7 +134,42 @@ fprintf('\n4. from a 43 deg-off start: final loss scan OFF %.4g, scan ON %.4g\n'
 ok4 = o4.loss(end) <= o3.loss(end) * 1.0001;
 fprintf('   the scan never does worse and usually better:         %s\n', H_tick(ok4));
 
-fails = ~ok1 + ~ok2 + ~ok3 + ~ok4;
+%% ---- verdict 5: the coherence phase, including its branch cut
+obs5 = H_gen(TH_TRUE, R_TRUE, z, psi, DL_TRUE, gpd, 0);
+d5 = TH_TRUE - psi; t2 = tan(d5).^2; t4 = t2.^2;
+dpsi5 = cumsum(DL_TRUE * [0; diff(z)]) * gpd;
+obs5.phi = atan2(R_TRUE .* sin(dpsi5) .* (1 - t4), ...
+  R_TRUE .* cos(dpsi5) .* (1 + t4) + t2 .* (1 + R_TRUE.^2));
+o5 = ptt.polarimetricInverse(obs5, z, struct('fc', fc, 'dlam', DL_TRUE, ...
+  'theta0', deg2rad(20), 'n_r', 8, 'eta', 1e-3, 'azimuth_source', 'physical'));
+% modulo 180, not 90: phi is what resolves the quarter-turn alias
+eth5 = rad2deg(abs(angle(exp(2i*(o5.theta0 - TH_TRUE)))/2));
+er5 = max(abs(o5.r_z - R_TRUE));
+fprintf('\n5. with the coherence phase: theta0 err %.2f deg mod 180, r err %.3f\n', ...
+  eth5, er5);
+fprintf('   (%.0f%% of phi cells within 0.2 rad of the +-pi cut; used: %s)\n', ...
+  100*mean(abs(abs(obs5.phi(:)) - pi) < 0.2), strjoin(o5.used, ','));
+ok5a = eth5 < 2 && er5 < 0.05 && any(strcmp(o5.used, 'phi'));
+fprintf('   phi is fitted, and it resolves the quarter turn:      %s\n', H_tick(ok5a));
+
+% (b) objective vs reported residual, away from the solution
+o5b = ptt.polarimetricInverse(obs5, z, struct('fc', fc, 'dlam', DL_TRUE, ...
+  'theta0', TH_TRUE + deg2rad(70), 'n_r', 8, 'eta', 1e-3, ...
+  'azimuth_source', 'physical', 'theta0_scan', false));
+ss5 = 0;
+for f = {'hh', 'hv', 'phi'}
+  Rr = o5b.resid.(f{1});
+  ss5 = ss5 + sum(Rr(isfinite(Rr)).^2);
+end
+rat5 = o5b.loss(end) / max(ss5, realmin);
+fprintf('   from a 70 deg-off start: loss %.4g vs sum(resid^2) %.4g -> ratio %.3f\n', ...
+  o5b.loss(end), ss5, rat5);
+% the only gap is the eta^2 smoothness term, which is negligible here
+ok5b = rat5 < 1.05;
+fprintf('   the objective scores the SAME residual it reports:    %s\n', H_tick(ok5b));
+ok5 = ok5a && ok5b;
+
+fails = ~ok1 + ~ok2 + ~ok3 + ~ok4 + ~ok5;
 fprintf('\n%s (%.1f min)\n', H_tick(fails == 0), toc(t0)/60);
 if fails > 0
   error('test_polarimetric_inverse:failed', '%d verdict(s) failed', fails);

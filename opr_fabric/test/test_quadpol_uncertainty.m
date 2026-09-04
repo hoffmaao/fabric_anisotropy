@@ -35,6 +35,25 @@
 %   C. The jackknife must SCALE: pooling twice the sub-blocks should cut
 %      se_dlam by about sqrt(2) (ratio of medians in [1.15, 1.75]).
 %
+%   D. FREE MODE MUST REPORT AT ALL. A and C hold the axis, so they never
+%      exercise the per-window theta0 abstention. In free mode the
+%      replicates search only +-theta_half_deg around the full-data axis,
+%      and q_theta - the cost contrast over whatever grid was given - is a
+%      small fraction of its full-range value there, because the contrast
+%      is measured across the grid and the grid has been narrowed to sit
+%      on the minimum. Gating THAT on the same q_min as a full 0-180
+%      search is a category error: it throws away replicate values for
+%      being narrow-searched, not for being bad, and it does so silently -
+%      n_edge does not cover it, and a window that loses enough replicates
+%      returns NaN from H_circ_se with nothing saying why. See the note in
+%      ptt.quadpolJackknife.
+%      MEASURED on this column: gated, 88% of replicate theta0 values
+%      survive; with a caller-supplied grid exempted from the gate, 100%.
+%      The loss grows as the fabric weakens and q_theta approaches q_min,
+%      so 88% here is the mild end of it. Verdict: essentially every
+%      window that the full fit gave an axis must carry a finite
+%      se_theta, of a plausible size rather than a degenerate zero.
+%
 % Run: matlab -batch "run('opr_fabric/test/test_quadpol_uncertainty.m')"
 clear;
 t0 = tic;
@@ -144,6 +163,27 @@ fprintf('\nC. SCALING: se_dlam(11 sub-blocks) / se_dlam(22) = %.2f (sqrt 2 = 1.4
 fprintf('C1. jackknife se scales with the data:                %s\n', H_tick(okC));
 fails = fails + ~okC;
 
+%% D. free-mode jackknife: the replicates must not all abstain
+S = H_col(z, TH, DL_Z, NB*NSB, gpd, LEAK_C, LEAK_D, NA);
+[Mg, Msub, nsub] = H_subblocks(S, NB, NSB);
+FOPTS = OPTS; FOPTS.theta_const = false;
+of = ptt.quadpolFabricLS(struct('M', Mg), z, FOPTS);
+Jf = ptt.quadpolJackknife(Msub, nsub, z, FOPTS, of, JOPTS);
+okf = isfinite(of.theta0);
+rep_fin = mean(isfinite(Jf.theta_rep(okf, :)), 'all');
+se_fin = mean(isfinite(Jf.se_theta(okf)));
+se_med = median(Jf.se_theta(okf), 'omitnan');
+fprintf('\nD. FREE-MODE JACKKNIFE (per-window axis, +-%g deg replicate grid)\n', ...
+  H_optd(JOPTS, 'theta_half_deg', 15));
+fprintf(['   %d of %d windows report an axis; replicate theta finite on ' ...
+  '%.0f%% of them\n'], nnz(okf), numel(okf), 100*rep_fin);
+fprintf('   se_theta finite on %.0f%% of reporting windows, median %.2f deg\n', ...
+  100*se_fin, rad2deg(se_med));
+okD = nnz(okf) >= 3 && rep_fin >= 0.98 && se_fin >= 0.98 && ...
+  isfinite(se_med) && se_med > 0 && rad2deg(se_med) < 45;
+fprintf('D1. free-mode replicates report a standard error:      %s\n', H_tick(okD));
+fails = fails + ~okD;
+
 %% B. block split-half, axis held at truth
 RB = 24; NBLK = 124;
 BOPTS = struct('fc', fc, 'psi_step_deg', 4, 'win_short_m', 10, ...
@@ -181,4 +221,8 @@ end
 
 function s = H_tick(ok)
 if ok, s = 'PASS'; else, s = 'FAIL'; end
+end
+
+function v = H_optd(o, f, d)
+if isfield(o, f) && ~isempty(o.(f)), v = o.(f); else, v = d; end
 end

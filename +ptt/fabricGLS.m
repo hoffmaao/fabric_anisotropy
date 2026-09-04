@@ -146,21 +146,34 @@ hstep = 1e-3 * [th_pr(2)*ones(nL,1); dl_pr(2)*ones(nL,1); rd_pr(2)*ones(nL,1)];
 hstep = max(hstep, 1e-9);
 
 % --- data vector and its covariance (diagonal, from the look count)
-% REDUNDANCY. The diagonal is right only if the samples are independent,
-% and on real data they are not. Synthesized azimuths are linear
-% combinations of the SAME four measured channels, so Np azimuth columns
-% carry about four independent numbers, not Np; depth samples finer than
-% the range resolution repeat information the same way. A diagonal C_d
-% then counts each repeat as fresh evidence and the posterior comes out
-% too tight - MEASURED at a factor of about 2.6 in dlam under correlated
-% azimuth noise in test_fabric_gls, verdict 5.
+% REDUNDANCY. A diagonal C_d is right only if the samples are independent,
+% and the expectation here was that they are not: synthesized azimuths are
+% linear combinations of the SAME four measured channels, so Np azimuth
+% columns should carry about four independent numbers rather than Np, and a
+% diagonal C_d counting each repeat as fresh evidence should come out too
+% tight. opts.n_indep_psi was added to correct that.
 %
-% Rather than build a dense C_d for a matrix this large, the variances are
-% inflated by the redundancy ratio, which is exactly equivalent for the
-% posterior scale. Set n_indep_psi to the number of INDEPENDENT azimuths
-% (4 for channel-synthesized data, Np for physically rotated antennas) and
-% n_indep_z likewise. Defaults assume independence, so an unset option
-% never silently inflates anything.
+% VERDICT 5 OF test_fabric_gls MEASURED THE OPPOSITE, and the option
+% therefore stays OFF. Under noise confined to a rank-4 azimuthal subspace
+% the diagonal posterior is not optimistic at all - the reported/empirical
+% ratio comes out near 1.15, i.e. mildly CONSERVATIVE - while n_indep_psi =
+% 4 multiplies every sigma by sqrt(Np/4) (2.1x at the default 18 azimuths)
+% and overshoots to about 2.4. Azimuth redundancy is simply not what
+% threatens these error bars. Do not turn n_indep_psi on for
+% channel-synthesized azimuths; verdict 5 exists to record the measurement
+% that stops exactly that reflex, and it prints both ratios every run.
+%
+% The option is kept, and documented, for data that genuinely does repeat
+% samples. Rather than build a dense C_d for a matrix this large, the
+% variances are inflated by the redundancy ratio, which is exactly
+% equivalent for the posterior scale: set n_indep_psi to the number of
+% INDEPENDENT azimuths and n_indep_z to the number of independent depth
+% samples. Defaults assume independence, so an unset option never silently
+% inflates anything.
+%
+% This is a SEPARATE question from how far the posterior can be trusted at
+% all; see the LOWER BOUNDS note at the solution below, which measures a
+% different thing and still stands.
 clip_db = H_opt(opts, 'clip_db', -30);
 n_ipsi = H_opt(opts, 'n_indep_psi', Np);
 n_iz   = H_opt(opts, 'n_indep_z', Nz);

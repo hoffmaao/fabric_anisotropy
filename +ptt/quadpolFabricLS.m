@@ -100,7 +100,9 @@ function out = quadpolFabricLS(S, z, opts)
 %         theta_grid ([] = the full 0..180 grid at theta_step_deg; else
 %         an explicit grid in radians, a vector for all windows or
 %         [Nw x Ng] per window - resampling replicates search +-15 deg
-%         around the full-data axis),
+%         around the full-data axis. A restricted grid also switches OFF
+%         the q_min / dlam_min_theta abstention, since q_theta over a
+%         narrow span is not on the same scale as over the full range),
 %         theta_const (false; true holds ONE axis for the whole column,
 %         voted from the per-window theta curves - see the
 %         CONSTANT-ORIENTATION MODE block), theta_const_q_min (0.02, the
@@ -233,7 +235,16 @@ if ~isempty(theta0_in)
   end
 end
 
-% --- everything the window fitter needs, bundled once
+% --- everything the window fitter needs, bundled once.
+% A caller-supplied grid is a RESTRICTED search (the jackknife's +-15 deg
+% around the full-data axis), and q_theta - the cost contrast across the
+% grid, normalised by the data power - is not comparable between a
+% restricted grid and the full 0-180 one: over a narrow window centred on
+% the minimum the contrast is a small fraction of the full-range value.
+% The q_min gates below - the per-window abstention and the
+% constant-orientation vote - are therefore switched off for a restricted
+% grid; see ptt.quadpolJackknife for why that is safe.
+grid_restricted = ~isempty(th_grid_in);
 if isempty(th_grid_in)
   th_grid = (0:th_step:180-th_step) * pi/180;
 elseif isvector(th_grid_in)
@@ -346,7 +357,9 @@ if theta_const && isempty(theta0_in)
   % collapses, all bottomed a quarter turn off (the (theta+90, -delta)
   % ambiguity) with q ~0.5. Let in, they do little to the vote but they
   % turn the spread diagnostic into a false rotation.
-  ok_w = ok_w & R.q_theta >= q_min & R.dlam / grad_per_dlam >= dlam_min_theta;
+  if ~grid_restricted
+    ok_w = ok_w & R.q_theta >= q_min & R.dlam / grad_per_dlam >= dlam_min_theta;
+  end
   if nnz(ok_w) >= 3
     Cn = R.cost_th(ok_w, :) ./ max(R.c2(ok_w), realmin);   % q_theta scale
     pooled = sum(Cn, 1);
@@ -424,7 +437,16 @@ resid = R.resid; q_theta = R.q_theta; delta0 = R.delta0;
 % those depths back to a different model downstream (the blocks would
 % fall back to the frame profile there, mixing held and free axes in one
 % section).
-if isempty(theta0_in) && ~held
+% A restricted grid is exempt for the third reason: q_theta measured over
+% a +-15 deg span is a small fraction of the same window's full-range
+% contrast, so the gate drops replicate values of a resampling pass for
+% having been narrow-searched rather than for being bad - 12% of them on
+% the clean synthetic of test_quadpol_uncertainty verdict D, more as the
+% fabric weakens, and silently, since nothing downstream reports it.
+% Whether the window has an axis at all was decided by the full fit the
+% caller is resampling; the replicate's job is only to measure how far
+% that axis moves.
+if isempty(theta0_in) && ~held && ~grid_restricted
   theta0(q_theta < q_min | dlam < dlam_min_theta) = NaN;
 end
 
