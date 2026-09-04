@@ -66,7 +66,11 @@ function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 %            its endpoint-derived value so the straight frame path is
 %            bit-identical to the unsegmented pipeline),
 %            min_seg_windows (5, fewer usable theta windows marks the
-%            segment dead)
+%            segment dead),
+%            theta_const (false; true holds ONE axis per segment, constant
+%            in depth - see below),
+%            jackknife (false; true adds sub-block jackknife standard
+%            errors per segment, see ptt.quadpolJackknife)
 %
 % Output struct fp
 %   zw        [Nw x 1] window centres
@@ -91,6 +95,17 @@ function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 %             ptt.pedestalFailed rather than for finiteness, which the
 %             marker passes.
 %   lsq       the frame-pass LS output (report/save compatibility)
+%   th_spread_seg   [1 x Nseg] circular spread (deg) of the per-window
+%             axis minima inside each segment, constant mode only (NaN
+%             otherwise): the "is the axis really constant here" check.
+%             For nseg == 1 it is the frame's own value, th_spread_frame.
+%   held_seg  [1 x Nseg] true where the segment's axis was held (constant
+%             mode and the vote succeeded); a false entry in constant mode
+%             marks a segment that fell back to per-window axes
+%   se_theta_seg [Nw x Nseg], se_dlam_seg [Nw x Nseg]  jackknife standard
+%             errors (radians, dlam units) of the segment's raw profile,
+%             NaN unless opts.jackknife; jack_n / jack_edge [1 x Nseg] the
+%             replicate count and the count that hit the theta search edge
 %
 % The per-block handoff belongs to ptt.thetaProfileAt(fp, x), which
 % interpolates th_seg across segments on the doubled-angle phasor and
@@ -118,6 +133,11 @@ MIN_SEG_W = H_opt(opts, 'min_seg_windows', 5);
 % per-window profile should be kept - check the pooled contrast
 % out.theta_const_q and the residual profile before adopting it.
 TH_CONST = H_opt(opts, 'theta_const', false);
+% STANDARD ERRORS by delete-one jackknife over the heading sub-blocks
+% (ptt.quadpolJackknife), per segment - and for the frame when it is the
+% one segment. Off by default because it costs ~n_sub reduced-grid refits
+% per segment; the pipeline turns it on.
+JACK = H_opt(opts, 'jackknife', false);
 % grid/window pass-throughs, so tests can trade resolution for speed while
 % the pipeline keeps the estimator defaults
 PASS_THRU = {'psi_step_deg', 'theta_step_deg', 'win_short_m', ...
@@ -130,6 +150,14 @@ for k = 1:numel(PASS_THRU)
 end
 segbase = base;
 segbase.psi_step_deg = PSI_STEP_SEG;
+% The constant-axis option goes on every pass whose AXIS is used - the
+% frame profile (the nseg == 1 handoff and every segment's fallback) and
+% the segments - and on nothing else: the curved-frame antenna pass below
+% exists for its pedestal alone, and a pooled refit there would cost time
+% for a theta nobody reads.
+fbase = base;
+fbase.theta_const = TH_CONST;
+segbase.theta_const = TH_CONST;
 
 CHAN = {'hh', 'vv', 'hv', 'vh'};
 Nx = size(T.hh, 2);
@@ -147,7 +175,7 @@ curved = hspread > CURV_P95;
 % frame-pooled geographic profile. Identical to the unsegmented pipeline.
 PSI_FIT = (0:PSI_STEP_SEG:180-PSI_STEP_SEG) * pi/180;
 if ~curved
-  lsq = ptt.quadpolFabricLS(T, z, base);
+  lsq = ptt.quadpolFabricLS(T, z, fbase);
   ped_ant = lsq.pedestal;
   % The frame-mode pedestal is NaN whenever fewer than five windows gave a
   % finite coefficient - and quadpolFabricLS still returns a populated
@@ -183,14 +211,30 @@ else
 end
 zw = lsq.zw;
 Nw = numel(zw);
-[th_frame, q_frame] = H_smooth_profile(th_geo_raw, lsq.q_theta);
+% A HELD column needs no depth smoothing - the profile is one number - and
+% must not get any: the kernel's weight threshold would drop windows from
+% a profile that is constant by construction. Its weight is the pooled
+% contrast, uniform in depth, so the handoff interpolation between
+% segments stays depth-independent too (a depth-varying weight would turn
+% two constant neighbours into a depth-varying blend). A column whose vote
+% failed (theta_const NaN) fell back to per-window axes inside the
+% estimator and is treated as such here.
+th_spread_frame = NaN;
+if isfield(lsq, 'theta_spread_deg'), th_spread_frame = lsq.theta_spread_deg; end
+if TH_CONST && isfinite(lsq.theta_const)
+  th_frame = th_geo_raw(:);
+  q_frame = lsq.theta_const_q * ones(Nw, 1);
+else
+  [th_frame, q_frame] = H_smooth_profile(th_geo_raw, lsq.q_theta);
+end
 
 % --- segmentation in along-track distance
 span = x_along(end) - x_along(1);
 nseg = max(1, round(abs(span) / SEG_LEN));
 fp = struct('zw', zw, 'th_frame', th_frame, 'q_frame', q_frame, ...
   'nseg', nseg, 'curved', curved, 'hspread', hspread, ...
-  'ped_ant', ped_ant, 'track_az', track_az, 'lsq', lsq);
+  'ped_ant', ped_ant, 'track_az', track_az, 'lsq', lsq, ...
+  'th_spread_frame', th_spread_frame);
 if nseg == 1
   fp.th_seg = th_frame;
   fp.q_seg = q_frame;
@@ -198,35 +242,73 @@ if nseg == 1
   fp.resid_seg = lsq.resid;
   fp.seg_x = mean(x_along([1 end]));
   fp.seg_n = Nx;
+  fp.th_spread_seg = th_spread_frame;   % the frame IS the one segment
+  fp.held_seg = TH_CONST && isfinite(lsq.theta_const);
+  fp.se_theta_seg = nan(Nw, 1); fp.se_dlam_seg = nan(Nw, 1);
+  fp.jack_n = 0; fp.jack_edge = 0;
+  if JACK
+    % The straight frame pass fitted the antenna-frame channels directly;
+    % the replicates resample the same traces as geographic sub-block
+    % moments (identical up to the track rotation on a straight line, and
+    % exactly the curved path otherwise), around the frame's own axis.
+    [~, Msub, nsub] = H_geo_moments(T, az_tr, 1:Nx, NBLK_ROT, CHAN);
+    og = segbase;
+    og.pedestal = H_ped_field(ped_ant, az_tr, 1:Nx, PSI_FIT);
+    ref = lsq;
+    ref.theta0 = th_geo_raw(:);
+    if isfinite(lsq.theta_const), ref.theta_const = lsq.theta_const + deg2rad(track_az) * ~curved; end
+    J = ptt.quadpolJackknife(Msub, nsub, z, og, ref);
+    fp.se_theta_seg = J.se_theta; fp.se_dlam_seg = J.se_dlam;
+    fp.jack_n = J.n; fp.jack_edge = J.n_edge;
+  end
   return
 end
 
 xb = linspace(min(x_along), max(x_along), nseg + 1);
 th_raw = nan(Nw, nseg);
+th_spread = nan(1, nseg);   % per-segment axis spread: is the assumption true here?
+held_seg = false(1, nseg);  % segment fitted as ONE axis (constant mode, vote succeeded)
 q_raw = zeros(Nw, nseg);
 dlam_seg = nan(Nw, nseg);
 resid_seg = nan(Nw, nseg);
 seg_x = nan(1, nseg);
 seg_n = zeros(1, nseg);
+se_theta_seg = nan(Nw, nseg);
+se_dlam_seg = nan(Nw, nseg);
+jack_n = zeros(1, nseg);
+jack_edge = zeros(1, nseg);
 for s = 1:nseg
   js = find(x_along >= xb(s) & (x_along < xb(s+1) | s == nseg));
   seg_n(s) = numel(js);
   seg_x(s) = (xb(s) + xb(s+1)) / 2;
   if numel(js) < 32, continue; end
-  Mg = H_geo_moments(T, az_tr, js, NBLK_ROT, CHAN);
+  [Mg, Msub, nsub] = H_geo_moments(T, az_tr, js, NBLK_ROT, CHAN);
   if isempty(Mg), continue; end
-  os = segbase;
+  os = segbase;   % carries theta_const: one axis per SEGMENT, constant in depth
   os.pedestal = H_ped_field(ped_ant, az_tr, js, PSI_FIT);
-  os.theta_const = TH_CONST;   % one axis per SEGMENT, constant in depth
   o = ptt.quadpolFabricLS(struct('M', Mg), z, os);
   if nnz(isfinite(o.theta0)) < MIN_SEG_W, continue; end
   th_raw(:, s) = o.theta0;
-  qs = o.q_theta;
-  qs(~isfinite(qs) | qs < 0) = 0;
-  qs(~isfinite(o.theta0)) = 0;
-  q_raw(:, s) = qs;
+  if isfield(o, 'theta_spread_deg'), th_spread(s) = o.theta_spread_deg; end
+  held_seg(s) = TH_CONST && isfinite(o.theta_const);
+  if held_seg(s)
+    % one axis, one weight (the pooled contrast) - see the frame profile
+    q_raw(:, s) = o.theta_const_q;
+  else
+    qs = o.q_theta;
+    qs(~isfinite(qs) | qs < 0) = 0;
+    qs(~isfinite(o.theta0)) = 0;
+    q_raw(:, s) = qs;
+  end
   dlam_seg(:, s) = o.dlam;
   resid_seg(:, s) = o.resid;
+  if JACK && numel(Msub) >= 3
+    J = ptt.quadpolJackknife(Msub, nsub, z, os, o);
+    se_theta_seg(:, s) = J.se_theta;
+    se_dlam_seg(:, s) = J.se_dlam;
+    jack_n(s) = J.n;
+    jack_edge(s) = J.n_edge;
+  end
 end
 
 % --- smooth each segment in depth (as the frame profile is) on the
@@ -239,7 +321,12 @@ end
 th_seg = nan(Nw, nseg);
 q_seg = zeros(Nw, nseg);
 for s = 1:nseg
-  [th_seg(:, s), q_seg(:, s)] = H_smooth_profile(th_raw(:, s), q_raw(:, s));
+  if held_seg(s)
+    th_seg(:, s) = th_raw(:, s);   % constant by construction; nothing to smooth
+    q_seg(:, s) = q_raw(:, s);
+  else
+    [th_seg(:, s), q_seg(:, s)] = H_smooth_profile(th_raw(:, s), q_raw(:, s));
+  end
 end
 % fallback, two levels, value-only (weight stays 0 so the handoff
 % interpolation cannot be dragged): a dead segment window first BORROWS
@@ -265,6 +352,12 @@ fp.dlam_seg = dlam_seg;
 fp.resid_seg = resid_seg;
 fp.seg_x = seg_x;
 fp.seg_n = seg_n;
+fp.th_spread_seg = th_spread;
+fp.held_seg = held_seg;
+fp.se_theta_seg = se_theta_seg;
+fp.se_dlam_seg = se_dlam_seg;
+fp.jack_n = jack_n;
+fp.jack_edge = jack_edge;
 end
 
 % -------------------------------------------------------------------------
@@ -297,12 +390,16 @@ if nnz(oks) < 2 && nnz(ok) >= 2
 end
 end
 
-function Mg = H_geo_moments(T, az_tr, js, nblk_rot, chan)
+function [Mg, Msub, nsub] = H_geo_moments(T, az_tr, js, nblk_rot, chan)
 % pooled geographic-frame moments over the trace subset js: heading-
 % rotated per sub-block, trace-count weighted; sub-blocks under 16 traces
-% are skipped (too few for a moment average worth rotating)
+% are skipped (too few for a moment average worth rotating). The
+% sub-block moments and their trace counts are returned too - they are
+% the jackknife's resampling units, and Mg is exactly their weighted mean.
 Mg = [];
 wsum = 0;
+Msub = {};
+nsub = [];
 for jr = 1:nblk_rot:numel(js)
   jr1 = min(jr + nblk_rot - 1, numel(js));
   if jr1 - jr < 16, continue; end
@@ -315,6 +412,8 @@ for jr = 1:nblk_rot:numel(js)
   if isempty(Mg), Mg = zeros(size(Mr)); end
   Mg = Mg + Mr * numel(jj);
   wsum = wsum + numel(jj);
+  Msub{end+1} = Mr; %#ok<AGROW>
+  nsub(end+1) = numel(jj); %#ok<AGROW>
 end
 if wsum > 0, Mg = Mg / wsum; end
 end
