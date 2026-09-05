@@ -36,10 +36,10 @@ import cartopy.crs as ccrs
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import antarctic_basemap as ab
 from fabric_qc import dropped_intervals
-from scar_style import FIGS
+import scar_style  # noqa: E402
 
 ROOT = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser('~/data/opr/fabric_batch')
-OUT = sys.argv[2] if len(sys.argv) > 2 else FIGS
+OUT = scar_style.out_dir(sys.argv, 2)
 VEL_CACHE = os.path.expanduser('~/data/opr/basemap/thwaites_itslive_sample.npz')
 # Local copy preferred (user's disk); anonymous S3 as fallback
 ITSLIVE_LOCAL = os.path.expanduser(

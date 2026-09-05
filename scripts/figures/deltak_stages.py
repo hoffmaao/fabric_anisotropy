@@ -33,6 +33,9 @@ Usage: python deltak_stages.py <deltak_stages_*.mat> [out_dir]
 import os
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import scar_style  # noqa: E402
+
 import matplotlib
 import numpy as np
 
@@ -40,8 +43,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt      # noqa: E402
 from scipy.io import loadmat         # noqa: E402
 
-OUT = sys.argv[2] if len(sys.argv) > 2 else os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), '..', '..', 'figs')
+OUT = scar_style.out_dir(sys.argv, 2)
 
 C_ICE = 1.68e8  # m/s, two-way traveltime to depth below the firn column
 

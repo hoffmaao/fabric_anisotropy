@@ -46,7 +46,7 @@ import scar_style as sty                  # noqa: E402
 from scar_style import (DATA, DPI, PROFILE_C, PROFILE_FX,  # noqa: E402
                         PROFILE_LW, SPEED_CB_LABEL, TRACK_C, zoom_inset)
 
-OUT = sys.argv[1]
+OUT = sty.out_dir(sys.argv)
 
 ACCUM = os.path.expanduser('~/data/opr/accum/2024_Antarctica_Ground2')
 BATCH = os.path.expanduser('~/data/opr/fabric_batch')

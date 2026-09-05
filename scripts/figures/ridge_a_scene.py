@@ -32,6 +32,7 @@ from scipy.io import loadmat
 import cartopy.crs as ccrs
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import scar_style  # noqa: E402
 import antarctic_basemap as ab
 from fabric_qc import dropped_intervals
 
@@ -39,8 +40,7 @@ FRAME = sys.argv[1] if len(sys.argv) > 1 else '20250108_02_009'
 ACCUM = sys.argv[2] if len(sys.argv) > 2 else os.path.expanduser(
     '~/data/opr/accum/2024_Antarctica_Ground2')
 ROOT = sys.argv[3] if len(sys.argv) > 3 else os.path.expanduser('~/data/opr/fabric_batch')
-OUT = sys.argv[4] if len(sys.argv) > 4 else os.path.join(
-    os.path.dirname(__file__), '..', '..', 'figs')
+OUT = scar_style.out_dir(sys.argv, 4)
 
 DEPTH = np.arange(0, 1900, 5.0)
 C_AIR = 299792458.0
