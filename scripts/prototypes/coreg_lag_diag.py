@@ -31,8 +31,9 @@ import scar_style                            # noqa: E402
 fn = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser(
     "~/projects/polarimetry_thwaites/data/Data_20240108_01_001.mat")
 tag = os.path.basename(fn)[5:-4]
-out = os.path.join(scar_style.out_dir(sys.argv, 2),
-                   "coreg_lag_diag_%s.png" % tag)
+arg = sys.argv[2].strip() if len(sys.argv) > 2 else ""
+out = arg or os.path.join(scar_style.FIGS, "coreg_lag_diag_%s.png" % tag)
+os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
 
 C_ICE = 3e8 / 1.78 / 2          # m per s of two-way time
 NB_Z, NB_X = 25, 15             # multilook cell: bins x traces
