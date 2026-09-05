@@ -33,12 +33,14 @@ function J = quadpolJackknife(Msub, nsub, z, os, ref, opts)
 % silently: n_edge does not cover it, and a window that loses enough
 % replicates returns NaN from H_circ_se with nothing saying why.
 % MEASURED in test_quadpol_uncertainty verdict D: 88% of replicate theta0
-% values survive the gate on a clean synthetic, 100% without it, and the
-% loss grows as the fabric weakens and q_theta approaches q_min.
-% quadpolFabricLS therefore exempts a caller-supplied theta_grid from the
-% q_min / dlam_min_theta abstention: whether a window has an axis at all
-% was decided by the full fit passed in as `ref`, and the replicate only
-% measures how far it moves.
+% values survive the raw gate on a clean synthetic, 100% once the scale
+% is corrected, and the loss grows as the fabric weakens and q_theta
+% approaches q_min. quadpolFabricLS therefore NORMALISES both contrasts -
+% q_theta and the constant-orientation vote's curve range - for the span
+% the grid actually reaches, instead of switching the gates off: whether
+% a window has an axis at all was decided by the full fit passed in as
+% `ref` and the replicate only measures how far it moves, but a replicate
+% whose curve has genuinely gone flat must still be able to abstain.
 %
 % Inputs
 %   Msub   cell of [Nt x 4 x 4] sub-block moment matrices (same frame,

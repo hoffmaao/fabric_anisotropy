@@ -52,6 +52,17 @@
 %      wrapped away. Case 1 injects no offset, so nothing else here covers
 %      the wrap. Verdict: an offset of 3.0 rad leaves case 1's answers
 %      inside case 1's own tolerances.
+%   7. NULLING THE PHASE WEIGHT. That wrap divides by w_phi to undo the
+%      scaling the phi observable is carried with, so the documented
+%      w_phi = 0 - the natural way to drop the phase term while leaving
+%      'phi' in `use` - turns every phi residual into 0/0. The NaN then
+%      travels: every start scores NaN, none beats the incumbent, and the
+%      failure surfaces as an index error rather than as anything a
+%      caller could act on. Zeroing the residual alone still leaves the
+%      block's free offset with an identically zero Jacobian column and
+%      so a singular normal matrix; the observable has to be dropped.
+%      Verdict: w_phi = 0 reproduces the power-only fit exactly, reports
+%      the alias as unresolved, and a negative weight is rejected by name.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_polarimetric_ratio.m')"
 clear; t0 = tic;
@@ -124,7 +135,41 @@ fprintf('   (%.0f%% of phi cells land within 0.2 rad of the +-pi cut)\n', ...
 ok6 = e6 < 1 && d6 < 0.005 && r6 < 0.05;
 fprintf('   a free phase constant at the branch cut costs nothing: %s\n', H_tick(ok6));
 
-fails = ~ok1 + ~ok2 + ~ok3 + ~ok4 + ~ok5 + ~ok6;
+% ---- verdict 7: w_phi = 0 nulls the phase term, it does not poison it
+% The phi observable is carried pre-scaled by w_phi, so the branch-cut
+% wrap has to divide by w_phi to recover the raw angle. At w_phi = 0 both
+% sides are identically zero and that division is 0/0: every phi residual
+% goes NaN, every start scores NaN, no start ever beats the incumbent and
+% the solver falls out at an index error instead of a diagnosable one.
+% Zeroing the residual instead is not enough either: a zero-weighted phi
+% block keeps its free additive offset, whose Jacobian column is then
+% identically zero, so the normal matrix is exactly singular and the
+% Gauss-Newton step comes back Inf on the first iteration - the caller
+% gets a coarse multi-start grid node back, not a fit. The observable has
+% to be DROPPED, which is the power-only problem exactly, and the 90-deg
+% alias must then be reported as unresolved.
+OPT0 = OPT; OPT0.w_phi = 0;
+ws = warning('off', 'ptt:polarimetricRatioInverse:phiNulled');
+oc = onCleanup(@() warning(ws));
+o7 = H_fit(obs6, z, OPT0, {'vv_vh','hh_hv','hh_vv','phi'});
+clear oc;
+o7p = H_fit(obs6, z, OPT, {'vv_vh','hh_hv','hh_vv'});
+[e7, d7, r7] = H_err(o7, TH, DL, RR);
+dth7 = rad2deg(abs(angle(exp(2i*(o7.theta0 - o7p.theta0)))/2));
+ok7 = isfinite(e7) && isfinite(d7) && isfinite(r7) && dth7 < 1e-6 && ...
+  ~any(strcmp(o7.used, 'phi')) && o7.alias_unresolved;
+fprintf(['\n7. w_phi = 0: theta0 err %.2f deg, dlam err %.4f, r err %.3f; ' ...
+  'differs from power-only by %.1e deg\n'], e7, d7, r7, dth7);
+OPTN = OPT; OPTN.w_phi = -1;
+try
+  H_fit(obs6, z, OPTN, {'hh_vv','phi'});
+  ok7 = false;
+catch ME
+  ok7 = ok7 && strcmp(ME.identifier, 'ptt:polarimetricRatioInverse:wPhi');
+end
+fprintf('   a nulled phase weight drops the term, negative errors:  %s\n', H_tick(ok7));
+
+fails = ~ok1 + ~ok2 + ~ok3 + ~ok4 + ~ok5 + ~ok6 + ~ok7;
 fprintf('\n%s (%.1f min)\n', H_tick(fails == 0), toc(t0)/60);
 if fails > 0
   error('test_polarimetric_ratio:failed', '%d verdict(s) failed', fails);

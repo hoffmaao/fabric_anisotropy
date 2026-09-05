@@ -100,9 +100,10 @@ function out = quadpolFabricLS(S, z, opts)
 %         theta_grid ([] = the full 0..180 grid at theta_step_deg; else
 %         an explicit grid in radians, a vector for all windows or
 %         [Nw x Ng] per window - resampling replicates search +-15 deg
-%         around the full-data axis. A restricted grid also switches OFF
-%         the q_min / dlam_min_theta abstention, since q_theta over a
-%         narrow span is not on the same scale as over the full range),
+%         around the full-data axis. A contrast measured over a narrow
+%         span is not on the same scale as one over the full range, so
+%         q_theta and the vote's curve range are both normalised for the
+%         span the grid reaches; the gates themselves stay on),
 %         theta_const (false; true holds ONE axis for the whole column,
 %         voted from the per-window theta curves - see the
 %         CONSTANT-ORIENTATION MODE block), theta_const_q_min (0.02, the
@@ -236,15 +237,17 @@ if ~isempty(theta0_in)
 end
 
 % --- everything the window fitter needs, bundled once.
-% A caller-supplied grid is a RESTRICTED search (the jackknife's +-15 deg
-% around the full-data axis), and q_theta - the cost contrast across the
-% grid, normalised by the data power - is not comparable between a
-% restricted grid and the full 0-180 one: over a narrow window centred on
-% the minimum the contrast is a small fraction of the full-range value.
-% The q_min gates below - the per-window abstention and the
-% constant-orientation vote - are therefore switched off for a restricted
-% grid; see ptt.quadpolJackknife for why that is safe.
-grid_restricted = ~isempty(th_grid_in);
+% A caller-supplied grid may be a RESTRICTED search (the jackknife's
+% +-15 deg around the full-data axis), and a cost contrast measured across
+% it is not on the same scale as one measured across the full 0-180 range:
+% over a narrow span centred on the minimum only a fraction of the
+% quarter-turn rise is reachable. Both contrast gates below are therefore
+% NORMALISED for the span actually searched (H_span_frac) rather than
+% switched off, so a genuinely flat window is still rejected on a narrow
+% grid - the normaliser is a common positive factor, so it rescales signal
+% and noise together and leaves the discrimination intact. The scale is
+% keyed on the grid's reach, not on whether opts.theta_grid was supplied,
+% so a full 0-180 grid at a custom step keeps the ordinary behaviour.
 if isempty(th_grid_in)
   th_grid = (0:th_step:180-th_step) * pi/180;
 elseif isvector(th_grid_in)
@@ -347,8 +350,12 @@ if theta_const && isempty(theta0_in)
       'constant-theta mode pools curves across windows and needs one shared theta_grid');
   end
   ok_w = all(isfinite(R.cost_th), 2) & isfinite(R.c2) & R.c2 > 0;
-  % a window only votes if its own curve is not flat
-  rng_w = max(R.cost_th, [], 2) - min(R.cost_th, [], 2);
+  % a window only votes if its own curve is not flat. Normalised for the
+  % span searched, on the same footing as q_theta below - both are the
+  % same contrast and both shrink by the same factor on a narrow grid, so
+  % exempting one and leaving the other would just move the artifact.
+  rng_w = (max(R.cost_th, [], 2) - min(R.cost_th, [], 2)) ./ ...
+    max(R.th_frac, realmin);
   ok_w = ok_w & rng_w > pool_q_min * max(R.c2, realmin);
   % ... and only if the free fit would have TRUSTED its axis: the same
   % q_min / dlam_min_theta rule that abstains a per-window theta0 below.
@@ -357,9 +364,7 @@ if theta_const && isempty(theta0_in)
   % collapses, all bottomed a quarter turn off (the (theta+90, -delta)
   % ambiguity) with q ~0.5. Let in, they do little to the vote but they
   % turn the spread diagnostic into a false rotation.
-  if ~grid_restricted
-    ok_w = ok_w & R.q_theta >= q_min & R.dlam / grad_per_dlam >= dlam_min_theta;
-  end
+  ok_w = ok_w & R.q_theta >= q_min & R.dlam / grad_per_dlam >= dlam_min_theta;
   if nnz(ok_w) >= 3
     Cn = R.cost_th(ok_w, :) ./ max(R.c2(ok_w), realmin);   % q_theta scale
     pooled = sum(Cn, 1);
@@ -437,16 +442,16 @@ resid = R.resid; q_theta = R.q_theta; delta0 = R.delta0;
 % those depths back to a different model downstream (the blocks would
 % fall back to the frame profile there, mixing held and free axes in one
 % section).
-% A restricted grid is exempt for the third reason: q_theta measured over
-% a +-15 deg span is a small fraction of the same window's full-range
-% contrast, so the gate drops replicate values of a resampling pass for
-% having been narrow-searched rather than for being bad - 12% of them on
-% the clean synthetic of test_quadpol_uncertainty verdict D, more as the
-% fabric weakens, and silently, since nothing downstream reports it.
-% Whether the window has an axis at all was decided by the full fit the
-% caller is resampling; the replicate's job is only to measure how far
-% that axis moves.
-if isempty(theta0_in) && ~held && ~grid_restricted
+% A narrow grid does not get an exemption here: q_theta has already been
+% normalised for the span searched, so the gate sees the full-range scale
+% whatever grid was used. Left unnormalised it would drop replicate values
+% of a resampling pass for having been narrow-searched rather than for
+% being bad - 12% of them on the clean synthetic of
+% test_quadpol_uncertainty verdict D, more as the fabric weakens, and
+% silently, since nothing downstream reports it - while switching it off
+% instead would let a genuinely flat replicate through, which is the worse
+% error of the two.
+if isempty(theta0_in) && ~held
   theta0(q_theta < q_min | dlam < dlam_min_theta) = NaN;
 end
 
@@ -480,6 +485,22 @@ out = struct('zw', zw, 'theta0', theta0, 'dlam', dlam, 'gamma', gam, ...
 
 end
 
+function f = H_span_frac(ths, imin)
+%H_SPAN_FRAC Fraction of the quarter-turn theta contrast a grid can reach.
+%
+% The theta misfit of an axis runs as a - b*cos(2*(th - th0)), so the rise
+% from the minimum to a node an angle d away is 2*b*sin(d)^2 and the
+% full-range contrast 2*b is recovered by dividing the measured rise by
+% the largest sin(d)^2 the grid actually reaches. sin^2 has period pi, the
+% period of an axis, so this is circular on the doubled angle and needs no
+% unwrapping. A full 0-180 grid holding a node a quarter turn from the
+% minimum returns exactly 1 and leaves the contrast untouched; the
+% jackknife's +-15 deg grid returns sin(15 deg)^2 ~ 0.067.
+d = ths(:) - ths(imin);
+f = max(sin(d).^2);
+if ~isfinite(f) || f <= 0, f = 1; end
+end
+
 function v = H_opt(o, f, d)
 if isstruct(o) && isfield(o, f) && ~isempty(o.(f)), v = o.(f); else, v = d; end
 end
@@ -504,7 +525,8 @@ Nw = numel(P.zw);
 R = struct('theta0', nan(Nw,1), 'dlam', nan(Nw,1), 'gam', nan(Nw,1), ...
   'resid', nan(Nw,1), 'q_theta', nan(Nw,1), 'delta0', nan(Nw,1), ...
   'leak', nan(Nw,1), 'ped_coef', nan(Nw,3), ...
-  'cost_th', nan(Nw, size(P.th_grid, 2)), 'c2', nan(Nw,1));
+  'cost_th', nan(Nw, size(P.th_grid, 2)), 'c2', nan(Nw,1), ...
+  'th_frac', ones(Nw,1));
 psi = P.psi;
 sb = sin(2 * psi(:));
 s2b = sb.^2;
@@ -586,7 +608,10 @@ for w = 1:Nw
   % theta0 contrast: how much worse the fit gets a quarter turn away. An
   % isotropic window is flat here and its theta0 means nothing.
   if numel(ths) > 1
-    R.q_theta(w) = (max(cost_th) - best.cost) / max(C2, realmin);
+    [~, imin] = min(cost_th);
+    R.th_frac(w) = H_span_frac(ths, imin);
+    R.q_theta(w) = (max(cost_th) - best.cost) / max(C2, realmin) ...
+      / R.th_frac(w);
     % the whole theta cost curve, kept so a CONSTANT-orientation fit can
     % pool it across windows instead of re-running the grid search
     R.cost_th(w, :) = cost_th(:).';

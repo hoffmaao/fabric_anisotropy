@@ -171,9 +171,15 @@ for iz = 1:Nz
 end
 
 % --- eq. (12) power anomalies against the azimuthal mean AMPLITUDE
+% MATLAB's two-input max IGNORES NaN, so max(NaN, realmin) is realmin and a
+% sub-bed row would come back as exactly 0 dB - a legitimate-looking "no
+% azimuthal anomaly" where the model has abstained. Restore the abstention
+% explicitly, as P_hh_db does below.
 A_hh = abs(s_hh); A_hv = abs(s_hv);
 out.dP_hh = 20*log10(max(A_hh, realmin) ./ max(mean(A_hh, 2), realmin));
 out.dP_hv = 20*log10(max(A_hv, realmin) ./ max(mean(A_hv, 2), realmin));
+out.dP_hh(~isfinite(A_hh)) = NaN;
+out.dP_hv(~isfinite(A_hv)) = NaN;
 
 % --- eq. (7) coherence over the same depth window as the data path; the
 % model is deterministic so the window only mimics the data's smoothing.

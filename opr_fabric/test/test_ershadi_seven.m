@@ -54,7 +54,11 @@
 %      reflection and internals (Fujita's Table-2 internals sit at
 %      Gamma_x = 1e-12). Asserts the relative-power profile P_hh_db spikes
 %      +30 +- 3 dB over the internal median, every field is NaN below the
-%      bed, and every NORMALIZED observable (dP_hh, phi) is invariant to a
+%      bed - INCLUDING dP_hh/dP_hv, which reach that only by an explicit
+%      mask, since MATLAB's two-input max ignores NaN and would otherwise
+%      hand back exactly 0 dB, the one reading a caller would take as a
+%      measured absence of anisotropy rather than an abstention - and
+%      every NORMALIZED observable (dP_hh, phi) is invariant to a
 %      uniform +7 dB gx_db shift while P_hh_db moves by exactly +7 - the
 %      relative strength of reflections lives in P_hh_db and nowhere else.
 %      AND THE NaN STOPS AT THE BED. The eq.-(7) coherence is a conv2 over
@@ -228,9 +232,17 @@ fmb = ptt.fujitaModel(layers, z, psi, BEDOPT);
 ib = find(z >= 3900, 1);
 intl = z >= 500 & z <= 3800;
 spike = fmb.P_hh_db(ib) - median(fmb.P_hh_db(intl));
+% "every row BELOW it returns NaN in ALL fields" includes the anomalies.
+% max() with two inputs ignores NaN, so an unmasked dP collapses to
+% exactly 0 dB there - a legitimate-looking "no azimuthal anomaly" where
+% the model has abstained, which is the one value it must never assert.
+sub_dp = [fmb.dP_hh(ib+1:end, :), fmb.dP_hv(ib+1:end, :)];
 ok_bed = abs(spike - 30) < 3 && ...
-  all(isnan(fmb.P_hh_db(ib+1:end))) && all(all(isnan(fmb.s_hh(ib+1:end, :))));
-fprintf('\n3a. bed spikes %+5.1f dB over internals, NaN below:      %s\n', ...
+  all(isnan(fmb.P_hh_db(ib+1:end))) && all(all(isnan(fmb.s_hh(ib+1:end, :)))) && ...
+  all(isnan(sub_dp(:))) && ...
+  all(all(isfinite([fmb.dP_hh(1:ib, :), fmb.dP_hv(1:ib, :)])));
+fprintf(['\n3a. bed spikes %+5.1f dB over internals, NaN below:      %s ' ...
+  '(sub-bed dP NaN not 0 dB; dP finite through bed_row)\n'], ...
   spike, H_tick(ok_bed));
 % the coherence window must not bleed the sub-bed NaNs upward, and must
 % leave everything more than half a window above the bed untouched

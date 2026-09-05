@@ -47,12 +47,32 @@
 %      n_edge does not cover it, and a window that loses enough replicates
 %      returns NaN from H_circ_se with nothing saying why. See the note in
 %      ptt.quadpolJackknife.
-%      MEASURED on this column: gated, 88% of replicate theta0 values
-%      survive; with a caller-supplied grid exempted from the gate, 100%.
-%      The loss grows as the fabric weakens and q_theta approaches q_min,
-%      so 88% here is the mild end of it. Verdict: essentially every
-%      window that the full fit gave an axis must carry a finite
-%      se_theta, of a plausible size rather than a degenerate zero.
+%      MEASURED on this column: gated on the raw contrast, 88% of
+%      replicate theta0 values survive; with the contrast put back on the
+%      full-range scale, 100%. The loss grows as the fabric weakens and
+%      q_theta approaches q_min, so 88% here is the mild end of it.
+%      Verdict: essentially every window that the full fit gave an axis
+%      must carry a finite se_theta, of a plausible size rather than a
+%      degenerate zero.
+%
+%   E. THE CURE MUST NOT BE AN EXEMPTION. D says a narrow grid must stop
+%      costing replicates their axis; it does not say a narrow grid should
+%      stop the estimator abstaining at all. Switching the gates off for a
+%      caller-supplied grid trades a false abstention for a false
+%      detection, which is the worse error, and it also mis-keys the
+%      question: what deflates the contrast is the grid's SPAN, not the
+%      fact that opts.theta_grid was set, so a documented full-range call
+%      at a custom step got the abstention silently switched off too.
+%      quadpolFabricLS instead divides both contrasts - q_theta and the
+%      constant-orientation vote's curve range - by the largest
+%      sin(dtheta)^2 the grid reaches, which is the fraction of the
+%      quarter-turn rise an axis cost a - b*cos(2*(th - th0)) can show
+%      over that grid. Two consequences are asserted: a full grid handed
+%      in explicitly behaves exactly like no grid at all (the normaliser
+%      is 1), and a +-15 deg grid still abstains on an isotropic column
+%      while still reporting on a fabric one - the normaliser is a common
+%      positive factor, so it rescales signal and noise together and the
+%      discrimination survives.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_quadpol_uncertainty.m')"
 clear;
@@ -184,6 +204,34 @@ okD = nnz(okf) >= 3 && rep_fin >= 0.98 && se_fin >= 0.98 && ...
 fprintf('D1. free-mode replicates report a standard error:      %s\n', H_tick(okD));
 fails = fails + ~okD;
 
+%% E. grid width rescales the contrast; it does not disable the gate
+GFREE = OPTS; GFREE.theta_const = false;
+o_def = ptt.quadpolFabricLS(struct('M', Mg), z, GFREE);
+GEXP = GFREE; GEXP.theta_grid = (0:4:176) * pi/180;
+o_exp = ptt.quadpolFabricLS(struct('M', Mg), z, GEXP);
+same_abst = isequal(isfinite(o_def.theta0), isfinite(o_exp.theta0));
+finb = isfinite(o_def.theta0) & isfinite(o_exp.theta0);
+dth = max(abs(angle(exp(2i*(o_def.theta0(finb) - o_exp.theta0(finb))))/2));
+okE1 = same_abst && (isempty(dth) || rad2deg(dth) < 1e-6);
+
+Siso = H_col(z, TH, 1e-4 * ones(size(z)), NB*NSB, gpd, LEAK_C, LEAK_D, NA);
+Miso = H_subblocks(Siso, NB, NSB);
+NARROW = GFREE; NARROW.theta_grid = TH + (-15:3:15) * pi/180;
+o_iso = ptt.quadpolFabricLS(struct('M', Miso), z, NARROW);
+o_ani = ptt.quadpolFabricLS(struct('M', Mg), z, NARROW);
+f_iso = mean(isfinite(o_iso.theta0));
+f_ani = mean(isfinite(o_ani.theta0));
+okE2 = f_iso <= 0.25 && f_ani >= 0.75;
+
+fprintf('\nE. GRID WIDTH (span normalisation, not an exemption)\n');
+fprintf(['   explicit full 0-180 grid vs no grid: abstention identical %d, ' ...
+  'max |dtheta| %.1e deg\n'], same_abst, rad2deg(H_or(dth, 0)));
+fprintf(['   on a +-15 deg grid: fabric column reports %.0f%% of windows, ' ...
+  'isotropic column %.0f%%\n'], 100*f_ani, 100*f_iso);
+fprintf('E1. a full grid supplied explicitly is not "restricted": %s\n', H_tick(okE1));
+fprintf('E2. a narrow grid still abstains on flat curves:       %s\n', H_tick(okE2));
+fails = fails + ~okE1 + ~okE2;
+
 %% B. block split-half, axis held at truth
 RB = 24; NBLK = 124;
 BOPTS = struct('fc', fc, 'psi_step_deg', 4, 'win_short_m', 10, ...
@@ -225,4 +273,8 @@ end
 
 function v = H_optd(o, f, d)
 if isfield(o, f) && ~isempty(o.(f)), v = o.(f); else, v = d; end
+end
+
+function v = H_or(x, d)
+if isempty(x), v = d; else, v = x; end
 end
