@@ -45,8 +45,8 @@
 %      search is a category error: it throws away replicate values for
 %      being narrow-searched, not for being bad, and it does so silently -
 %      n_edge does not cover it, and a window that loses enough replicates
-%      returns NaN from H_circ_se with nothing saying why. See the note in
-%      ptt.quadpolJackknife.
+%      returns NaN from the standard error with nothing saying why. See the
+%      note in ptt.quadpolJackknife.
 %      MEASURED on this column: gated on the raw contrast, 88% of
 %      replicate theta0 values survive; with the contrast put back on the
 %      full-range scale, 100%. The loss grows as the fabric weakens and
@@ -78,6 +78,25 @@
 %      never exceeds 180 deg (impossible for an axis) and sits inside the
 %      52 deg circular-uniform SD on a column whose axis is well
 %      determined.
+%
+%   F. THE STANDARD ERROR ITSELF MUST BE BOUNDED. E removes the CAUSE of
+%      scattered replicates, but the statistic that summarises them was
+%      still the linear delete-one formula sqrt((m-1)/m * sum(d.^2)), whose
+%      ceiling is (pi/2)*sqrt(m-1) - 180 deg at m = 5, 285 at m = 11, 412
+%      at m = 22 - so it can report more than a half turn of uncertainty
+%      for a quantity defined modulo a half turn whenever replicates
+%      genuinely disagree, which no removal of a cause can prevent.
+%      ptt.circAxisSE derives the dispersion from a RESULTANT instead,
+%      bounded in [0, 1] by construction rather than by a clamp, and
+%      abstains where a Rayleigh test cannot separate the replicates from
+%      a uniform spread of axes. Asserted directly on the helper, since
+%      the adversarial inputs that matter are ones no synthetic column
+%      produces on demand: m swept 3..21 over uniform, two-ended and
+%      random draws never exceeds the bound; a uniform spread abstains
+%      rather than returning a large number; clustered replicates still
+%      reproduce the linear delete-one value, so nothing is made
+%      optimistic; and too few replicates abstains with the count
+%      reported so the two NaNs are distinguishable.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_quadpol_uncertainty.m')"
 clear;
@@ -273,6 +292,51 @@ fprintf('E3. accepted windows report on narrow AND full grids:  %s\n', H_tick(ok
 fprintf('E4. rejected windows report on neither:                %s\n', H_tick(okE4));
 fprintf('E5. se_theta finite, under uniform SD, never > 180:    %s\n', H_tick(okE5));
 fails = fails + ~okE1 + ~okE2 + ~okE3 + ~okE4 + ~okE5;
+
+%% F. the axis standard error is bounded and abstains when uninformative
+UNIFSD = rad2deg(pi / sqrt(12));      % 51.96 deg, a uniform spread of axes
+CEIL = rad2deg(sqrt(2)/2);            % 40.51 deg, the statistic's own bound
+rng(101);
+worst = 0; okF1 = true; okF2 = true;
+for m = 3:21
+  % uniform over the axis range, the two ends only, and a run of random
+  % uniform draws - the sqrt(m-1) growth would show up here if it returned
+  cases = {linspace(0, pi, m+1), [zeros(1, ceil(m/2)), (pi - 1e-9)*ones(1, floor(m/2))]};
+  cases{1} = cases{1}(1:m);
+  for t = 1:8, cases{end+1} = pi * rand(1, m); end %#ok<SAGROW>
+  for c = 1:numel(cases)
+    [sv, mv] = ptt.circAxisSE(cases{c}, 3);
+    okF1 = okF1 && mv == m && (isnan(sv) || (sv >= 0 && rad2deg(sv) <= CEIL + 1e-9));
+    if isfinite(sv), worst = max(worst, rad2deg(sv)); end
+  end
+end
+% a genuinely uniform spread must ABSTAIN, not return a large number
+for m = 8:21
+  su = ptt.circAxisSE(linspace(0, pi - pi/m, m), 3);
+  okF2 = okF2 && isnan(su);
+end
+% tightly clustered replicates keep the delete-one inflation: the bounded
+% statistic must still match sqrt(m-1)*rms(deviation), not undercut it
+mt = 11; sd_t = deg2rad(1.5);
+th_t = TH + sd_t * randn(1, mt);
+st = ptt.circAxisSE(th_t, 3);
+dt = angle(exp(2i*(th_t - angle(sum(exp(2i*th_t)))/2)))/2;
+lin_t = sqrt((mt - 1) / mt * sum(dt.^2));
+okF3 = isfinite(st) && abs(st - lin_t) / lin_t < 0.02;
+% too few replicates is a different NaN from a scattered one
+[sf, mf] = ptt.circAxisSE([TH, TH + 0.01], 3);
+okF4 = isnan(sf) && mf == 2;
+
+fprintf('\nF. AXIS SE IS BOUNDED (theta is modulo 180 deg)\n');
+fprintf(['   m = 3..21, uniform / two-ended / random draws: worst finite ' ...
+  'SE %.1f deg (bound %.1f, uniform SD %.1f)\n'], worst, CEIL, UNIFSD);
+fprintf('   clustered %.3f deg vs linear jackknife %.3f deg (%d replicates)\n', ...
+  rad2deg(st), rad2deg(lin_t), mt);
+fprintf('F1. no input exceeds the circular bound:               %s\n', H_tick(okF1));
+fprintf('F2. a uniform spread abstains rather than reporting:   %s\n', H_tick(okF2));
+fprintf('F3. clustered replicates keep the delete-one scale:    %s\n', H_tick(okF3));
+fprintf('F4. too few replicates abstains, and says so via m:    %s\n', H_tick(okF4));
+fails = fails + ~okF1 + ~okF2 + ~okF3 + ~okF4;
 
 %% B. block split-half, axis held at truth
 RB = 24; NBLK = 124;

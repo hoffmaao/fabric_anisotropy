@@ -38,8 +38,8 @@ function J = quadpolJackknife(Msub, nsub, z, os, ref, opts)
 % determined but because the grid was narrowed to sit on the minimum.
 % Gated on the same q_min as a full 0-180 search it threw replicate values
 % away for having been narrow-searched, silently: n_edge does not cover
-% it, and a window that loses enough replicates returns NaN from
-% H_circ_se with nothing saying why. In constant mode it was worse - each
+% it, and a window that loses enough replicates returns NaN from the
+% standard error with nothing saying why. In constant mode it was worse - each
 % replicate pooled a different window set, and a segment where enough fell
 % below the floor returned theta_const = NaN into th_c_rep and so into
 % se_theta_c. MEASURED across the 35 constant-orientation frames on disk
@@ -64,17 +64,25 @@ function J = quadpolJackknife(Msub, nsub, z, os, ref, opts)
 %          finite replicates at a window returns NaN there)
 %
 % Output struct J (per window centre, as ref.zw)
-%   se_theta   [Nw x 1] standard error of theta0, radians, circular over
-%              the doubled angle (constant mode: one value, repeated)
+%   se_theta   [Nw x 1] standard error of theta0, radians, bounded and
+%              circular over the doubled angle - see ptt.circAxisSE
+%              (constant mode: one value, repeated)
 %   se_dlam    [Nw x 1] standard error of dlam
 %   se_theta_c scalar, constant mode: SE of the held axis (NaN otherwise)
+%   n_theta    [Nw x 1] replicates that contributed to se_theta, so an
+%              abstaining window is distinguishable from a short one;
+%              n_theta_c the same for the held axis
 %   theta_rep  [Nw x n], dlam_rep [Nw x n] the replicate values
 %   n          replicates run; n_edge  replicates whose axis sat at the
 %              search edge (constant mode: of the held axis; free mode:
 %              windows x replicates)
 %
-% Jackknife variance: (n-1)/n * sum_i (x_(i) - mean)^2, with the mean
-% and the differences taken on the doubled-angle phasor for theta.
+% dlam is a linear quantity, so its jackknife variance is the usual
+% (n-1)/n * sum_i (x_(i) - mean)^2. theta is an AXIS, for which that sum
+% has a ceiling of (pi/2)*sqrt(n-1) and so can report more than a half
+% turn of uncertainty for a quantity defined modulo a half turn;
+% ptt.circAxisSE derives it from a bounded resultant instead and abstains
+% where the replicates are indistinguishable from a uniform spread.
 %
 % See also ptt.quadpolFabricLS, ptt.quadpolFrameTheta.
 
@@ -150,19 +158,22 @@ end
 
 se_theta = nan(Nw, 1);
 se_dlam = nan(Nw, 1);
+n_theta = zeros(Nw, 1);
 for w = 1:Nw
-  se_theta(w) = H_circ_se(theta_rep(w, :), MIN_REP);
+  [se_theta(w), n_theta(w)] = ptt.circAxisSE(theta_rep(w, :), MIN_REP);
   se_dlam(w) = H_se(dlam_rep(w, :), MIN_REP);
 end
-se_theta_c = NaN;
+se_theta_c = NaN; n_theta_c = 0;
 if held
-  se_theta_c = H_circ_se(th_c_rep, MIN_REP);
+  [se_theta_c, n_theta_c] = ptt.circAxisSE(th_c_rep, MIN_REP);
   se_theta(:) = se_theta_c;
+  n_theta(:) = n_theta_c;
 end
 
 J = struct('se_theta', se_theta, 'se_dlam', se_dlam, ...
   'se_theta_c', se_theta_c, 'theta_rep', theta_rep, 'dlam_rep', dlam_rep, ...
-  'theta_c_rep', th_c_rep, 'n', n, 'n_edge', n_edge);
+  'theta_c_rep', th_c_rep, 'n', n, 'n_edge', n_edge, ...
+  'n_theta', n_theta, 'n_theta_c', n_theta_c);
 end
 
 % -------------------------------------------------------------------------
@@ -183,12 +194,3 @@ x = x(ok);
 s = sqrt((m - 1) / m * sum((x - mean(x)).^2));
 end
 
-function s = H_circ_se(th, min_rep)
-ok = isfinite(th);
-m = nnz(ok);
-if m < min_rep, s = NaN; return; end
-th = th(ok);
-mu = angle(sum(exp(2i * th))) / 2;
-d = angle(exp(2i * (th - mu))) / 2;
-s = sqrt((m - 1) / m * sum(d.^2));
-end
