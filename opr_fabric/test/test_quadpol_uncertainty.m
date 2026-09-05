@@ -95,8 +95,25 @@
 %      random draws never exceeds the bound; a uniform spread abstains
 %      rather than returning a large number; clustered replicates still
 %      reproduce the linear delete-one value, so nothing is made
-%      optimistic; and too few replicates abstains with the count
-%      reported so the two NaNs are distinguishable.
+%      optimistic; and the three states a NaN can mean stay
+%      distinguishable through m, Rbar and the saturation flag.
+%      A bounded statistic also stops DISCRIMINATING before it reaches its
+%      bound: measured, m = 22 reported ~36.7 deg for every true scatter
+%      from 16 to 40 deg. A value from inside that band is not a
+%      measurement, so circAxisSE abstains once the stretched resultant
+%      reaches its own sampling noise floor, 1/sqrt(m) - which moves with
+%      m as the plateau does, and is the binding one from m = 7 up - and
+%      F2b asserts the band is abstained on rather than reported flat,
+%      that nothing comes back above the 31.2 deg resolution cap, and that
+%      the surviving reports still tell 6 deg of scatter from 12.
+%
+%   G. NOTHING IN THIS BATCH MAY MOVE THE DEFAULT PATH. Every fix from the
+%      span-correction saga onward was scoped to narrow-grid resampling and
+%      to the axis SE statistic. The free-mode, full-grid per-window
+%      theta0 and dlam path - the one the Ridge A depth movie draws - must
+%      be untouched, so it is refitted here with the jackknife off and
+%      compared cell by cell against the same fit run without any of the
+%      new options set.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_quadpol_uncertainty.m')"
 clear;
@@ -299,22 +316,62 @@ CEIL = rad2deg(sqrt(2)/2);            % 40.51 deg, the statistic's own bound
 rng(101);
 worst = 0; okF1 = true; okF2 = true;
 for m = 3:21
-  % uniform over the axis range, the two ends only, and a run of random
-  % uniform draws - the sqrt(m-1) growth would show up here if it returned
-  cases = {linspace(0, pi, m+1), [zeros(1, ceil(m/2)), (pi - 1e-9)*ones(1, floor(m/2))]};
+  % uniform over the axis range, two clusters a QUARTER turn apart, and a
+  % run of random uniform draws - the sqrt(m-1) growth would show up here
+  % if it returned. 0 and 180 deg are the SAME axis, so a 0/180 split is
+  % zero scatter, not maximal; the genuinely opposed pair is 0 and 90 deg,
+  % which are antipodal once doubled.
+  cases = {linspace(0, pi, m+1), ...
+    [zeros(1, ceil(m/2)), (pi/2)*ones(1, floor(m/2))]};
   cases{1} = cases{1}(1:m);
   for t = 1:8, cases{end+1} = pi * rand(1, m); end %#ok<SAGROW>
   for c = 1:numel(cases)
-    [sv, mv] = ptt.circAxisSE(cases{c}, 3);
+    [sv, mv, rv, satv] = ptt.circAxisSE(cases{c}, 3);
     okF1 = okF1 && mv == m && (isnan(sv) || (sv >= 0 && rad2deg(sv) <= CEIL + 1e-9));
+    % every NaN must say which kind it is, and a finite value must not
+    okF1 = okF1 && (isnan(sv) == (satv || mv < 3)) && (isnan(sv) || ~satv);
     if isfinite(sv), worst = max(worst, rad2deg(sv)); end
+    if isnan(sv) && satv, okF1 = okF1 && isfinite(rv); end
   end
 end
+% the quarter-turn split is maximal dispersion for an axis: it must abstain
+[sq, ~, rq, satq] = ptt.circAxisSE([zeros(1,6), (pi/2)*ones(1,5)], 3);
+okF1 = okF1 && isnan(sq) && satq && rq < 0.2;
 % a genuinely uniform spread must ABSTAIN, not return a large number
 for m = 8:21
-  su = ptt.circAxisSE(linspace(0, pi - pi/m, m), 3);
-  okF2 = okF2 && isnan(su);
+  [su, ~, ~, satu] = ptt.circAxisSE(linspace(0, pi - pi/m, m), 3);
+  okF2 = okF2 && isnan(su) && satu;
 end
+% ... and so must the SATURATED band, where the bound has flattened the
+% statistic: measured, m = 22 reported ~36.7 deg for every true scatter
+% from 16 to 40 deg, so a value there is not a measurement. Nothing
+% reported may come from inside it, and the plateau must be abstained on.
+% the resolution floor caps what can be reported at 31.2 deg (30.1 at
+% m = 5, where sampling binds instead), so nothing may come back above it
+RESCAP = 31.3;
+plateau = zeros(1, 0); res_max = 0;
+for m = [11 22]
+  for sc = [16 24 40]
+    fin = 0;
+    for t = 1:200
+      sv = ptt.circAxisSE(TH + deg2rad(sc) * randn(1, m), 3);
+      if isfinite(sv), fin = fin + 1; res_max = max(res_max, rad2deg(sv)); end
+    end
+    plateau(end+1) = fin / 200; %#ok<SAGROW>
+  end
+end
+% and the band must still DISCRIMINATE where it does report: at m = 22 the
+% unbounded-cut version read 36.7 deg for 16, 24 and 40 deg alike
+sc_lo = []; sc_hi = [];
+for t = 1:400
+  a = ptt.circAxisSE(TH + deg2rad(6) * randn(1, 22), 3);
+  b = ptt.circAxisSE(TH + deg2rad(12) * randn(1, 22), 3);
+  if isfinite(a), sc_lo(end+1) = rad2deg(a); end %#ok<SAGROW>
+  if isfinite(b), sc_hi(end+1) = rad2deg(b); end %#ok<SAGROW>
+end
+disc = median(sc_hi) - median(sc_lo);
+okF2b = max(plateau) <= 0.30 && res_max <= RESCAP && ...
+  numel(sc_lo) >= 50 && numel(sc_hi) >= 20 && disc >= 3;
 % tightly clustered replicates keep the delete-one inflation: the bounded
 % statistic must still match sqrt(m-1)*rms(deviation), not undercut it
 mt = 11; sd_t = deg2rad(1.5);
@@ -323,20 +380,56 @@ st = ptt.circAxisSE(th_t, 3);
 dt = angle(exp(2i*(th_t - angle(sum(exp(2i*th_t)))/2)))/2;
 lin_t = sqrt((mt - 1) / mt * sum(dt.^2));
 okF3 = isfinite(st) && abs(st - lin_t) / lin_t < 0.02;
-% too few replicates is a different NaN from a scattered one
-[sf, mf] = ptt.circAxisSE([TH, TH + 0.01], 3);
-okF4 = isnan(sf) && mf == 2;
+% the three states a caller must be able to tell apart: too few
+% replicates, replicates that scattered past the resolvable range, and a
+% genuine measurement. They must not collapse into one bare NaN.
+[sf, mf, rf, satf] = ptt.circAxisSE([TH, TH + 0.01], 3);
+[sc2, mc2, rc2, satc2] = ptt.circAxisSE(TH + deg2rad(1.5)*randn(1, 11), 3);
+[ss2, ms2, rs2, sats2] = ptt.circAxisSE(pi * rand(1, 11), 3);
+okF4 = isnan(sf) && mf == 2 && ~satf && isnan(rf) ...
+  && isfinite(sc2) && mc2 == 11 && ~satc2 && isfinite(rc2) ...
+  && isnan(ss2) && ms2 == 11 && sats2 && isfinite(rs2);
 
 fprintf('\nF. AXIS SE IS BOUNDED (theta is modulo 180 deg)\n');
 fprintf(['   m = 3..21, uniform / two-ended / random draws: worst finite ' ...
   'SE %.1f deg (bound %.1f, uniform SD %.1f)\n'], worst, CEIL, UNIFSD);
 fprintf('   clustered %.3f deg vs linear jackknife %.3f deg (%d replicates)\n', ...
   rad2deg(st), rad2deg(lin_t), mt);
+fprintf(['   saturated band (m 11/22, scatter 16-40 deg): at most %.0f%% report, ' ...
+  'worst %.1f deg (cap %.1f)\n'], 100*max(plateau), res_max, RESCAP);
+fprintf('   still discriminating at m = 22: 6 deg -> %.1f, 12 deg -> %.1f\n', ...
+  median(sc_lo), median(sc_hi));
 fprintf('F1. no input exceeds the circular bound:               %s\n', H_tick(okF1));
 fprintf('F2. a uniform spread abstains rather than reporting:   %s\n', H_tick(okF2));
+fprintf('F2b. the saturated band abstains, it does not plateau: %s\n', H_tick(okF2b));
 fprintf('F3. clustered replicates keep the delete-one scale:    %s\n', H_tick(okF3));
-fprintf('F4. too few replicates abstains, and says so via m:    %s\n', H_tick(okF4));
-fails = fails + ~okF1 + ~okF2 + ~okF3 + ~okF4;
+fprintf('F4. few / scattered / resolved are distinguishable:    %s\n', H_tick(okF4));
+fails = fails + ~okF1 + ~okF2 + ~okF2b + ~okF3 + ~okF4;
+
+%% G. the default free-mode, full-grid path must be untouched by all of this
+% Everything from the span-correction saga onward was scoped to narrow-grid
+% resampling and to the axis SE. The per-window theta0 / dlam profile the
+% depth movie draws is produced with no theta_grid, no window_ok and no
+% jackknife, so setting none of the new options must give the same answer
+% as the pipeline's own default call - bit for bit, not just close.
+GDEF = OPTS; GDEF.theta_const = false;
+g_ref = ptt.quadpolFabricLS(struct('M', Mg), z, GDEF);
+GEXTRA = GDEF; GEXTRA.window_ok = [];        % documented "decide as usual"
+g_new = ptt.quadpolFabricLS(struct('M', Mg), z, GEXTRA);
+same_th = isequaln(g_ref.theta0, g_new.theta0);
+same_dl = isequaln(g_ref.dlam, g_new.dlam);
+same_q = isequaln(g_ref.q_theta, g_new.q_theta);
+same_ped = isequaln(g_ref.pedestal, g_new.pedestal);
+% q_theta must be the RAW contrast again: no span factor divides it
+raw_q = (max(g_ref.theta_cost, [], 2) - min(g_ref.theta_cost, [], 2)) ./ g_ref.theta_c2;
+okq = isfinite(raw_q) & isfinite(g_ref.q_theta);
+d_raw = H_or(max(abs(raw_q(okq) - g_ref.q_theta(okq))), inf);
+okG = same_th && same_dl && same_q && same_ped && nnz(okq) >= 3 && d_raw < 1e-9;
+fprintf('\nG. DEFAULT FULL-GRID PATH UNCHANGED\n');
+fprintf(['   theta0 %d, dlam %d, q_theta %d, pedestal %d identical; ' ...
+  'q_theta vs raw contrast %.1e\n'], same_th, same_dl, same_q, same_ped, d_raw);
+fprintf('G1. the free-mode full-grid fit is bit-identical:      %s\n', H_tick(okG));
+fails = fails + ~okG;
 
 %% B. block split-half, axis held at truth
 RB = 24; NBLK = 124;

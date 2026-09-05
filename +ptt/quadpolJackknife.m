@@ -69,9 +69,14 @@ function J = quadpolJackknife(Msub, nsub, z, os, ref, opts)
 %              (constant mode: one value, repeated)
 %   se_dlam    [Nw x 1] standard error of dlam
 %   se_theta_c scalar, constant mode: SE of the held axis (NaN otherwise)
-%   n_theta    [Nw x 1] replicates that contributed to se_theta, so an
-%              abstaining window is distinguishable from a short one;
-%              n_theta_c the same for the held axis
+%   n_theta    [Nw x 1] replicates that contributed to se_theta
+%   r_theta    [Nw x 1] resultant length of those replicate axes
+%   sat_theta  [Nw x 1] true where se_theta is NaN because the replicates
+%              scattered past what the statistic can resolve, as opposed
+%              to there being too few of them. n_theta / r_theta /
+%              sat_theta together make a NaN interpretable rather than
+%              mysterious - see ptt.circAxisSE. n_theta_c, r_theta_c and
+%              sat_theta_c are the same three for the held axis
 %   theta_rep  [Nw x n], dlam_rep [Nw x n] the replicate values
 %   n          replicates run; n_edge  replicates whose axis sat at the
 %              search edge (constant mode: of the held axis; free mode:
@@ -159,21 +164,29 @@ end
 se_theta = nan(Nw, 1);
 se_dlam = nan(Nw, 1);
 n_theta = zeros(Nw, 1);
+r_theta = nan(Nw, 1);
+sat_theta = false(Nw, 1);
 for w = 1:Nw
-  [se_theta(w), n_theta(w)] = ptt.circAxisSE(theta_rep(w, :), MIN_REP);
+  [se_theta(w), n_theta(w), r_theta(w), sat_theta(w)] = ...
+    ptt.circAxisSE(theta_rep(w, :), MIN_REP);
   se_dlam(w) = H_se(dlam_rep(w, :), MIN_REP);
 end
-se_theta_c = NaN; n_theta_c = 0;
+se_theta_c = NaN; n_theta_c = 0; r_theta_c = NaN; sat_theta_c = false;
 if held
-  [se_theta_c, n_theta_c] = ptt.circAxisSE(th_c_rep, MIN_REP);
+  [se_theta_c, n_theta_c, r_theta_c, sat_theta_c] = ...
+    ptt.circAxisSE(th_c_rep, MIN_REP);
   se_theta(:) = se_theta_c;
   n_theta(:) = n_theta_c;
+  r_theta(:) = r_theta_c;
+  sat_theta(:) = sat_theta_c;
 end
 
 J = struct('se_theta', se_theta, 'se_dlam', se_dlam, ...
   'se_theta_c', se_theta_c, 'theta_rep', theta_rep, 'dlam_rep', dlam_rep, ...
   'theta_c_rep', th_c_rep, 'n', n, 'n_edge', n_edge, ...
-  'n_theta', n_theta, 'n_theta_c', n_theta_c);
+  'n_theta', n_theta, 'n_theta_c', n_theta_c, ...
+  'r_theta', r_theta, 'r_theta_c', r_theta_c, ...
+  'sat_theta', sat_theta, 'sat_theta_c', sat_theta_c);
 end
 
 % -------------------------------------------------------------------------
