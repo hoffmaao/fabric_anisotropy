@@ -236,38 +236,44 @@ fprintf(['   on a +-15 deg grid: fabric column reports %.0f%% of windows, ' ...
   'isotropic column %.0f%%\n'], 100*f_ani, 100*f_iso);
 fprintf(['   isotropic gates fired: normalised contrast %.0f%% of ' ...
   'windows, dlam floor %.0f%%\n'], 100*g_q, 100*g_d);
-% The span correction must come from the GRID, never from where the cost
-% curve bottomed, or resampling replicates of one window would be scaled
-% differently according to how far their axis moved - and the ones that
-% moved furthest, scaled weakest, are the ones the q_theta gate then drops,
-% reporting a standard error that is too tight. q_theta divides the raw
-% grid contrast by that factor, so it is recoverable from the returned
-% curves: f = (max - min of theta_cost) / (theta_c2 * q_theta).
+% The span correction is bounded on BOTH sides, and out.theta_span_frac
+% reports the factor that was applied. Below the grid's designed half-span
+% it never goes: scaling a replicate down for having bottomed mid-grid is
+% what drops the most-moved replicates and reports a standard error that
+% is too tight. Above it, it rises to the span the curve actually reached,
+% which stops a minimum sitting at an edge node from being credited with
+% contrast it has not demonstrated. A full 0-180 grid reaches a quarter
+% turn from any node, so it is exactly uncorrected.
 SHIFT = GFREE; SHIFT.theta_grid = TH + deg2rad(12) + (-15:3:15) * pi/180;
 o_shift = ptt.quadpolFabricLS(struct('M', Mg), z, SHIFT);
-f_of = @(o) (max(o.theta_cost, [], 2) - min(o.theta_cost, [], 2)) ./ ...
-  (o.theta_c2 .* o.q_theta);
-f_nar = f_of(o_ani); f_shf = f_of(o_shift);
-% both narrow grids are 11 nodes of 3 deg: 33 deg sampled, half-span 16.5
+% both narrow grids are 11 nodes of 3 deg: 33 deg sampled, half-span 16.5,
+% and no node pair within one is further apart than 30 deg
 f_want = sin(deg2rad(16.5))^2;
+f_ceil = sin(deg2rad(30))^2;
+f_nar = o_ani.theta_span_frac; f_shf = o_shift.theta_span_frac;
 okn = isfinite(f_nar) & isfinite(f_shf);
-d_nar = H_or(max(abs(f_nar(okn) - f_shf(okn))), inf);
-d_want = H_or(max(abs(f_nar(okn) - f_want)), inf);
+lo = H_or(min([f_nar(okn); f_shf(okn)]), -inf);
+hi = H_or(max([f_nar(okn); f_shf(okn)]), inf);
+% the reported factor must be the one q_theta actually divided by
+f_impl = (max(o_ani.theta_cost, [], 2) - min(o_ani.theta_cost, [], 2)) ./ ...
+  (o_ani.theta_c2 .* o_ani.q_theta);
+d_impl = H_or(max(abs(f_impl(okn) - f_nar(okn))), inf);
 % the argmin has to actually move between the two, or nothing is tested
 [~, i_nar] = min(o_ani.theta_cost, [], 2);
 [~, i_shf] = min(o_shift.theta_cost, [], 2);
 moved = mean(i_nar(okn) ~= i_shf(okn));
-f_full = [f_of(o_def); f_of(o_exp)];
+f_full = [o_def.theta_span_frac; o_exp.theta_span_frac];
 d_full = H_or(max(abs(f_full(isfinite(f_full)) - 1)), inf);
-okE3 = nnz(okn) >= 3 && moved >= 0.5 && ...
-  d_nar < 1e-9 && d_want < 1e-9 && d_full < 1e-9;
+okE3 = nnz(okn) >= 3 && moved >= 0.5 && d_impl < 1e-9 && ...
+  lo >= f_want - 1e-9 && hi <= f_ceil + 1e-9 && d_full < 1e-9;
 fprintf(['   narrow grid shifted 12 deg: argmin node moves on %.0f%% of ' ...
-  'windows, span factor changes by %.1e\n'], 100*moved, d_nar);
-fprintf(['   span factor: narrow %.4f (sin(16.5 deg)^2 = %.4f), full ' ...
-  'grids off 1 by %.1e\n'], median(f_nar(okn)), f_want, d_full);
+  'windows, reported factor matches q_theta to %.1e\n'], 100*moved, d_impl);
+fprintf(['   span factor in [%.4f, %.4f], floor sin(16.5 deg)^2 = %.4f, ' ...
+  'ceiling sin(30 deg)^2 = %.4f, full grids off 1 by %.1e\n'], ...
+  lo, hi, f_want, f_ceil, d_full);
 fprintf('E1. a full grid supplied explicitly is not "restricted": %s\n', H_tick(okE1));
 fprintf('E2. a narrow grid still abstains on flat columns:      %s\n', H_tick(okE2));
-fprintf('E3. span factor is the grid geometry, not the argmin:  %s\n', H_tick(okE3));
+fprintf('E3. span factor is floored by design, capped by reach: %s\n', H_tick(okE3));
 fails = fails + ~okE1 + ~okE2 + ~okE3;
 
 %% B. block split-half, axis held at truth

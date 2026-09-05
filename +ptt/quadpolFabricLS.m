@@ -103,9 +103,10 @@ function out = quadpolFabricLS(S, z, opts)
 %         around the full-data axis. A contrast measured over a narrow
 %         span is not on the same scale as one over the full range, so
 %         q_theta and the vote's curve range are both normalised for the
-%         span the grid reaches - a factor read off the grid geometry
-%         alone, identical for every replicate given that grid, and
-%         exactly 1 for a grid spanning the full 0-180 period; the gates
+%         span the grid reaches - the grid's designed half-span, raised to
+%         the span actually reached when the curve bottoms off-centre so
+%         the credit stays bounded, exactly 1 for a grid spanning the full
+%         0-180 period, and reported as out.theta_span_frac; the gates
 %         themselves stay on),
 %         theta_const (false; true holds ONE axis for the whole column,
 %         voted from the per-window theta curves - see the
@@ -247,13 +248,16 @@ end
 % quarter-turn rise is reachable. Both contrast gates below are therefore
 % NORMALISED for the span the grid was built to search (H_span_frac)
 % rather than switched off, so a genuinely flat window is still rejected
-% on a narrow grid. The normaliser is a function of the GRID GEOMETRY
-% alone - not of where the cost curve bottomed - so every resampling
-% replicate handed the same grid is scaled by the same positive factor,
-% signal and noise together, and none is dropped for having searched
-% narrowly. The scale is keyed on the grid's reach, not on whether
-% opts.theta_grid was supplied, so a full 0-180 grid at a custom step
-% comes out exactly uncorrected and keeps the ordinary behaviour.
+% on a narrow grid. The normaliser is the grid's DESIGNED half-span, so a
+% replicate is never scaled down for having bottomed near the middle of
+% its search window - that is what would drop the most-moved replicates
+% and report a standard error that is too tight. Where the curve bottoms
+% off-centre and so reaches FURTHER than the design, the reached span is
+% used instead, which bounds the opposite error (crediting a window more
+% contrast than it has) at about 2x rather than leaving it open. The scale
+% is keyed on the grid's reach, not on whether opts.theta_grid was
+% supplied, so a full 0-180 grid at a custom step comes out exactly
+% uncorrected and keeps the ordinary behaviour.
 if isempty(th_grid_in)
   th_grid = (0:th_step:180-th_step) * pi/180;
 elseif isvector(th_grid_in)
@@ -486,42 +490,51 @@ out = struct('zw', zw, 'theta0', theta0, 'dlam', dlam, 'gamma', gam, ...
   'theta_spread_deg', theta_spread_deg, ...
   'theta_const_n', n_theta_pool, ...
   'theta_grid', P.th_grid, 'theta_cost', Rfree.cost_th, ...
-  'theta_c2', Rfree.c2, ...
+  'theta_c2', Rfree.c2, 'theta_span_frac', Rfree.th_frac, ...
   'grad_per_dlam', grad_per_dlam, 'psi', psi);
 
 end
 
-function f = H_span_frac(ths)
+function f = H_span_frac(ths, imin)
 %H_SPAN_FRAC Fraction of the quarter-turn theta contrast a grid can reach.
 %
-% The theta misfit of an axis runs as a - b*cos(2*(th - th0)), so the rise
-% from the minimum to a node an angle d away is 2*b*sin(d)^2, and the
-% full-range contrast 2*b is recovered by dividing the measured rise by
-% the sin(d)^2 the grid reaches at its designed half-span h: f = sin(h)^2.
+% The theta misfit of an axis runs as a - b*cos(2*(th - th0)) plus a
+% strong cos(4*(th - th0)) term from the (theta+90, -delta) ambiguity, so
+% the rise from the minimum to a node an angle d away grows with sin(d)^2
+% and the full-range contrast is recovered by dividing the measured rise
+% by the sin(d)^2 the grid can reach.
 %
-% h comes from the GRID ALONE, never from where the cost curve bottomed.
-% Measuring d from the argmin makes the factor move between resampling
-% replicates of the same window - a replicate whose axis lands mid-grid
-% would be scaled by sin(15 deg)^2 while one that lands at an edge node
-% gets sin(30 deg)^2, four times weaker. That is backwards: the replicates
-% that moved furthest are exactly the ones a weak correction lets the
-% q_theta gate drop, which shrinks the jackknife spread and reports a
-% standard error that is too tight.
+% Two things set that reach, and the larger of them wins.
 %
-% The span is measured on the DOUBLED angle, where an axis is a point on
-% the full circle, so no unwrapping is involved. The nodes cover every
-% direction except one gap; each node owns a cell one grid step wide, so
-% the extent the grid samples is (2*pi - largest gap) + one step, and the
-% half-span in axis angle is a quarter of that. A uniform grid spanning
-% the whole 0-180 period has its largest gap equal to its step, so the
-% extent is the full circle, h = 90 deg and f = 1 exactly - no correction,
-% at any step, with no branch for it. The jackknife's 11-node +-15 deg
-% grid samples 33 deg, so h = 16.5 deg and f ~ 0.081.
+% The DESIGNED half-span h is a property of the grid alone. Measured on
+% the doubled angle, where an axis is a point on the full circle and no
+% unwrapping is involved: the nodes cover every direction except one gap,
+% each node owns a cell one grid step wide, so the extent the grid samples
+% is (2*pi - largest gap) + one step and h is a quarter of that. A uniform
+% grid spanning the whole 0-180 period has its largest gap equal to its
+% step, so the extent is the full circle, h = 90 deg and sin(h)^2 = 1
+% exactly - no correction, at any step, with no branch for it. The
+% jackknife's 11-node +-15 deg grid samples 33 deg, so h = 16.5 deg.
+%
+% The REACHED span is how far the furthest node actually sits from the
+% node the curve bottomed at. It is used only where it EXCEEDS the design,
+% never below it. Taking it unconditionally is what an earlier version did
+% and it is backwards: a replicate whose axis lands mid-grid would then be
+% scaled by sin(15 deg)^2 while one that lands at an edge gets
+% sin(30 deg)^2, four times weaker, so the replicates that moved furthest
+% are the ones the q_theta gate drops, the jackknife spread shrinks and
+% the reported standard error comes out too tight. Flooring at the design
+% keeps that from happening. Ignoring the reach entirely is the opposite
+% error: a minimum sitting at an edge node reaches sin(30 deg)^2 while the
+% divisor still assumes sin(16.5 deg)^2, crediting the window 3.1x its
+% true contrast, and a minimum outside the grid 6.1x, unbounded by
+% anything the caller can see. Taking the maximum bounds the over-credit
+% at about 2x while leaving the under-credit floor intact.
 u = sort(mod(2 * ths(:), 2*pi));
 g = sort([diff(u); u(1) + 2*pi - u(end)]);
 step = median(g(1:end-1));            % the un-sampled arc is g(end)
 h = min((2*pi - g(end) + step) / 4, pi/2);
-f = sin(h)^2;
+f = max(sin(h)^2, max(sin(ths(:) - ths(imin)).^2));
 if ~isfinite(f) || f <= 0, f = 1; end
 end
 
@@ -632,7 +645,8 @@ for w = 1:Nw
   % theta0 contrast: how much worse the fit gets a quarter turn away. An
   % isotropic window is flat here and its theta0 means nothing.
   if numel(ths) > 1
-    R.th_frac(w) = H_span_frac(ths);
+    [~, imin] = min(cost_th);
+    R.th_frac(w) = H_span_frac(ths, imin);
     R.q_theta(w) = (max(cost_th) - best.cost) / max(C2, realmin) ...
       / R.th_frac(w);
     % the whole theta cost curve, kept so a CONSTANT-orientation fit can
