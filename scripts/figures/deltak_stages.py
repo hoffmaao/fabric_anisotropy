@@ -33,15 +33,15 @@ Usage: python deltak_stages.py <deltak_stages_*.mat> [out_dir]
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import scar_style  # noqa: E402
-
 import matplotlib
 import numpy as np
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt      # noqa: E402
 from scipy.io import loadmat         # noqa: E402
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import scar_style                    # noqa: E402
 
 OUT = scar_style.out_dir(sys.argv, 2)
 

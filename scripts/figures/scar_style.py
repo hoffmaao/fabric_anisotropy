@@ -24,8 +24,15 @@ from the back of a room where five graded viridis dots do not.
 """
 import os
 
+# pyplot is imported INSIDE the two functions that need it, never at module
+# scope. Importing pyplot RESOLVES AND BINDS A BACKEND, so a module-level
+# import here would bind one the moment any script imported this file - and
+# every consumer is a batch figure script whose first act is
+# matplotlib.use('Agg'). One did land its `import scar_style` above that
+# guard, and the interactive macosx backend was imported before the guard
+# ran. Keeping pyplot out of module scope removes the ordering contract
+# rather than restating it, so import position here cannot matter again.
 import matplotlib.patheffects as pe
-import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import transforms
 from matplotlib.colors import hsv_to_rgb
@@ -49,8 +56,8 @@ FIGS = os.environ.get('FABRIC_FIGS') or os.path.normpath(
 os.makedirs(FIGS, exist_ok=True)
 
 
-def out_dir(argv, pos=1):
-    """Output directory from argv[pos], falling back to FIGS.
+def out_dir(argv, pos=1, default=None):
+    """Output directory from argv[pos], falling back to `default` or FIGS.
 
     An EMPTY argument means "use the default", not "use the cwd". Scripts here
     take the output directory first and their selectors after it, so choosing a
@@ -60,7 +67,7 @@ def out_dir(argv, pos=1):
     figs/ - with nothing warning that it happened.
     """
     val = argv[pos].strip() if len(argv) > pos else ''
-    return val or FIGS
+    return val or (FIGS if default is None else default)
 
 
 FIGSIZE = (13.0, 5.8)
@@ -274,6 +281,7 @@ def draw_ifg_ends(ax, dist):
 
 def two_panel_figure(proj):
     """The shared slide geometry: map panel left, interferogram right."""
+    import matplotlib.pyplot as plt
     fig = plt.figure(figsize=FIGSIZE, dpi=DPI, layout='constrained')
     gs = fig.add_gridspec(1, 2, width_ratios=[0.82, 1.18])
     axm = fig.add_subplot(gs[0, 0], projection=proj)
@@ -291,6 +299,7 @@ def ifg_panel(ax, fig, dist, t_us, phase, coh, ylabel='TWTT (μs)',
               extent=[dist[0], dist[-1], t_us[-1], t_us[0]])
     ax.set_xlabel('distance along profile (km)')
     ax.set_ylabel(ylabel)
+    import matplotlib.pyplot as plt
     sm = plt.cm.ScalarMappable(cmap='hsv',
                                norm=plt.Normalize(-np.pi, np.pi))
     # Clear of the image frame: at pad=0.01 the axes spine and the

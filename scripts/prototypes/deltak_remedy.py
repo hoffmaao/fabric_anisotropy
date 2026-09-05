@@ -76,9 +76,13 @@ import matplotlib.pyplot as plt              # noqa: E402
 from scipy.fft import fft, ifft              # noqa: E402
 from scipy.ndimage import uniform_filter     # noqa: E402
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                '..', 'figures'))
+import scar_style                            # noqa: E402
+
 ROOT = os.path.expanduser('~/projects/fabric_anisotropy')
 FRAME = os.path.expanduser('~/data/opr/stage_frame_20250108_02_001.mat')
-OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, 'figs')
+OUT = scar_style.out_dir(sys.argv, 1, os.path.join(ROOT, 'figs'))
 
 FC = 750e6          # run_deltak_stages.m convention
 S_SIGN = -1         # forced phase_sign (settled 3 Aug)

@@ -45,6 +45,9 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib import animation
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import scar_style  # noqa: E402
+
 # ar-env carries the ffmpeg binary; apres carries the science stack
 FFMPEG = '/opt/anaconda3/envs/ar-env/bin/ffmpeg'
 if os.path.exists(FFMPEG):
@@ -308,8 +311,7 @@ def main():
     args = [a for a in sys.argv[1:] if a != '--selftest']
     selftest = '--selftest' in sys.argv
     extra = args if selftest else args[1:]
-    out_dir = extra[0] if extra else os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), '..', '..', 'figs')
+    out_dir = scar_style.out_dir(extra, 0)
     os.makedirs(out_dir, exist_ok=True)
 
     if selftest:
