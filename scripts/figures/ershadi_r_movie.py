@@ -39,10 +39,10 @@ import numpy as np                       # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import antarctic_basemap as ab           # noqa: E402
 import quadpol_sites as qs               # noqa: E402
-from scar_style import FIGS              # noqa: E402
+import scar_style  # noqa: E402
 
 DATA = os.path.expanduser(os.environ.get('SCAR_DATA', '~/data/opr/scar'))
-OUT = sys.argv[1] if len(sys.argv) > 1 else FIGS
+OUT = scar_style.out_dir(sys.argv)
 SITE = sys.argv[2] if len(sys.argv) > 2 else 'ridge_a'
 
 CFG = qs.get(SITE)
