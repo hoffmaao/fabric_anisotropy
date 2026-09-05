@@ -17,6 +17,7 @@ the baseband->RF mapping) is fixed empirically by regression against
 the coregistration offsets, which settles the frame's phase sign.
 """
 import os
+import sys
 
 import h5py
 import matplotlib
@@ -24,6 +25,10 @@ import numpy as np
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                '..', 'figures'))
+import scar_style                            # noqa: E402
 from scipy.fft import fft, ifft
 from scipy.io import loadmat
 
@@ -32,7 +37,7 @@ FN = os.path.expanduser(
 PROD = os.path.expanduser(
     '~/data/opr/fabric_batch/joint/2023_Antarctica_Ground/20240108_01/'
     'Data_20240108_01_001.mat')
-OUT = os.path.expanduser('~/projects/fabric_anisotropy/figs')
+OUT = scar_style.out_dir(sys.argv, 1, os.path.expanduser('~/projects/fabric_anisotropy/figs'))
 
 FC = 750e6
 M_SUB = 12          # narrow sub-bands for stage A

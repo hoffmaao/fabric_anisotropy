@@ -65,9 +65,25 @@ def out_dir(argv, pos=1, default=None):
     to leave the output alone. Resolving that to the cwd drops figures and
     movies into the repository root - the one path that is not the gitignored
     figs/ - with nothing warning that it happened.
+
+    `pos` indexes whatever list is passed, so a script that has already
+    sliced or spliced sys.argv passes its own list and its own position.
+    `default` is for a script whose output genuinely belongs somewhere other
+    than FIGS - a prototype rooted in its own scratch tree, or a cache of
+    intermediate frames - so it can take the empty-argument guard without
+    having its destination moved.
+
+    The directory returned is CREATED. FIGS exists because this module makes
+    it at import, but a `default` root or a caller-supplied path had no such
+    guarantee, and three prototypes raised FileNotFoundError from savefig
+    whenever they ran anywhere their hand-rolled relative default did not
+    already exist. Creating it here is what makes the returned path usable
+    rather than merely resolved, so no caller has to remember the makedirs.
     """
     val = argv[pos].strip() if len(argv) > pos else ''
-    return val or (FIGS if default is None else default)
+    d = val or (FIGS if default is None else default)
+    os.makedirs(d, exist_ok=True)
+    return d
 
 
 FIGSIZE = (13.0, 5.8)
