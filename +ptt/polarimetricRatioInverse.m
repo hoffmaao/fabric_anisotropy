@@ -123,7 +123,9 @@ function out = polarimetricRatioInverse(obs, z, opts)
 %        .eta_r (1e-2), .eta_d (1e-2)  second-difference smoothness
 %        .offset_edges ([]) depths splitting the free offsets
 %        .use ({'vv_vh','hh_hv'}) any of vv_vh, hh_hv, hh_vh, hh_vv, phi
-%        .max_iter (40), .clip_db (-25), .w_phi (2, dB per radian)
+%        .max_iter (40), .clip_db (-25), .w_phi (2, dB per radian;
+%                 must be a finite non-negative scalar, and 0 drops
+%                 'phi' from .use outright rather than zero-weighting it)
 %        .n_start (4)  how many of the best grid points to run to
 %                 convergence; the loss is multi-modal in BOTH theta0 and
 %                 dlam, so one start is not enough
@@ -159,6 +161,29 @@ if ischar(use), use = {use}; end
 % it is one bit of information - and weighting it to compete with the
 % ratios lets its own model error pull the whole fit.
 w_phi = H_opt(opts, 'w_phi', 2);
+if ~isscalar(w_phi) || ~isnumeric(w_phi) || ~isfinite(w_phi) || w_phi < 0
+  error('ptt:polarimetricRatioInverse:wPhi', ...
+    ['opts.w_phi must be a finite non-negative scalar (dB per radian); ' ...
+     '0 nulls the phase term and keeps the ratios.']);
+end
+% A nulled phase weight drops the observable ENTIRELY rather than carrying
+% it as a block of zero rows. A zero-weighted phi block still owns a free
+% additive offset per depth block, and that offset's Jacobian column is
+% then identically zero, so the Gauss-Newton normal matrix is exactly
+% singular, A\b returns Inf and the solve stops at its first step - the
+% caller would get the coarse multi-start grid node back as an answer.
+% Dropping it leaves the power-only problem, and out.alias_unresolved then
+% says honestly that nothing is left to break the 90-degree alias.
+if w_phi == 0 && any(strcmp(use, 'phi'))
+  use = use(~strcmp(use, 'phi'));
+  if isempty(use)
+    error('ptt:polarimetricRatioInverse:wPhi', ...
+      ['opts.use asks for ''phi'' alone and opts.w_phi = 0 nulls it, ' ...
+       'leaving no observable to fit.']);
+  end
+  warning('ptt:polarimetricRatioInverse:phiNulled', ...
+    'opts.w_phi = 0 nulls the phase term; ''phi'' dropped from opts.use');
+end
 
 gam = obs.gamma(:).';
 Ng = numel(gam);
@@ -284,7 +309,7 @@ for k = 1:numel(use)
   Mk = M.(use{k});
   if ~strcmp(use{k}, 'phi'), Mk = max(Mk, clip_db); end
   R = H_ratio_db(P, use{k}, clip_db, phi_obs, w_phi) - Mk;
-  if strcmp(use{k}, 'phi'), R = w_phi * angle(exp(1i*R/w_phi)); end
+  if strcmp(use{k}, 'phi'), R = H_resid(R, 0, true(size(R)), w_phi); end
   out.rms.(matlab.lang.makeValidName(use{k})) = sqrt(mean(R(isfinite(R)).^2));
 end
 if ~isempty(recip)
@@ -431,8 +456,16 @@ G(~isfinite(G)) = 0;
 end
 
 function r = H_resid(d, g, is_ph, w_phi)
+% The wrap divides by w_phi to recover the raw angle, so a zero weight
+% would make it 0/0 and send NaN to the solver. w_phi = 0 drops 'phi'
+% before the pack, so is_ph is empty there; this only keeps the division
+% from being reachable at all.
 r = d - g;
-r(is_ph) = w_phi * angle(exp(1i * r(is_ph) / w_phi));
+if w_phi > 0
+  r(is_ph) = w_phi * angle(exp(1i * r(is_ph) / w_phi));
+else
+  r(is_ph) = 0;
+end
 end
 
 function v = H_opt(o, f, d)
