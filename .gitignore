@@ -8,6 +8,7 @@ __pycache__/
 
 # Generated outputs
 figs/
+ifg_movie/
 opr_fabric/test/output/
 
 # OS

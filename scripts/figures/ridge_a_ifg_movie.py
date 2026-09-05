@@ -61,7 +61,9 @@ if '--still' in _argv:
     STILL = _argv[i + 1]
     del _argv[i:i + 2]
 
-IFG_DIR = _argv[0] if len(_argv) > 0 else 'ifg_movie'
+IFG_DIR = _argv[0] if _argv and _argv[0].strip() else os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..',
+                 'ifg_movie'))
 OUT = sty.out_dir(_argv, 1)
 FPS = int(_argv[2]) if len(_argv) > 2 else 25
 SEC_PER_SEG = float(_argv[3]) if len(_argv) > 3 else 1.07
