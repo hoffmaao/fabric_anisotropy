@@ -23,24 +23,31 @@ function J = quadpolJackknife(Msub, nsub, z, os, ref, opts)
 % leave that range would sit at its edge, and that is reported in
 % J.n_edge so it is not silent.
 %
-% A RESTRICTED GRID IS NOT A WEAKER FIT. ptt.quadpolFabricLS scores an
-% axis by q_theta, the cost contrast across whatever grid it was given
-% normalised by the data power, and over a +-15 deg span that contrast is
-% a small fraction of the same window's full-range value - not because
-% the axis is worse determined but because the grid was narrowed to sit
-% on the minimum. Gated on the same q_min as a full 0-180 search, free
-% mode throws replicate values away for having been narrow-searched, and
-% silently: n_edge does not cover it, and a window that loses enough
-% replicates returns NaN from H_circ_se with nothing saying why.
-% MEASURED in test_quadpol_uncertainty verdict D: 88% of replicate theta0
-% values survive the raw gate on a clean synthetic, 100% once the scale
-% is corrected, and the loss grows as the fabric weakens and q_theta
-% approaches q_min. quadpolFabricLS therefore NORMALISES both contrasts -
-% q_theta and the constant-orientation vote's curve range - for the span
-% the grid actually reaches, instead of switching the gates off: whether
-% a window has an axis at all was decided by the full fit passed in as
-% `ref` and the replicate only measures how far it moves, but a replicate
-% whose curve has genuinely gone flat must still be able to abstain.
+% A REPLICATE DOES NOT RE-ADJUDICATE ITS WINDOWS. Whether a window carries
+% enough azimuthal contrast to own an axis is a property of the WINDOW,
+% settled once by the full fit passed in as `ref`, on the full 0-180 grid,
+% with all the data. A replicate exists only to perturb a window that has
+% already been accepted and measure how far its axis moves. So `ref`'s
+% per-window verdict is handed down in os.window_ok and the replicate's
+% own contrast gates nothing.
+%
+% Scoring each replicate afresh is what went wrong before. q_theta is the
+% cost contrast across whatever grid the pass was given, normalised by the
+% data power, and over a +-15 deg span that is a small fraction of the
+% same window's full-range value - not because the axis is worse
+% determined but because the grid was narrowed to sit on the minimum.
+% Gated on the same q_min as a full 0-180 search it threw replicate values
+% away for having been narrow-searched, silently: n_edge does not cover
+% it, and a window that loses enough replicates returns NaN from
+% H_circ_se with nothing saying why. In constant mode it was worse - each
+% replicate pooled a different window set, and a segment where enough fell
+% below the floor returned theta_const = NaN into th_c_rep and so into
+% se_theta_c. MEASURED across the 35 constant-orientation frames on disk
+% before the handoff: median se_theta 79 deg, 64% of segments above the
+% 52 deg circular-uniform SD (i.e. no information at all) and 24% above
+% 180 deg, which is impossible for a quantity defined modulo 180, while
+% the full fits over the same segments were healthy (median pooled
+% contrast 0.20 against a 0.05 gate).
 %
 % Inputs
 %   Msub   cell of [Nt x 4 x 4] sub-block moment matrices (same frame,
@@ -48,9 +55,11 @@ function J = quadpolJackknife(Msub, nsub, z, os, ref, opts)
 %   nsub   [1 x n] traces per sub-block (the pooling weights)
 %   z      [Nt x 1] depth
 %   os     the estimator options the FULL fit used (pedestal field,
-%          theta_const, grids, ...); theta_grid is overridden here
+%          theta_const, grids, ...); theta_grid and window_ok are
+%          overridden here
 %   ref    the full-data ptt.quadpolFabricLS output (for the axis to
-%          search around and the window grid)
+%          search around, the window grid, and the per-window verdict
+%          ref.window_ok the replicates inherit)
 %   opts   theta_half_deg (15), theta_step_deg (3), min_rep (3; fewer
 %          finite replicates at a window returns NaN there)
 %
@@ -98,6 +107,14 @@ else
   grid = c + rel;                             % [Nw x Ng]
 end
 os.theta_grid = grid;
+% the parent's verdict, not the replicate's. ref.window_ok is what the
+% full fit accepted; older products without it fall back to the windows
+% that carry an axis, which is the same set in free mode.
+if isfield(ref, 'window_ok') && numel(ref.window_ok) == Nw
+  os.window_ok = logical(ref.window_ok(:));
+else
+  os.window_ok = isfinite(ref.theta0(:));
+end
 
 Nt = size(Msub{1}, 1);
 Mtot = zeros(Nt, 4, 4);
