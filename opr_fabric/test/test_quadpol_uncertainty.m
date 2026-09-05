@@ -55,24 +55,29 @@
 %      must carry a finite se_theta, of a plausible size rather than a
 %      degenerate zero.
 %
-%   E. THE CURE MUST NOT BE AN EXEMPTION. D says a narrow grid must stop
-%      costing replicates their axis; it does not say a narrow grid should
-%      stop the estimator abstaining at all. Switching the gates off for a
-%      caller-supplied grid trades a false abstention for a false
-%      detection, which is the worse error, and it also mis-keys the
-%      question: what deflates the contrast is the grid's SPAN, not the
-%      fact that opts.theta_grid was set, so a documented full-range call
-%      at a custom step got the abstention silently switched off too.
-%      quadpolFabricLS instead divides both contrasts - q_theta and the
-%      constant-orientation vote's curve range - by the largest
-%      sin(dtheta)^2 the grid reaches, which is the fraction of the
-%      quarter-turn rise an axis cost a - b*cos(2*(th - th0)) can show
-%      over that grid. Two consequences are asserted: a full grid handed
-%      in explicitly behaves exactly like no grid at all (the normaliser
-%      is 1), and a +-15 deg grid still abstains on an isotropic column
-%      while still reporting on a fabric one - the normaliser is a common
-%      positive factor, so it rescales signal and noise together and the
-%      discrimination survives.
+%   E. THE CURE IS NOT A CORRECTION, IT IS A HANDOFF. D says a narrow grid
+%      must stop costing replicates their axis; it does not say a narrow
+%      grid should stop the estimator abstaining at all, and switching the
+%      gates off would trade a false abstention for a false detection.
+%      Four rounds of rescaling q_theta for the grid span all failed the
+%      same way, because max(cost_th) - min(cost_th) is a SAMPLED EXTREME
+%      over whatever nodes the grid holds and no multiplicative factor can
+%      make that independent of where the minimum sits. The quantity
+%      should never have been re-estimated: whether a window carries
+%      enough contrast to own an axis is a property of the WINDOW, settled
+%      once by the full fit on the full grid with all the data. So
+%      ptt.quadpolFabricLS exports that verdict as out.window_ok and
+%      ptt.quadpolJackknife hands it back in as opts.window_ok; a
+%      replicate reports for exactly the windows its parent accepted and
+%      abstains for exactly the ones it rejected, whatever grid it
+%      searched. Asserted: a full grid handed in explicitly behaves like
+%      no grid at all; the full fit still abstains on a flat column; an
+%      accepted window reports on a +-15 deg grid and on the full grid
+%      alike; a rejected window reports on neither, so the handoff does
+%      not become a false detection; and the resulting se_theta is finite,
+%      never exceeds 180 deg (impossible for an axis) and sits inside the
+%      52 deg circular-uniform SD on a column whose axis is well
+%      determined.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_quadpol_uncertainty.m')"
 clear;
@@ -204,7 +209,7 @@ okD = nnz(okf) >= 3 && rep_fin >= 0.98 && se_fin >= 0.98 && ...
 fprintf('D1. free-mode replicates report a standard error:      %s\n', H_tick(okD));
 fails = fails + ~okD;
 
-%% E. grid width rescales the contrast; it does not disable the gate
+%% E. a replicate inherits its parent's verdict; grid width gates nothing
 GFREE = OPTS; GFREE.theta_const = false;
 o_def = ptt.quadpolFabricLS(struct('M', Mg), z, GFREE);
 GEXP = GFREE; GEXP.theta_grid = (0:4:176) * pi/180;
@@ -216,65 +221,58 @@ okE1 = same_abst && (isempty(dth) || rad2deg(dth) < 1e-6);
 
 Siso = H_col(z, TH, 1e-4 * ones(size(z)), NB*NSB, gpd, LEAK_C, LEAK_D, NA);
 Miso = H_subblocks(Siso, NB, NSB);
-NARROW = GFREE; NARROW.theta_grid = TH + (-15:3:15) * pi/180;
-o_iso = ptt.quadpolFabricLS(struct('M', Miso), z, NARROW);
-o_ani = ptt.quadpolFabricLS(struct('M', Mg), z, NARROW);
+o_iso = ptt.quadpolFabricLS(struct('M', Miso), z, GFREE);
 f_iso = mean(isfinite(o_iso.theta0));
-f_ani = mean(isfinite(o_ani.theta0));
+f_ani = mean(isfinite(o_def.theta0));
 okE2 = f_iso <= 0.25 && f_ani >= 0.75;
-% which half of the abstention fired. Both gates are live on a narrow
-% grid; on a column this flat the dlam gate is expected to carry most of
-% it, so E2 asserts the ABSTENTION holds, not that the normalised
-% contrast alone would have carried it - E3 is what pins the contrast.
-g_q = mean(o_iso.q_theta < 0.05);
-g_d = mean(o_iso.dlam < 0.01);
 
-fprintf('\nE. GRID WIDTH (span normalisation, not an exemption)\n');
+% A replicate is given its parent's per-window verdict, so the SAME
+% accepted window reports on a +-15 deg grid and on the full grid alike,
+% and a window the parent rejected reports on neither. Grid width decides
+% nothing either way.
+par = o_def.window_ok;
+NAR = GFREE; NAR.theta_grid = TH + (-15:3:15) * pi/180; NAR.window_ok = par;
+FUL = GFREE; FUL.window_ok = par;
+r_nar = ptt.quadpolFabricLS(struct('M', Mg), z, NAR);
+r_ful = ptt.quadpolFabricLS(struct('M', Mg), z, FUL);
+acc = par(:);
+okE3 = nnz(acc) >= 3 && all(isfinite(r_nar.theta0(acc))) && ...
+  all(isfinite(r_ful.theta0(acc))) && ...
+  all(isnan(r_nar.theta0(~acc))) && all(isnan(r_ful.theta0(~acc)));
+
+% ... and the parent's rejections are still real rejections: the flat
+% column must not be handed an axis by the narrow-grid pass either.
+ISO = GFREE; ISO.theta_grid = TH + (-15:3:15) * pi/180;
+ISO.window_ok = o_iso.window_ok;
+r_iso = ptt.quadpolFabricLS(struct('M', Miso), z, ISO);
+okE4 = mean(isfinite(r_iso.theta0)) <= 0.25 && ...
+  isequal(isfinite(r_iso.theta0), logical(o_iso.window_ok(:)));
+
+% the standard error the handoff exists to make meaningful: finite, and
+% inside the 52 deg circular-uniform SD on a column whose axis is well
+% determined. theta is modulo 180, so nothing may exceed 180 either.
+UNIF = rad2deg(pi / sqrt(12));
+se_all = rad2deg([se_th(:); Jf.se_theta(:)]);
+se_all = se_all(isfinite(se_all));
+okE5 = ~isempty(se_all) && all(se_all < 180) && median(se_all) < UNIF;
+
+fprintf('\nE. PARENT VERDICT INHERITED (grid width gates nothing)\n');
 fprintf(['   explicit full 0-180 grid vs no grid: abstention identical %d, ' ...
   'max |dtheta| %.1e deg\n'], same_abst, rad2deg(H_or(dth, 0)));
-fprintf(['   on a +-15 deg grid: fabric column reports %.0f%% of windows, ' ...
-  'isotropic column %.0f%%\n'], 100*f_ani, 100*f_iso);
-fprintf(['   isotropic gates fired: normalised contrast %.0f%% of ' ...
-  'windows, dlam floor %.0f%%\n'], 100*g_q, 100*g_d);
-% The span correction is bounded on BOTH sides, and out.theta_span_frac
-% reports the factor that was applied. Below the grid's designed half-span
-% it never goes: scaling a replicate down for having bottomed mid-grid is
-% what drops the most-moved replicates and reports a standard error that
-% is too tight. Above it, it rises to the span the curve actually reached,
-% which stops a minimum sitting at an edge node from being credited with
-% contrast it has not demonstrated. A full 0-180 grid reaches a quarter
-% turn from any node, so it is exactly uncorrected.
-SHIFT = GFREE; SHIFT.theta_grid = TH + deg2rad(12) + (-15:3:15) * pi/180;
-o_shift = ptt.quadpolFabricLS(struct('M', Mg), z, SHIFT);
-% both narrow grids are 11 nodes of 3 deg: 33 deg sampled, half-span 16.5,
-% and no node pair within one is further apart than 30 deg
-f_want = sin(deg2rad(16.5))^2;
-f_ceil = sin(deg2rad(30))^2;
-f_nar = o_ani.theta_span_frac; f_shf = o_shift.theta_span_frac;
-okn = isfinite(f_nar) & isfinite(f_shf);
-lo = H_or(min([f_nar(okn); f_shf(okn)]), -inf);
-hi = H_or(max([f_nar(okn); f_shf(okn)]), inf);
-% the reported factor must be the one q_theta actually divided by
-f_impl = (max(o_ani.theta_cost, [], 2) - min(o_ani.theta_cost, [], 2)) ./ ...
-  (o_ani.theta_c2 .* o_ani.q_theta);
-d_impl = H_or(max(abs(f_impl(okn) - f_nar(okn))), inf);
-% the argmin has to actually move between the two, or nothing is tested
-[~, i_nar] = min(o_ani.theta_cost, [], 2);
-[~, i_shf] = min(o_shift.theta_cost, [], 2);
-moved = mean(i_nar(okn) ~= i_shf(okn));
-f_full = [o_def.theta_span_frac; o_exp.theta_span_frac];
-d_full = H_or(max(abs(f_full(isfinite(f_full)) - 1)), inf);
-okE3 = nnz(okn) >= 3 && moved >= 0.5 && d_impl < 1e-9 && ...
-  lo >= f_want - 1e-9 && hi <= f_ceil + 1e-9 && d_full < 1e-9;
-fprintf(['   narrow grid shifted 12 deg: argmin node moves on %.0f%% of ' ...
-  'windows, reported factor matches q_theta to %.1e\n'], 100*moved, d_impl);
-fprintf(['   span factor in [%.4f, %.4f], floor sin(16.5 deg)^2 = %.4f, ' ...
-  'ceiling sin(30 deg)^2 = %.4f, full grids off 1 by %.1e\n'], ...
-  lo, hi, f_want, f_ceil, d_full);
+fprintf(['   parent accepts %d of %d windows; on its grid %d report, on a ' ...
+  '+-15 deg grid %d\n'], nnz(acc), numel(acc), ...
+  nnz(isfinite(r_ful.theta0)), nnz(isfinite(r_nar.theta0)));
+fprintf(['   fabric column reports %.0f%% of windows, isotropic column ' ...
+  '%.0f%% (narrow-grid replicate %.0f%%)\n'], ...
+  100*f_ani, 100*f_iso, 100*mean(isfinite(r_iso.theta0)));
+fprintf('   se_theta: median %.1f deg, max %.1f deg (uniform SD %.1f)\n', ...
+  median(se_all), max(se_all), UNIF);
 fprintf('E1. a full grid supplied explicitly is not "restricted": %s\n', H_tick(okE1));
-fprintf('E2. a narrow grid still abstains on flat columns:      %s\n', H_tick(okE2));
-fprintf('E3. span factor is floored by design, capped by reach: %s\n', H_tick(okE3));
-fails = fails + ~okE1 + ~okE2 + ~okE3;
+fprintf('E2. the full fit abstains on a flat column:            %s\n', H_tick(okE2));
+fprintf('E3. accepted windows report on narrow AND full grids:  %s\n', H_tick(okE3));
+fprintf('E4. rejected windows report on neither:                %s\n', H_tick(okE4));
+fprintf('E5. se_theta finite, under uniform SD, never > 180:    %s\n', H_tick(okE5));
+fails = fails + ~okE1 + ~okE2 + ~okE3 + ~okE4 + ~okE5;
 
 %% B. block split-half, axis held at truth
 RB = 24; NBLK = 124;
