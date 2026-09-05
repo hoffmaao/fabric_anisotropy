@@ -106,6 +106,12 @@ function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 %             errors (radians, dlam units) of the segment's raw profile,
 %             NaN unless opts.jackknife; jack_n / jack_edge [1 x Nseg] the
 %             replicate count and the count that hit the theta search edge
+%   se_theta_n / se_theta_r / se_theta_sat [Nw x Nseg]  what a NaN in
+%             se_theta_seg means: the replicates that contributed, their
+%             resultant length, and whether they scattered past what the
+%             bounded axis statistic can resolve (as opposed to there
+%             being too few). se_theta_seg must not be read bare - see
+%             ptt.circAxisSE
 %
 % The per-block handoff belongs to ptt.thetaProfileAt(fp, x), which
 % interpolates th_seg across segments on the doubled-angle phasor and
@@ -246,6 +252,8 @@ if nseg == 1
   fp.held_seg = TH_CONST && isfinite(lsq.theta_const);
   fp.se_theta_seg = nan(Nw, 1); fp.se_dlam_seg = nan(Nw, 1);
   fp.jack_n = 0; fp.jack_edge = 0;
+  fp.se_theta_n = zeros(Nw, 1); fp.se_theta_r = nan(Nw, 1);
+  fp.se_theta_sat = false(Nw, 1);
   if JACK
     % The straight frame pass fitted the antenna-frame channels directly;
     % the replicates resample the same traces as geographic sub-block
@@ -270,6 +278,8 @@ if nseg == 1
     J = ptt.quadpolJackknife(Msub, nsub, z, og, ref);
     fp.se_theta_seg = J.se_theta; fp.se_dlam_seg = J.se_dlam;
     fp.jack_n = J.n; fp.jack_edge = J.n_edge;
+    fp.se_theta_n = J.n_theta; fp.se_theta_r = J.r_theta;
+    fp.se_theta_sat = J.sat_theta;
   end
   return
 end
@@ -285,6 +295,9 @@ seg_x = nan(1, nseg);
 seg_n = zeros(1, nseg);
 se_theta_seg = nan(Nw, nseg);
 se_dlam_seg = nan(Nw, nseg);
+se_theta_n = zeros(Nw, nseg);
+se_theta_r = nan(Nw, nseg);
+se_theta_sat = false(Nw, nseg);
 jack_n = zeros(1, nseg);
 jack_edge = zeros(1, nseg);
 for s = 1:nseg
@@ -316,6 +329,9 @@ for s = 1:nseg
     J = ptt.quadpolJackknife(Msub, nsub, z, os, o);
     se_theta_seg(:, s) = J.se_theta;
     se_dlam_seg(:, s) = J.se_dlam;
+    se_theta_n(:, s) = J.n_theta;
+    se_theta_r(:, s) = J.r_theta;
+    se_theta_sat(:, s) = J.sat_theta;
     jack_n(s) = J.n;
     jack_edge(s) = J.n_edge;
   end
@@ -366,6 +382,9 @@ fp.th_spread_seg = th_spread;
 fp.held_seg = held_seg;
 fp.se_theta_seg = se_theta_seg;
 fp.se_dlam_seg = se_dlam_seg;
+fp.se_theta_n = se_theta_n;
+fp.se_theta_r = se_theta_r;
+fp.se_theta_sat = se_theta_sat;
 fp.jack_n = jack_n;
 fp.jack_edge = jack_edge;
 end
