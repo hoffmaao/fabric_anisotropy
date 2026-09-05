@@ -76,7 +76,15 @@ function J = quadpolJackknife(Msub, nsub, z, os, ref, opts)
 %              to there being too few of them. n_theta / r_theta /
 %              sat_theta together make a NaN interpretable rather than
 %              mysterious - see ptt.circAxisSE. n_theta_c, r_theta_c and
-%              sat_theta_c are the same three for the held axis
+%              sat_theta_c are the same three for the held axis.
+%              ACCEPTED LIMITATION: the SE's resolution floor sits on a
+%              sqrt(n-1)-inflated resultant, so the replicate scatter at
+%              which it declines to report tightens with the sub-block
+%              count - 17.2 deg at n = 6, 12.2 deg at n = 11, 8.4 deg at
+%              n = 22. A longer segment abstains at a SMALLER true scatter,
+%              so the abstention rate is not comparable between segments of
+%              different length and must not be read as a measure of ice
+%              quality without controlling for n_theta.
 %   theta_rep  [Nw x n], dlam_rep [Nw x n] the replicate values
 %   n          replicates run; n_edge  replicates whose axis sat at the
 %              search edge (constant mode: of the held axis; free mode:

@@ -878,6 +878,10 @@ end
 % se_theta abstains rather than reporting a value the bounded axis
 % statistic cannot resolve, so the counts say WHY a cell is NaN: the
 % replicates scattered past the resolvable range, or there were too few.
+% The unresolvable count is NOT comparable between frames of different
+% length: the resolution floor tightens with the sub-block count, so a
+% longer segment abstains at a smaller true scatter (17.2 deg at 6
+% sub-blocks, 8.4 deg at 22). See ptt.circAxisSE.
 n_sat = nnz(fp.se_theta_sat);
 n_few = nnz(isnan(fp.se_theta_seg) & ~fp.se_theta_sat);
 fprintf('jackknife: replicates [%s], at search edge [%s]; se_theta median %.1f deg, se_dlam median %.4f\n', ...

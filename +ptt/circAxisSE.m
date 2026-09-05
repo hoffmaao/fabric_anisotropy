@@ -77,6 +77,30 @@ function [s, m, Rbar, sat] = circAxisSE(th, min_rep)
 % defect would be reporting a value from inside the band where the bound
 % has already destroyed the information.
 %
+% ACCEPTED LIMITATION: THE ABSTENTION TIGHTENS AS m GROWS. The resolution
+% floor sits on the jackknife-INFLATED resultant, and the inflation is
+% sqrt(m-1), so the true replicate scatter at which this function declines
+% to report is roughly
+%
+%   sigma_crit = 1.343 / (2*sqrt(m-1))  rad
+%              = 17.2 deg at m = 6, 12.2 deg at m = 11, 8.4 deg at m = 22
+%
+% A segment with MORE sub-blocks therefore abstains at a SMALLER true
+% scatter - better-sampled data refuses to answer sooner. MEASURED over
+% 3000 draws per point: replicates scattering by 10 deg return a finite SE
+% 99% of the time at m = 6, 89% at m = 11 and 27% at m = 22. The 1/sqrt(m)
+% sampling term moves the other way but only binds up to m = 6.
+%
+% This is a property of inflating a bounded statistic, not a bug, and it is
+% accepted deliberately: the delete-one inflation is what keeps the SE from
+% being optimistic, and dropping it to flatten the m-dependence would
+% understate uncertainty, which is the error this estimator exists to
+% avoid. The consequence for anyone reading the products: ABSTENTION RATES
+% ARE NOT COMPARABLE BETWEEN SEGMENTS OF DIFFERENT LENGTH. The fraction of
+% abstaining cells must never be read as a measure of ice quality or fabric
+% strength without controlling for the sub-block count m, which is reported
+% per cell for exactly this reason.
+%
 % See also ptt.quadpolJackknife.
 
 if nargin < 2 || isempty(min_rep), min_rep = 3; end
@@ -101,5 +125,5 @@ if m * Rbar^2 < RAYLEIGH_05, sat = true; return; end
 d = angle(exp(1i * (u - angle(zb))));        % doubled-angle deviations
 Rj = abs(mean(exp(1i * sqrt(m - 1) * d)));
 if Rj <= max(RESOLVE_MIN, 1 / sqrt(m)), sat = true; return; end
-s = sqrt(2 * (1 - Rj)) / 2;
+s = sqrt(2 * max(1 - Rj, 0)) / 2;
 end

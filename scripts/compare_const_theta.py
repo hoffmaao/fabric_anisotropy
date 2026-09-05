@@ -161,6 +161,11 @@ def read(fn):
         # a NaN in se_th is not one thing: the axis SE is bounded, so it
         # abstains where the replicates scattered past what it can resolve
         # (ls_se_theta_sat) as well as where there were too few of them.
+        # unres is NOT comparable across frames of different length - the
+        # resolution floor tightens with the sub-block count, so a longer
+        # segment abstains at a smaller true scatter (17.2 deg at 6
+        # sub-blocks, 12.2 at 11, 8.4 at 22). Read it against ls_se_theta_n,
+        # never as a measure of ice quality on its own. See ptt.circAxisSE.
         # Reporting only the median of the finite cells would quietly drop
         # the unresolvable ones and read as a tighter error bar than the
         # data support, so the abstained fraction is carried alongside.
@@ -270,7 +275,8 @@ def main():
     # split-half); a dth well inside se_th is no change at all
     if any(np.isfinite(b["se_dlam"]) for _, _, _, b in rows):
         print("\nuncertainty (_ct products, band medians): se_th = held-axis SE (deg), "
-              "unres = fraction of cells where the axis SE could not be resolved, "
+              "unres = fraction of cells where the axis SE could not be resolved "
+              "(not comparable across frames of different length - see ptt.circAxisSE), "
               "se_dl = segment dlam SE, se_blk = pooled block split-half sigma")
         print("%-11s %-16s %7s %6s %7s %7s"
               % ("site", "frame", "se_th", "unres", "se_dl", "se_blk"))
