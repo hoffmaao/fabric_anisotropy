@@ -28,7 +28,7 @@ import h5py
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                '..', 'figures'))
+                                'figures'))
 import scar_style                            # noqa: E402
 
 SITE = sys.argv[1] if len(sys.argv) > 1 else (
