@@ -39,11 +39,11 @@ import matplotlib.pyplot as plt          # noqa: E402
 from scipy.io import loadmat             # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import scar_style  # noqa: E402
 from scar_style import (DATA, INK, MUTED, field,  # noqa: E402
                         track_azimuth)
-from scar_style import FIGS  # noqa: E402
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else FIGS
+OUT = scar_style.out_dir(sys.argv)
 
 # Validated categorical slots (dataviz reference palette, light mode):
 # adjacent-pair CVD separation dE 24.7 / 18.9, normal-vision 33.6 / 21.1.

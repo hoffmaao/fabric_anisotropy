@@ -48,6 +48,21 @@ FIGS = os.environ.get('FABRIC_FIGS') or os.path.normpath(
                  'figs'))
 os.makedirs(FIGS, exist_ok=True)
 
+
+def out_dir(argv, pos=1):
+    """Output directory from argv[pos], falling back to FIGS.
+
+    An EMPTY argument means "use the default", not "use the cwd". Scripts here
+    take the output directory first and their selectors after it, so choosing a
+    site or a variant forces argv[1] to be supplied and '' is the natural way
+    to leave the output alone. Resolving that to the cwd drops figures and
+    movies into the repository root - the one path that is not the gitignored
+    figs/ - with nothing warning that it happened.
+    """
+    val = argv[pos].strip() if len(argv) > pos else ''
+    return val or FIGS
+
+
 FIGSIZE = (13.0, 5.8)
 DPI = 200
 

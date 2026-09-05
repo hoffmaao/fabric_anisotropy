@@ -47,11 +47,11 @@ from matplotlib.colors import TwoSlopeNorm   # noqa: E402
 from scipy.io import loadmat             # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import scar_style  # noqa: E402
 from scar_style import DATA, INK, MUTED, cumdist_km, field  # noqa: E402
-from scar_style import FIGS  # noqa: E402
 import quadpol_sites as qs               # noqa: E402
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else FIGS
+OUT = scar_style.out_dir(sys.argv)
 TAG = sys.argv[2] if len(sys.argv) > 2 else '20250108_02_009'
 # run_quadpol_pipeline.m writes this one; run_quadpol_frame.m writes
 # quadpol_<tag>.mat, which is a different layout read by

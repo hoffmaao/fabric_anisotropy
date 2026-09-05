@@ -172,6 +172,10 @@ def read(fn):
         sat = np.atleast_2d(get(r, "ls_se_theta_sat", 0)).astype(bool)
         if sat.shape != se_th.shape:
             sat = np.zeros_like(se_th, dtype=bool)
+        # the sub-block count unres has to be read against, printed beside it
+        n_rep = np.atleast_2d(get(r, "ls_se_theta_n", np.nan)).astype(float)
+        if n_rep.shape != se_th.shape:
+            n_rep = np.full_like(se_th, np.nan, dtype=float)
         se_dl = np.atleast_2d(get(r, "ls_se_dlam_seg"))
         if se_dl.shape[-1] != zw.size and se_dl.size > 1:
             se_dl = se_dl.T
@@ -182,6 +186,8 @@ def read(fn):
             se_theta=np.nanmedian(se_th[:, mw]) if se_th.shape[-1] == zw.size else np.nan,
             se_theta_unres=(float(np.mean(sat[:, mw]))
                             if sat.shape[-1] == zw.size and sat.size else np.nan),
+            se_theta_n=(np.nanmedian(n_rep[:, mw])
+                        if n_rep.shape[-1] == zw.size and n_rep.size else np.nan),
             se_dlam=np.nanmedian(se_dl[:, mw]) if se_dl.shape[-1] == zw.size else np.nan,
             se_blk=np.nanmedian(se_blk[:, mz]) if se_blk.shape[-1] == z.size else np.nan,
             nseg=int(th_seg.shape[0]),
@@ -275,15 +281,21 @@ def main():
     # split-half); a dth well inside se_th is no change at all
     if any(np.isfinite(b["se_dlam"]) for _, _, _, b in rows):
         print("\nuncertainty (_ct products, band medians): se_th = held-axis SE (deg), "
-              "unres = fraction of cells where the axis SE could not be resolved "
-              "(not comparable across frames of different length - see ptt.circAxisSE), "
+              "n = sub-blocks the SE was formed from, "
+              "unres = fraction of cells where the axis SE could not be resolved. "
+              "unres is only comparable at equal n: the abstention threshold scales "
+              "as ~1.343/(2*sqrt(n-1)) rad, so 17.2 deg of replicate scatter is "
+              "resolvable at n = 6 but 8.4 deg is not at n = 22 - see ptt.circAxisSE. "
               "se_dl = segment dlam SE, se_blk = pooled block split-half sigma")
-        print("%-11s %-16s %7s %6s %7s %7s"
-              % ("site", "frame", "se_th", "unres", "se_dl", "se_blk"))
+        print("%-11s %-16s %7s %4s %6s %7s %7s"
+              % ("site", "frame", "se_th", "n", "unres", "se_dl", "se_blk"))
         for site, tag, a, b in rows:
             unres = b.get("se_theta_unres", float("nan"))
-            print("%-11s %-16s %7.2f %5.0f%% %7.4f %7.4f"
-                  % (site, tag, b["se_theta"], 100 * unres, b["se_dlam"], b["se_blk"]))
+            n_rep = b.get("se_theta_n", float("nan"))
+            print("%-11s %-16s %7.2f %4s %5.0f%% %7.4f %7.4f"
+                  % (site, tag, b["se_theta"],
+                     "--" if not np.isfinite(n_rep) else "%d" % round(n_rep),
+                     100 * unres, b["se_dlam"], b["se_blk"]))
 
     print("\n%-11s %6s  %8s  %6s  %7s  %7s  %7s  %s"
           % ("SITE", "frames", "med|dth|", "sd_z", "spread", "d_resid", "d_dlam", "assumption"))
