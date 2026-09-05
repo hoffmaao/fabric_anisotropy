@@ -26,10 +26,10 @@ import cartopy.feature as cfeature
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import antarctic_basemap as ab
-from scar_style import FIGS
+import scar_style  # noqa: E402
 
 ROOT = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser('~/data/opr/fabric_batch')
-OUT = sys.argv[2] if len(sys.argv) > 2 else FIGS
+OUT = scar_style.out_dir(sys.argv, 2)
 
 SURVEYS = [
     ('2022-23', f'{ROOT}/joint/2022_Antarctica_Ground/*/Data_*.mat', 'tab:gray'),

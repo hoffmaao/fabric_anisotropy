@@ -16,10 +16,13 @@ from scipy.io import loadmat
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import scar_style  # noqa: E402
 from pyproj import Transformer
 
 SRC = sys.argv[1]
-OUT = sys.argv[2] if len(sys.argv) > 2 else "figs"
+OUT = scar_style.out_dir(sys.argv, 2)
 os.makedirs(OUT, exist_ok=True)
 
 WAIS = (-79.468, -112.086)      # WAIS Divide camp

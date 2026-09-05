@@ -13,10 +13,11 @@ from scipy.io import loadmat
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import scar_style  # noqa: E402
 from fabric_qc import dropped_intervals
 
 ROOT = sys.argv[2] if len(sys.argv) > 2 else os.path.expanduser('~/data/opr/fabric_batch')
-OUT = sys.argv[3] if len(sys.argv) > 3 else os.path.join(os.path.dirname(__file__), '..', '..', 'figs')
+OUT = scar_style.out_dir(sys.argv, 3)
 
 
 def haversine_km(lat1, lon1, lat2, lon2):

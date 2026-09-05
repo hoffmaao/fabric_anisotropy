@@ -35,7 +35,7 @@ import scar_style as sty                  # noqa: E402
 from scar_style import (DATA, DPI, PROFILE_C, PROFILE_FX,  # noqa: E402
                         PROFILE_LW, SPEED_CB_LABEL, TRACK_C, zoom_inset)
 
-OUT = sys.argv[1]
+OUT = sty.out_dir(sys.argv)
 # 20240626_03_001: the along-flow line beside the southeastern shear
 # margin. Picked over the cross-margin crossing (20240620_01_003) because
 # it holds coherence over the WHOLE profile - every along-track column
