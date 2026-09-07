@@ -87,21 +87,21 @@ while read -r seg frm; do
     2024*)
       case "$seg $frm" in
         20240120*|20240202*|20240203*) ;;                 # WAIS / McMurdo: keep
+        202406*) ;;                                       # EastGRIP: keep
         "20240108_01 001"|"20240103_01 001"|"20240104_01 001") ;;  # Thwaites CONTROL
         *) continue ;;                                    # Thwaites: excluded
       esac ;;
   esac
   echo "$seg $frm $r" >> "$FAB/ct_work.txt"
 done < "$FAB/ct_all.txt"
-# Two different exclusions, and they must not be conflated in the report:
-# Thwaites is dropped on purpose by the tag filter above. EastGRIP now has a
-# season root and so runs, but read its products with the depth caveat below.
-# root. The second is a gap, not a decision - EastGRIP qlook needs its own
-# adaptation (stationary-trace cull, no settings product) and its first frame
-# does not yet agree with the core, so it is not ready to batch.
+# Thwaites is dropped on purpose by the tag filter above; EastGRIP is kept.
+# Letting EastGRIP through took BOTH a season root and an entry in that tag
+# filter - the root alone queued nothing, silently, because the reported
+# count is taken from ct_all.txt while the workers read ct_work.txt. If the
+# two ever disagree again, that is where to look.
 n_thw=$(awk '{print $1}' "$FAB/ct_all.txt" | grep -E '^202401' | grep -vcE '^20240120' || true)
 n_ctl=$(awk '{print $1}' "$FAB/ct_work.txt" | grep -E '^202401' | grep -vcE '^20240120' || true)
-n_egrip=$(awk '{print $1}' "$FAB/ct_all.txt" | grep -cE '^202406' || true)
+n_egrip=$(awk '{print $1}' "$FAB/ct_work.txt" | grep -cE '^202406' || true)
 echo "$(wc -l < "$FAB/ct_work.txt") frames queued; \
 $((n_thw - n_ctl)) Thwaites excluded by design ($n_ctl kept as rotating-axis controls), \
 $n_egrip EastGRIP queued"
