@@ -48,7 +48,7 @@ function out = orientationToFlow(theta0, flow, opts)
 % out.aligned     logical, angle < 45 (closer to along-flow than across)
 % out.speed       flow speed where vx/vy were supplied, else []
 %
-% See also ptt.nymandTwoStep.
+% See also ptt.orientationToStrain, ptt.strainRateAxes, ptt.nymandTwoStep.
 if nargin < 3, opts = struct(); end
 tf = H_req(opts, 'theta_frame', 'ptt:orientationToFlow:frame', ...
   'opts.theta_frame must be ''true'' or ''grid'' - see the header on grid vs true north');
@@ -80,12 +80,10 @@ end
 
 v_min = H_opt(opts, 'v_min', 0);
 th = double(theta0);
-% Angle between an AXIS and a DIRECTION, on the doubled angle so the
-% axis's 180-degree ambiguity is handled by construction. The doubled
-% difference folds head and tail onto the same point; halving it and
-% taking the magnitude lands in [0, 90] with no unwrapping anywhere.
-d = angle(exp(2i * (th - flow_az))) / 2;
-ang = abs(rad2deg(d));
+% Angle between an AXIS and a DIRECTION, folded on the doubled angle by
+% the shared private helper so this and ptt.orientationToStrain cannot
+% drift apart on it.
+ang = axisFold(th, flow_az);
 
 if ~isempty(speed) && v_min > 0
   ang(speed < v_min) = NaN;
