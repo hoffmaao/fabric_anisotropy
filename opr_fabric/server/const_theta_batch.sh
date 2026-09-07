@@ -18,6 +18,23 @@
 # rotating column beside the real divides before they mean anything. The
 # _ct tag keeps these from touching any Thwaites number in use.
 #
+# EASTGRIP RUNS IN THIS MODE FOR A REASON, AND ITS DEPTH LIMIT IS MEASURED.
+# The season is qlook only - never SAR focused, no CSARP_standardphase and no
+# CSARP_polarimetric - so it has no processing gain and decorrelates with
+# depth. MEASURED on 20240619_01_001: coherence falls 0.66 -> 0.10 from
+# 200 m to 1400 m and dlam follows it down, 0.21 -> 0.009, correlating with
+# coherence at +0.54. The contrast is tracking measurement quality, not ice.
+# Above ~800 m, where coherence still holds near 0.44, dlam is 0.18-0.31,
+# which agrees with the EastGRIP core: Weikusat (2022) has the two large
+# eigenvalues separating to ~0.41 and ~0.58 below 450 m, a horizontal
+# difference of 0.17 to 0.57 depending on which pair is horizontal.
+#
+# So this mode is the RIGHT one to run here: holding the axis constant fixes
+# it from the well-constrained shallow windows and leaves the deep windows
+# one fewer parameter to find, which is what a low-coherence column needs.
+# But do not read EastGRIP dlam below roughly 800 m as ice. The cure is the
+# SAR processing already staged for this season, not a different estimator.
+#
 # Products are written with the _ct suffix the pipeline appends, so the
 # existing products - and every number published from them - stay intact
 # and the two can be compared frame for frame. Idempotent: existing _ct
@@ -49,6 +66,7 @@ root_for () {
     202401*|20240202*|20240203*) echo /cresis/dataproducts/opr_data/accum/2023_Antarctica_Ground ;;  # Thwaites, WAIS, McMurdo
     2025*) echo /cresis/nvme/opr_data/accum/2024_Antarctica_Ground2 ;;
     2026*) echo /cresis/dataproducts/opr_data/accum/2025_Antarctica_Ground2 ;;
+    202406*) echo /cresis/dataproducts/opr_data/accum/2024_Greenland_Ground2 ;;   # EastGRIP
     *) echo "" ;;
   esac
 }
@@ -76,8 +94,8 @@ while read -r seg frm; do
   echo "$seg $frm $r" >> "$FAB/ct_work.txt"
 done < "$FAB/ct_all.txt"
 # Two different exclusions, and they must not be conflated in the report:
-# Thwaites is dropped on purpose by the tag filter above, while the June 2024
-# EastGRIP/NEGIS segments are dropped by root_for having no Greenland season
+# Thwaites is dropped on purpose by the tag filter above. EastGRIP now has a
+# season root and so runs, but read its products with the depth caveat below.
 # root. The second is a gap, not a decision - EastGRIP qlook needs its own
 # adaptation (stationary-trace cull, no settings product) and its first frame
 # does not yet agree with the core, so it is not ready to batch.
@@ -86,7 +104,7 @@ n_ctl=$(awk '{print $1}' "$FAB/ct_work.txt" | grep -E '^202401' | grep -vcE '^20
 n_egrip=$(awk '{print $1}' "$FAB/ct_all.txt" | grep -cE '^202406' || true)
 echo "$(wc -l < "$FAB/ct_work.txt") frames queued; \
 $((n_thw - n_ctl)) Thwaites excluded by design ($n_ctl kept as rotating-axis controls), \
-$n_egrip EastGRIP skipped (no Greenland season root)"
+$n_egrip EastGRIP queued"
 # DRY=1 builds and reports the work list without starting MATLAB
 [ -n "${DRY:-}" ] && exit 0
 
