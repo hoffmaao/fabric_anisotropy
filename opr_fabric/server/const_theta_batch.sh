@@ -18,22 +18,34 @@
 # rotating column beside the real divides before they mean anything. The
 # _ct tag keeps these from touching any Thwaites number in use.
 #
-# EASTGRIP RUNS IN THIS MODE FOR A REASON, AND ITS DEPTH LIMIT IS MEASURED.
-# The season is qlook only - never SAR focused, no CSARP_standardphase and no
-# CSARP_polarimetric - so it has no processing gain and decorrelates with
-# depth. MEASURED on 20240619_01_001: coherence falls 0.66 -> 0.10 from
-# 200 m to 1400 m and dlam follows it down, 0.21 -> 0.009, correlating with
-# coherence at +0.54. The contrast is tracking measurement quality, not ice.
-# Above ~800 m, where coherence still holds near 0.44, dlam is 0.18-0.31,
-# which agrees with the EastGRIP core: Weikusat (2022) has the two large
-# eigenvalues separating to ~0.41 and ~0.58 below 450 m, a horizontal
-# difference of 0.17 to 0.57 depending on which pair is horizontal.
+# EASTGRIP RUNS, BUT ITS OUTPUT DOES NOT AGREE WITH THE CORE. Read this
+# before quoting an EastGRIP number from these products.
 #
-# So this mode is the RIGHT one to run here: holding the axis constant fixes
-# it from the well-constrained shallow windows and leaves the deep windows
-# one fewer parameter to find, which is what a low-coherence column needs.
-# But do not read EastGRIP dlam below roughly 800 m as ice. The cure is the
-# SAR processing already staged for this season, not a different estimator.
+# The season is qlook only - never SAR focused, no CSARP_standardphase and
+# no CSARP_polarimetric - so it has no processing gain and decorrelates with
+# depth. On 20240619_01_001 coherence falls 0.66 -> 0.10 between 200 m and
+# 1400 m while dlam follows it down 0.21 -> 0.009, correlating at +0.54, so
+# the deep half is tracking measurement quality rather than ice.
+#
+# THE SHALLOW HALF DOES NOT RESCUE IT. An earlier version of this comment
+# claimed dlam of 0.18-0.31 over 300-800 m, "which agrees with the core".
+# That was generalised from ONE frame and the full batch does not support
+# it. Over all 29 frames in that band the median dlam is 0.022, and only
+# 4 of 29 reach the 0.17-0.57 the core implies (Weikusat 2022: the two
+# large eigenvalues separate to ~0.41 and ~0.58 below 450 m, giving a
+# horizontal difference of 0.17-0.57 depending which pair is horizontal).
+#
+# Neither obvious explanation holds. The constant-orientation mode lowers
+# dlam by 40% against the default on the six paired frames (0.145 -> 0.087),
+# in line with other sites, which is not nearly enough to close the gap.
+# And frame coherence barely predicts it: correlation +0.09 across the 29,
+# and even the 14 frames with coherence >= 0.40 sit at a median of 0.041.
+#
+# So the batch runs clean - 29 of 29, no failures - and its numbers are not
+# yet defensible. Candidates worth pursuing: this season's channels are
+# badly unequalised (VH/HV +17 to +29 dB, unlike Ridge A), the data are
+# unfocused, and the core constrains eigenvalue MAGNITUDES only, so which
+# pair lies horizontal is not known independently.
 #
 # Products are written with the _ct suffix the pipeline appends, so the
 # existing products - and every number published from them - stay intact
