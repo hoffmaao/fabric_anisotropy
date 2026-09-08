@@ -279,7 +279,21 @@ if qlook_mode
       why = sprintf(['%d of its %d positioned traces sit below %d deg of ' ...
         'latitude'], n_located - n_polar, n_located, POLAR_LAT_MIN);
     end
-    ref_fn = fullfile(site_root, 'CSARP_reference_trajectory', ...
+    % REFERENCE TRAJECTORY ROOT. Defaults to site_root, but a season whose
+    % production trajectories are broken can be pointed at a repaired
+    % private tree without moving anything else. EastGRIP needs this:
+    % ref_20240620_01, ref_20240621_01 and ref_20240622_01 in the group
+    % tree are 100 PERCENT null island - every one of 581926, 869130 and
+    % 301949 samples at about 0 N 2 E - while the repaired copies under
+    % ~/scratch/opr_support_egrip/opr_data/... carry the real positions.
+    % Products built against the broken ones cannot be placed on a map and
+    % silently drop out of any position-selected figure.
+    if exist('ref_root', 'var') && ~isempty(ref_root)
+      rr = ref_root;
+    else
+      rr = site_root;
+    end
+    ref_fn = fullfile(rr, 'CSARP_reference_trajectory', ...
       sprintf('ref_%s.mat', day_seg));
     if exist(ref_fn, 'file') ~= 2
       error('run_quadpol_pipeline:noRefTraj', ...
@@ -287,6 +301,15 @@ if qlook_mode
         'cannot be positioned'], why, ref_fn);
     end
     RT = load(ref_fn, 'gps_time', 'lat', 'lon');
+    % A trajectory can exist and still be useless. Refuse a null-island
+    % file rather than writing another unplaceable product.
+    n_null = nnz(abs(RT.lat) < 1 & abs(RT.lon) < 5);
+    if n_null > 0.5 * numel(RT.lat)
+      error('run_quadpol_pipeline:nullRefTraj', ...
+        ['%s is %.0f%% null island (%d of %d samples); point ref_root at a ' ...
+         'repaired trajectory tree'], ref_fn, ...
+        100*n_null/numel(RT.lat), n_null, numel(RT.lat));
+    end
     [rt_gps, rt_ord] = sort(RT.gps_time(:));
     rt_lat = RT.lat(:); rt_lat = rt_lat(rt_ord);
     rt_lon = RT.lon(:); rt_lon = rt_lon(rt_ord);
