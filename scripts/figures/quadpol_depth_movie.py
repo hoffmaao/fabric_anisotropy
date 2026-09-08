@@ -406,9 +406,16 @@ def main():
                 ha='left', va='center', zorder=6, path_effects=HALO,
                 transform=proj)
 
+        # The bar caption MUST follow the variant. In the constant-
+        # orientation products the axis is held for the whole segment, so
+        # saying "at this depth" of a bar that cannot move by construction
+        # invites a viewer to read a still axis as a measured result about
+        # this depth window. Only the colour varies down the column here.
+        bar_txt = (r'bars: fabric axis $\theta_0$, HELD through the column'
+                   if VARIANT == 'ct' else
+                   r'bars: fabric axis $\theta_0$ at this depth')
         ax.set_title(('%s: fabric contrast through the column\n' % TITLE)
-                     + r'track colour: $\Delta\lambda$ per block; '
-                     + r'bars: fabric axis $\theta_0$ at this depth'
+                     + r'track colour: $\Delta\lambda$ per block; ' + bar_txt
                      + '\n'
                      + ('grey: LS residual fading %.2f to %.2f, or the bed '
                         'inside this window' % (RESID_GOOD, RESID_BAD)),
