@@ -129,7 +129,10 @@ else:
     BEDS = {}
     print('no %s; blocks are drawn without bed masking' % BED_FILE)
 
-T = Transformer.from_crs('EPSG:4326', 'EPSG:3031', always_xy=True)
+# Projection follows the SITE, not the hemisphere this stack grew up in.
+# EPSG:3031 was hard-coded here, which places a Greenland site somewhere
+# meaningless instead of failing.
+T = qs.site_transformer(CFG)
 
 
 def find_ffmpeg():
@@ -223,7 +226,7 @@ def main():
     print('%d frames, %d depth windows (%.0f m window, %.0f m step)'
           % (len(frames), centres.size, WIN_M, STEP_M))
 
-    proj = ab.proj3031()
+    proj = qs.site_proj(CFG)
     cmap, norm = plt.get_cmap('Blues'), plt.Normalize(0.0, VMAX)
     allx = np.concatenate([f['pts'][:, 0] for f in frames])
     ally = np.concatenate([f['pts'][:, 1] for f in frames])
