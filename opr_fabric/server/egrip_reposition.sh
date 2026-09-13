@@ -59,6 +59,9 @@ worker () {
     tag=$(printf '%s_%03d' "$seg" "$((10#$frm))")
     out="$QP/quadpol_section_${tag}_ct.mat"
     [ -f "$out" ] && continue
+    fail="$FAB/invert_logs/fail_rp_${tag}.count"
+    n=$(cat "$fail" 2>/dev/null || echo 0)
+    [ "$n" -ge 2 ] && continue
     lock="$FAB/invert_logs/lock_rp_${tag}"
     mkdir "$lock" 2>/dev/null || continue
     echo "start $tag $(date +%d/%H:%M)"
@@ -66,8 +69,8 @@ worker () {
       site_root='$ROOT'; ref_root='$REFROOT'; day_seg='$seg'; frm=$((10#$frm)); \
       theta_const=true; run_quadpol_pipeline" \
       > "$FAB/invert_logs/rp_${tag}.log" 2>&1
-    if [ -f "$out" ]; then echo "done  $tag ok $(date +%d/%H:%M)"
-    else echo "done  $tag FAIL $(date +%d/%H:%M)"; fi
+    if [ -f "$out" ]; then echo "done  $tag ok $(date +%d/%H:%M)"; rm -f "$fail"
+    else echo "done  $tag FAIL $(date +%d/%H:%M)"; echo $((n+1)) > "$fail"; fi
     rmdir "$lock" 2>/dev/null
   done < "$FAB/egrip_repos.txt"
 }
