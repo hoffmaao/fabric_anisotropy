@@ -92,16 +92,20 @@ def cumdist_km(lat, lon):
     return np.r_[0.0, np.cumsum(6371.0 * 2 * np.arcsin(np.sqrt(a)))]
 
 
-def read_ct(frame):
-    fn = os.path.join(SCAR, 'quadpol_section_%s_ct.mat' % frame)
+def read_section(frame):
+    """Free-axis section product: the direction is allowed to vary along
+    the line, so sec_theta carries one axis per block per depth rather than
+    one held for the whole segment."""
+    fn = os.path.join(SCAR, 'quadpol_section_%s.mat' % frame)
     if not os.path.exists(fn):
-        raise SystemExit('no constant-orientation product for %s' % frame)
+        raise SystemExit('no section product for %s' % frame)
     with h5py.File(fn) as f:
         r = f['res']
         g = lambda k: np.array(r[k]).ravel() if k in r else None   # noqa: E731
         out = dict(z=g('z'), lat=g('sec_lat'), lon=g('sec_lon'),
                    th_geo=g('ls_theta0_geo'), zw=g('ls_zw'))
-        out['dlam'] = np.array(r['sec_dlam_ls'])       # h5py gives (nz, nblk)
+        out['dlam'] = np.array(r['sec_dlam_ls'])
+        out['theta'] = np.array(r['sec_theta'])        # geographic, degrees
     return out
 
 
@@ -160,7 +164,7 @@ def read_surface(x0, x1, y0, y1, epsg):
     return dict(x=w['x'].values, y=w['y'].values, z=np.asarray(w.values, float))
 
 
-def slope_azimuth(surf, bx, by):
+def slope_azimuth(surf, bx, by, gn_deg):
     """Downslope azimuth [deg from grid north] near the profile.
 
     The gradient is taken on the DEM and averaged over the cells the
@@ -179,7 +183,8 @@ def slope_azimuth(surf, bx, by):
     gx, gy = np.nanmean(dzdx[iy, ix]), np.nanmean(dzdy[iy, ix])
     if not np.isfinite(gx) or not np.isfinite(gy) or (gx == 0 and gy == 0):
         return np.nan
-    return np.degrees(np.arctan2(-gx, -gy)) % 360.0      # downslope
+    # grid azimuth of the downslope vector, then to TRUE north
+    return (np.degrees(np.arctan2(-gx, -gy)) + gn_deg) % 360.0
 
 
 def read_speed(bx, by):
@@ -199,13 +204,13 @@ def read_speed(bx, by):
     iy = np.clip(np.searchsorted(y[::-1], by), 0, y.size - 1)
     iy = y.size - 1 - iy
     sp = v[iy, ix]
-    az = np.degrees(np.arctan2(vx[iy, ix], vy[iy, ix])) % 360.0
+    az = np.degrees(np.arctan2(vx[iy, ix], vy[iy, ix])) % 360.0   # GRID
     return dict(field=(x, y, v), speed=sp, az=az)
 
 
 # -------------------------------------------------------------------- main
 def main():
-    ct = read_ct(FRAME)
+    ct = read_section(FRAME)
     fr = read_fringes(FRAME)
     blat, blon = ct['lat'], ct['lon']
     cfg_key = None
@@ -243,16 +248,21 @@ def main():
 
     dom_x = np.r_[bx, ctx_x]
     dom_y = np.r_[by, ctx_y]
+    gn_site = np.nanmedian(qs.grid_north_az(blat, blon, cfg=cfg))
     sp = read_speed(bx, by)
     sp_dom = read_speed(dom_x, dom_y)
     dom_max = np.nanmax(sp_dom['speed']) if sp_dom is not None else np.nan
     use_speed = sp is not None and np.isfinite(dom_max) and dom_max > SPEED_MIN
 
-    # depth-averaged fabric axis over the trusted band, per the units note
-    zw, tg = ct['zw'], ct['th_geo']
-    n = min(zw.size, tg.size)
-    m = (zw[:n] >= BAND[0]) & (zw[:n] <= BAND[1]) & np.isfinite(tg[:n])
-    axis_deg = axis_mean_deg(tg[:n][m])
+    # Depth-averaged axis PER BLOCK, so the direction varies along the line.
+    th = ct['theta']
+    if th.shape[0] != ct['z'].size:
+        th = th.T                                   # -> (nz, nblk)
+    zb = (ct['z'] >= BAND[0]) & (ct['z'] <= BAND[1])
+    a = np.deg2rad(th[zb, :])
+    with np.errstate(invalid='ignore'):
+        axis_blk = np.degrees(np.angle(np.nanmean(np.exp(2j * a), axis=0))) / 2 % 180
+    axis_deg = axis_mean_deg(axis_blk)              # frame summary
 
     fig = plt.figure(figsize=(16.2, 8.6), layout='constrained')
     gsp = GridSpec(3, 2, figure=fig, width_ratios=[1.0, 1.66])
@@ -271,7 +281,7 @@ def main():
     y0, y1 = (cym - half) * 1e3, (cym + half) * 1e3
 
     surf = read_surface(x0, x1, y0, y1, qs.site_epsg(cfg))
-    slope_az = slope_azimuth(surf, bx, by)
+    slope_az = slope_azimuth(surf, bx, by, gn_site)
 
     if use_speed:
         gx, gy, gv = sp['field']
@@ -284,7 +294,7 @@ def main():
                           pad=0.06, aspect=32)
         cb.set_label('surface speed, log$_{10}$ m yr$^{-1}$   '
                      '(domain max %.0f)' % dom_max, fontsize=9)
-        flow_az = np.nanmedian(sp['az'])
+        flow_az = (np.nanmedian(sp['az']) + gn_site) % 360.0
     else:
         flow_az = np.nan
         if surf is not None:
@@ -312,8 +322,9 @@ def main():
     span = 2 * half
     if np.isfinite(axis_deg):
         halfbar = 0.030 * span
-        for i in np.linspace(0, blat.size - 1, 5).astype(int):
-            a = np.deg2rad(axis_deg - gnaz[i])
+        for i in np.linspace(0, blat.size - 1, 7).astype(int):
+            ab = axis_blk[i] if np.isfinite(axis_blk[i]) else axis_deg
+            a = np.deg2rad(ab - gnaz[i])
             dx, dy = halfbar * np.sin(a), halfbar * np.cos(a)
             for lw_, col, zo in ((3.8, 'white', 3), (2.0, '#c0392b', 4)):
                 axm.plot([bx[i] / 1e3 - dx, bx[i] / 1e3 + dx],
@@ -340,22 +351,7 @@ def main():
                      zorder=9)
         # at the arrow TIP: at its tail the label sat under the arrow and
         # the profile's end marker
-        axm.text(px + 1.06 * L * np.sin(a), py + 1.06 * L * np.cos(a),
-                 ' %s' % ref_name, fontsize=8.6, color='#2a78d6', zorder=9,
-                 ha='left', va='center')
 
-    lines = ['fabric axis %.0f$^\\circ$ (true)' % axis_deg]
-    if np.isfinite(slope_az):
-        lines.append('slope %.0f$^\\circ$  ->  axis-to-slope %.0f$^\\circ$'
-                     % (slope_az, axis_to_direction_deg(axis_deg, slope_az)))
-    if np.isfinite(flow_az):
-        lines.append('flow %.0f$^\\circ$  ->  axis-to-flow %.0f$^\\circ$'
-                     % (flow_az, axis_to_direction_deg(axis_deg, flow_az)))
-    else:
-        lines.append('no flow reference: ice too slow here')
-    axm.text(0.03, 0.03, '\n'.join(lines), transform=axm.transAxes,
-             fontsize=9.0, color=INK, va='bottom', linespacing=1.6,
-             bbox=dict(fc='white', ec='0.8', alpha=0.92, pad=3.0))
     axm.set_xlim(x0 / 1e3, x1 / 1e3)
     axm.set_ylim(y0 / 1e3, y1 / 1e3)
     axm.set_aspect('equal')
@@ -387,8 +383,6 @@ def main():
         axf.set_title('wrapped HH$-$VV interferogram, value darkened by '
                       'coherence', fontsize=10, color=INK)
     else:
-        axf.text(0.5, 0.5, 'no polarimetric product mirrored for this frame',
-                 transform=axf.transAxes, ha='center', color=MUTED)
         axf.set_xlim(dist_b.min(), dist_b.max())
 
     # ---- strength
@@ -402,30 +396,18 @@ def main():
     cbd.set_label(r'$\Delta\lambda$', fontsize=9)
     axd.set_ylim(1600, 0)
     axd.set_ylabel('depth (m)')
-    axd.set_title(r'fabric strength $\Delta\lambda$, axis held through the '
-                  'column', fontsize=10, color=INK)
+    axd.set_title(r'fabric strength $\Delta\lambda$', fontsize=10, color=INK)
 
     # ---- axis against the reference, along the profile
     if np.isfinite(ref_az) and np.isfinite(axis_deg):
-        gn_b = qs.grid_north_az(blat, blon, cfg=cfg)
-        ang = axis_to_direction_deg(axis_deg, ref_az + (gn_b - np.nanmedian(gn_b)))
+        ang = axis_to_direction_deg(axis_blk, ref_az)
         axa.plot(dist_b, ang, '-', color='#4a3aa7', lw=2.0)
         axa.axhline(45, color=MUTED, lw=1.0, ls='--')
         axa.set_ylim(0, 90)
         axa.set_yticks([0, 30, 45, 60, 90])
         axa.set_ylabel('deg')
-        # 0 deg is PARALLEL: the fold returns the angle between the axis
-        # and the reference, so the bottom of this panel is alignment.
-        axa.text(0.012, 0.08, 'parallel', transform=axa.transAxes,
-                 fontsize=8.2, color=MUTED, va='bottom')
-        axa.text(0.012, 0.92, 'perpendicular', transform=axa.transAxes,
-                 fontsize=8.2, color=MUTED, va='top')
-        axa.set_title('depth-uniform fabric axis against %s direction   '
-                      '(flat where one axis is held over the whole segment)'
-                      % ref_name, fontsize=9.6, color=INK)
-    else:
-        axa.text(0.5, 0.5, 'no reference direction available',
-                 transform=axa.transAxes, ha='center', color=MUTED)
+        axa.set_title('fabric axis against %s direction (%.0f$^\\circ$ true)'
+                      % (ref_name, ref_az), fontsize=10, color=INK)
     axa.set_xlabel('along-segment distance (km)')
 
     # ---- start / stop markers above the right-hand panels
@@ -437,7 +419,8 @@ def main():
                  mew=1.8, transform=ax_.get_xaxis_transform(), clip_on=False,
                  zorder=10)
 
-    fig.suptitle('%s  -  %s' % (FRAME, cfg.get('title', cfg_key or '')),
+    fig.suptitle('%s  -  %s   (fabric axis free to vary along the line)'
+                 % (FRAME, cfg.get('title', cfg_key or '')),
                  fontsize=13, color=INK)
     fn = os.path.join(OUT, 'segment_scene_%s.png' % FRAME)
     fig.savefig(fn, dpi=180, facecolor='white')
