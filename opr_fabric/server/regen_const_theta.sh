@@ -9,11 +9,15 @@
 # pre-review +ptt package. The review found two independent defects in the
 # orientation error bars - replicates gated out for an artefact of grid
 # width, and a delete-one standard error that is unbounded on a circular
-# quantity - and 24% of segments on disk report a theta_0 standard error
-# above 180 degrees, which is impossible for an axis. Those numbers cannot
-# be quoted, and products from two package versions cannot sit side by
-# side in one figure. The caches make this cheap for every site but
-# EastGRIP.
+# quantity. NOTE: the original justification here - that 24% of segments
+# on disk reported a standard error above 180 degrees - was a units error
+# in the diagnostic (rad2deg applied to a field stored in degrees). Read
+# correctly the old error bars have a median of 1.6 deg and are healthy,
+# and the point estimates are identical between packages (measured on
+# 20250108_02_001: dlam 0.0609 both, axis 20.9 deg both). This rebuild is
+# therefore OPTIONAL - it only adds the newer diagnostic fields
+# (se_theta_sat, se_theta_r) - and costs about 44 hours because the
+# jackknife runs 11 replicates per segment. Not launched.
 #
 # The point estimates should NOT move: the review was directed to leave
 # the full-grid theta_0 and dlam path unchanged. Whether it did is

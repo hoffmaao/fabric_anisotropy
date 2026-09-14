@@ -43,8 +43,10 @@ function J = quadpolJackknife(Msub, nsub, z, os, ref, opts)
 % replicate pooled a different window set, and a segment where enough fell
 % below the floor returned theta_const = NaN into th_c_rep and so into
 % se_theta_c. MEASURED across the 35 constant-orientation frames on disk
-% before the handoff: median se_theta 79 deg, 64% of segments above the
-% 52 deg circular-uniform SD (i.e. no information at all) and 24% above
+% before the handoff, a measurement later found to have applied rad2deg
+% to a field already stored in degrees: read correctly the median se_theta
+% was about 1.6 deg, not 79, and nothing sat above the circular SD. The
+% bound below is kept for the structural reason, not because
 % 180 deg, which is impossible for a quantity defined modulo 180, while
 % the full fits over the same segments were healthy (median pooled
 % contrast 0.20 against a 0.05 gate).

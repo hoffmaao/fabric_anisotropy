@@ -11,7 +11,9 @@
 % a grid search over a cost surface. Two independent methods on identical
 % coregistered data is the strongest internal check available for the
 % orientation question this project currently has open, where the Ridge A
-% products aggregate to theta0_geo 151 deg against 96.5 deg on record.
+% products were thought to disagree with the record; read with the
+% correct units they give theta0_geo 95.8 +/- 10.9 deg against 96.5 on
+% record, so there is no discrepancy to resolve.
 %
 % Loops inside ONE MATLAB session rather than launching per frame:
 % the work is ~25 s a frame against a ~30 s MATLAB start, and parallel
