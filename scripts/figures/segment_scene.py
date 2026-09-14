@@ -263,8 +263,14 @@ def main():
     # a domain rule exists to prevent.
     ctx_tracks = []
     ctx_x, ctx_y = np.array([]), np.array([])
-    for fn in sorted(glob.glob(os.path.join(SCAR, 'quadpol_section_*_ct.mat'))):
-        tag = os.path.basename(fn)[16:-7]
+    # Context from the FREE products. Globbing the _ct ones drew 2 tracks at
+    # Thwaites instead of 18, because Thwaites is deliberately excluded from
+    # the constant-orientation batch and keeps only 3 control frames there.
+    for fn in sorted(glob.glob(os.path.join(SCAR, 'quadpol_section_*.mat'))):
+        base = os.path.basename(fn)
+        if base.endswith('_ct.mat') or '_z' in base:
+            continue
+        tag = base[16:-4]
         if tag == FRAME:
             continue
         try:
