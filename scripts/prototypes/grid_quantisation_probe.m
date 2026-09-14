@@ -31,8 +31,9 @@
 % What DOES limit the answers, all measured elsewhere in this repo:
 % decorrelation (at EastGRIP dlam tracks coherence at +0.54 down the
 % column), the constant-eigenframe assumption (6.9x misfit on a column
-% whose axis turns 60 degrees, and a 42.6 degree median gap between the
-% held and free axes), the antenna pedestal (which antenna-locks every
+% whose axis turns 60 degrees; the once-reported 42.6 degree gap between
+% held and free axes was a units error and is 1.7 degrees), the antenna
+% pedestal (which antenna-locks every
 % power-only route on this system), and a linearised posterior that runs
 % about 2x optimistic.
 %

@@ -28,9 +28,13 @@ function [s, m, Rbar, sat] = circAxisSE(th, min_rep)
 % deg at m = 22. It reports MORE than a half turn of uncertainty for a
 % quantity defined modulo a half turn, and it does so at replicate scatter
 % barely above (m = 11) or even below (m = 22) the circular-uniform level.
-% MEASURED on the 35 constant-orientation products on disk: median 79 deg,
-% 64% of segments above the 52 deg uniform SD, 24% above 180 deg, maximum
-% 1290 deg, while the same segments' full-data fits were healthy.
+% A CORRECTION TO THE RECORD. An earlier version of this comment claimed
+% the products on disk showed a median SE of 79 deg with 24% above 180 deg.
+% That measurement applied rad2deg to a field the pipeline already stores
+% in degrees, inflating every value 57x. Read correctly the same products
+% show a median SE of about 1.6 deg and a maximum near 6.5 deg - healthy.
+% The structural point below still holds (the delete-one sum IS unbounded
+% on a circle), but it was never observed to bite in the shipped data.
 %
 % WHAT THIS COMPUTES INSTEAD. The dispersion comes from a RESULTANT, which
 % is bounded in [0, 1] by construction, so the statistic cannot exceed its

@@ -35,7 +35,9 @@ function out = nymandTwoStep(obs, z, opts)
 % Thwaites zones measured to have lost their fringes - and its strength
 % step returns an exact posterior. It pays for that by ASSUMING a
 % constant eigenframe, which is an assumption this repo has measured to
-% be consequential: the held axis sits a median of 42.6 degrees from the
+% be consequential. (An earlier claim here that the held axis sits 42.6
+% degrees from the free-window axis was a units error - it is 1.7 degrees
+% median, 8.8 at p90 - so the assumption is mild at Ridge A.) The held axis sits a median of 1.7 degrees from the
 % free-window axis across 118 products, and that disagreement accounts
 % for most of a one-third reduction in dlam. Do not read this estimator's
 % strength against a free-axis one without accounting for that.
