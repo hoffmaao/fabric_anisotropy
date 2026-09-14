@@ -109,6 +109,39 @@ def read_section(frame):
     return out
 
 
+def read_theta_se(frame, zband):
+    """Jackknife standard error of the fabric direction, per segment.
+
+    The FREE-axis product carries no theta uncertainty - only q_theta, an
+    identifiability contrast. The constant-orientation product does:
+    ls_se_theta_seg is the delete-one jackknife over heading sub-blocks.
+    So the band drawn here is the inversion's own direction uncertainty,
+    measured on the HELD axis and applied to the free one, which is the
+    honest caveat: it is the sampling spread of the axis this survey
+    geometry can resolve, not a per-block error on each free estimate.
+
+    Returns (segment centre distance [km], SE [deg]) or None.
+    """
+    fn = os.path.join(SCAR, 'quadpol_section_%s_ct.mat' % frame)
+    if not os.path.exists(fn):
+        return None
+    with h5py.File(fn) as f:
+        r = f['res']
+        if 'ls_se_theta_seg' not in r or 'ls_seg_x' not in r:
+            return None
+        se = np.array(r['ls_se_theta_seg'])          # degrees
+        sx = np.array(r['ls_seg_x']).ravel() / 1e3   # m -> km
+        zw = np.array(r['ls_zw']).ravel()
+    if se.shape[0] == zw.size:
+        se = se.T                                    # -> (nseg, nwin)
+    m = (zw >= zband[0]) & (zw <= zband[1])
+    with np.errstate(invalid='ignore'):
+        v = np.nanmedian(se[:, m], axis=1)
+    if not np.isfinite(v).any():
+        return None
+    return sx, v
+
+
 def read_fringes(frame):
     """Wrapped HH-VV phase, in the format the existing scenes draw."""
     seg = frame[:11]
@@ -338,16 +371,13 @@ def main():
     if np.isfinite(ref_az):
         gnm = np.nanmedian(gnaz)
         a = np.deg2rad(ref_az - gnm)
-        # offset perpendicular to the track so the arrow sits next to it
-        tx, ty = bx[-1] - bx[0], by[-1] - by[0]
-        tn = np.hypot(tx, ty) or 1.0
-        ox, oy = -ty / tn, tx / tn
-        px = (np.nanmean(bx) + 0.10 * span * 1e3 * ox) / 1e3
-        py = (np.nanmean(by) + 0.10 * span * 1e3 * oy) / 1e3
-        L = 0.14 * span
+        # Top right of the map, in axes coordinates, so it reads as a
+        # direction key rather than as something measured at that spot.
+        px, py, L = 0.86, 0.88, 0.10
         axm.annotate('', xy=(px + L * np.sin(a), py + L * np.cos(a)),
-                     xytext=(px, py),
-                     arrowprops=dict(arrowstyle='-|>', color='#2a78d6', lw=2.4),
+                     xytext=(px, py), xycoords='axes fraction',
+                     textcoords='axes fraction',
+                     arrowprops=dict(arrowstyle='-|>', color='black', lw=2.4),
                      zorder=9)
         # at the arrow TIP: at its tail the label sat under the arrow and
         # the profile's end marker
@@ -401,13 +431,29 @@ def main():
     # ---- axis against the reference, along the profile
     if np.isfinite(ref_az) and np.isfinite(axis_deg):
         ang = axis_to_direction_deg(axis_blk, ref_az)
+        tse = read_theta_se(FRAME, BAND)
+        se_note = ''
+        if tse is not None:
+            sx, sv = tse
+            # nearest segment centre along track, so the band steps where
+            # the segments do
+            idx = np.argmin(np.abs(dist_b[:, None] - sx[None, :]), axis=1)
+            se_b = sv[idx]
+            axa.fill_between(dist_b, np.clip(ang - se_b, 0, 90),
+                             np.clip(ang + se_b, 0, 90),
+                             color='#4a3aa7', alpha=0.22, lw=0)
+            # State the magnitude: at half a degree the band is a hairline
+            # on a 0-90 axis, and a reader should know that is because the
+            # direction is well determined, not because nothing was drawn.
+            se_note = ', SE %.1f$^\\circ$' % np.nanmedian(se_b)
         axa.plot(dist_b, ang, '-', color='#4a3aa7', lw=2.0)
         axa.axhline(45, color=MUTED, lw=1.0, ls='--')
         axa.set_ylim(0, 90)
         axa.set_yticks([0, 30, 45, 60, 90])
         axa.set_ylabel('deg')
-        axa.set_title('fabric axis against %s direction (%.0f$^\\circ$ true)'
-                      % (ref_name, ref_az), fontsize=10, color=INK)
+        axa.set_title('fabric axis against %s direction (%.0f$^\\circ$ true); '
+                      'band is the jackknife direction standard error%s'
+                      % (ref_name, ref_az, se_note), fontsize=9.6, color=INK)
     axa.set_xlabel('along-segment distance (km)')
 
     # ---- start / stop markers above the right-hand panels
