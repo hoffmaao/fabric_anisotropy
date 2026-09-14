@@ -456,6 +456,9 @@ def main():
                       % (ref_name, ref_az, se_note), fontsize=9.6, color=INK)
     axa.set_xlabel('along-segment distance (km)')
 
+    # ---- one shared extent: the profile itself
+    axf.set_xlim(dist_b[0], dist_b[-1])
+
     # ---- start / stop markers above the right-hand panels
     for ax_ in (axf, axd, axa):
         ax_.plot(dist_b[0], 1.0, 'o', mfc='white', mec='black', ms=9,
