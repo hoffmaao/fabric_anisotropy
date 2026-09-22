@@ -20,12 +20,15 @@
 % MATLAB launches on this node have hit licence-server failures.
 %
 % Variables expected in the caller (site_chain style):
-%   fab_root   work root, e.g. /kucresis/scratch/hoffmana_sta/fabric
+%   fab_root   work root (default: derived by fabric_paths, like every
+%              other server script)
 %   tags       cellstr of frame tags, or leave unset for FILTER below
 %   filter     substring the cache name must contain (default '2025', the
 %              Ridge A season)
 % Optional: nr (range looks, 15), psi_step_deg (2), fc (750e6).
-if ~exist('fab_root', 'var'), fab_root = '/kucresis/scratch/hoffmana_sta/fabric'; end
+[code_root, work_root] = fabric_paths();
+addpath(code_root);   % +ptt
+if ~exist('fab_root', 'var'), fab_root = work_root; end
 if ~exist('filter', 'var'), filter = '2025'; end
 if ~exist('nr', 'var'), nr = 15; end
 if ~exist('psi_step_deg', 'var'), psi_step_deg = 2; end

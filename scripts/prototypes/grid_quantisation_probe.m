@@ -37,7 +37,7 @@
 % power-only route on this system), and a linearised posterior that runs
 % about 2x optimistic.
 %
-if ~exist('ptt_root','var'), ptt_root = '/kucresis/scratch/hoffmana_sta/fabric/tmp_ptt'; end
+if ~exist('ptt_root','var'), ptt_root = fileparts(fileparts(fileparts(mfilename('fullpath')))); end % this checkout's root, holding +ptt
 addpath(ptt_root);
 rng(5);
 fc=750e6; z=(10:10:1200).'; Nx=400; DL=0.05; TH=deg2rad(35);

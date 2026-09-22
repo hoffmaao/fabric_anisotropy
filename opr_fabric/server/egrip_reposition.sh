@@ -22,7 +22,10 @@ FAB_DIR=$(cd "$(dirname "$0")" && pwd) || exit 1
 FAB=$(fabric_work_root "$FAB_DIR") || exit 1
 ML=${MATLAB_BIN:-/opt/sw/matlab/2024b/bin/matlab}
 ROOT=/cresis/dataproducts/opr_data/accum/2024_Greenland_Ground2
-REFROOT=/cresis/users/hoffmana_sta/scratch/opr_support_egrip/opr_data/accum/2024_Greenland_Ground2
+# The repaired trajectories are wherever egrip_records_resync.m wrote them:
+# the running user's private support tree, so the same HOME-relative root.
+REFROOT=${REFROOT:-$HOME/scratch/opr_support_egrip/opr_data/accum/2024_Greenland_Ground2}
+[ -d "$REFROOT" ] || { echo "no repaired trajectories at $REFROOT - run egrip_records_resync.m first, or set REFROOT" >&2; exit 1; }
 SEGS="20240620_01 20240621_01 20240622_01"
 QP="$FAB/stages/quadpol"
 mkdir -p "$FAB/invert_logs" "$QP/null_traj_products"

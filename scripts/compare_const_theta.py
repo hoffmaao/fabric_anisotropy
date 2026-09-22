@@ -35,7 +35,7 @@ Three numbers decide it, and they are not interchangeable:
 Runs where the products live (mem1), since the products are HDF5 and stay
 server-side:
 
-  python3 scripts/compare_const_theta.py [stage_dir]
+  python3 scripts/compare_const_theta.py [stage_dir]   # default <work>/stages/quadpol
 """
 import os
 import sys
@@ -47,7 +47,11 @@ try:
 except ImportError:
     sys.exit("needs h5py; run this where the products live (mem1)")
 
-DEFAULT_STAGE = "/kucresis/scratch/hoffmana_sta/fabric/stages/quadpol"
+# The work root the server scripts use (opr_fabric/server/fabric_paths.m):
+# FABRIC_ROOT if set, else the parent of the checkout this file sits in.
+_WORK = os.environ.get("FABRIC_ROOT") or os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DEFAULT_STAGE = os.path.join(_WORK, "stages", "quadpol")
 Z_BAND = (200.0, 1500.0)     # quotable fabric starts ~200 m (co-pol reference offset)
 
 # Verdict thresholds on the contrast-weighted per-window spread. PROVISIONAL:
