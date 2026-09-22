@@ -228,7 +228,12 @@ grid(h_axes(fig_idx),'on');
 fig_idx = 2; clf(h_fig(fig_idx));
 if dock_en, set(h_fig(fig_idx),'WindowStyle','docked'); end
 h_axes(fig_idx) = axes('parent',h_fig(fig_idx));
-plot(h_axes(fig_idx), 1e9*dtau_blk, (pol.Time - mean(Surface,'omitnan'))*1e6);
+% Draw only the cells the inversion uses: below min_coverage the block
+% average is a handful of pixels snapped to whole fringes, which drew as
+% horizontal jumps at the bottom of the record
+dtau_plot = dtau_blk;
+dtau_plot(coverage_blk < param.fabric.min_coverage) = NaN;
+plot(h_axes(fig_idx), 1e9*dtau_plot, (pol.Time - mean(Surface,'omitnan'))*1e6);
 set(h_axes(fig_idx),'YDir','reverse');
 title(h_axes(fig_idx),sprintf('Block-averaged \\Delta\\tau %s',regexprep(frm_id,'_','\\_')));
 xlabel(h_axes(fig_idx),'\Delta\tau (ns)');
