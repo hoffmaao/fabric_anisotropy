@@ -17,7 +17,7 @@ different things.
 | Method | dtau from the unwrapped interferogram phase, with the coregistration offsets fixing the sign and the whole-fringe ambiguity (`ptt.blendTraveltime`), averaged over blocks of 1000 traces (`ptt.blockAverage`). It is then inverted for dlam in one smoothness-regularized joint solve through the Maxwell-Garnett firn column of Rathmann (2026) (`ptt.invertBlocks`). | a least-squares fit of the whole coherence field to the exact single-column birefringence model (`ptt.quadpolFabricLS`). It uses CRB coherence weights, fits a nuisance for the antenna-frame pedestal, and never unwraps; where the data cannot decide, it returns NaN. The fabric axis comes from a frame pass over ~2 km segments (`ptt.quadpolFrameTheta`), and each ~125 m block is fitted on that axis. |
 | Gives | dlam = lam_sec - lam_ref, the horizontal fabric contrast between the product's two FIXED synthesized axes, per depth interval and block. It does NOT estimate orientation. | the fabric orientation theta0 (geographic, mod 180) AND the contrast dlam, per depth window and block |
 | Output | `CSARP_fabric_joint/<day_seg>/Data_<frame>.mat` plus `_dlam.jpg` and `_dtau.jpg`, in the OPR season tree | `stages/quadpol/quadpol_section_<frame>.mat` under your work root |
-| Cost | ~15 s per frame (debug); a few minutes under slurm, including the one-off compile | ~1 h per Ridge A frame from its coregistration cache, plus ~50 min to build the cache the first time |
+| Cost | ~15 s per frame (debug); a few minutes under slurm, including the ~3 min compile on every launch | ~1 h per Ridge A frame from its coregistration cache, plus ~50 min to build the cache the first time |
 
 The quad-pol pipeline also runs the published Ershadi et al. (2022) chain
 (`ptt.ershadiFabric`) on the same data and saves it alongside, **for
@@ -103,9 +103,11 @@ section used.
 your MATLAB session, which is fine for a season at ~15 s a frame. To use the
 cluster instead, switch the `if 0` above `cluster.type = 'slurm'` to
 `if 1`. OPR then compiles `fabric_task` into your `cluster_job` as it does
-for any other task. The compile runs `mcc` through the shell, and a login
-shell on mem1 does not have MATLAB's `bin/` on `PATH`, so start MATLAB with
-it there, or the run stops at `mcc: command not found`:
+for any other task. It recompiles on every slurm launch (about 3 min),
+because `cluster_job` is shared with every other OPR task. The compile runs
+`mcc` through the shell, and a login shell on mem1 does not have MATLAB's
+`bin/` on `PATH`, so start MATLAB with it there, or the run stops at
+`mcc: command not found`:
 
 ```sh
 export PATH=/opt/sw/matlab/2024b/bin:$PATH
