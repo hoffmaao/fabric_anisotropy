@@ -102,14 +102,21 @@ mount points, not part of the work tree, and each season declares its own
 
 ### Standing up a work root
 
-The CReSIS machines have no GitHub credentials, so ship the history as a
-bundle rather than cloning from the remote:
+The repo is public, so the CReSIS machines clone it over HTTPS with no
+GitHub credentials (verified from mem1, 22 Sep 2026):
+
+    mkdir -p <work>/stages/quadpol
+    git clone https://github.com/hoffmaao/fabric_anisotropy.git <work>/code
+
+A clone that lives somewhere else, such as beside your OPR scripts as in
+[`cresis_tutorial.md`](cresis_tutorial.md), serves just as well: export
+`FABRIC_ROOT=<work>` and the scripts take the work root from there instead
+of from the clone's parent. For a branch that has not been pushed, ship the
+history as a bundle:
 
     git bundle create /tmp/fabric.bundle <branch>            # locally
     cat /tmp/fabric.bundle | ssh mem1 'cat > ~/fabric.bundle' # ship
-    ssh mem1
-    mkdir -p <work>/stages/quadpol
-    git clone --branch <branch> ~/fabric.bundle <work>/code
+    git clone --branch <branch> ~/fabric.bundle <work>/code   # on mem1
 
 The `mkdir` is what makes `<work>` a work root: it is the `stages/` the
 launchers confirm before they will run, so create it first - without it they
