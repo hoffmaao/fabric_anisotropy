@@ -12,6 +12,12 @@ To Infer ice crystal orientation fabric from polarimetric radar traveltime and r
 | `docs/` | reference detail (below) |
 | `figs/` | figure output, gitignored |
 
+**Running it on the CReSIS servers:** start with
+[`docs/cresis_tutorial.md`](docs/cresis_tutorial.md). It covers cloning,
+running `opr_fabric/run_fabric.m`, pointing it at your data, the quad-pol
+pipeline, and which method each entry point runs. A fresh clone runs as-is
+under any account.
+
 Two reference pages carry the detail that used to live in this file:
 
 - [`docs/method.md`](docs/method.md) - every `+ptt` function, and choice that informed the fabric algorthim. Each function also has a full header of its own (`help ptt.<name>`).

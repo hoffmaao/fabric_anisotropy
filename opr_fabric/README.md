@@ -68,14 +68,23 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
 
 ## Deployment on the CReSIS servers
 
-- `fabric.m`, `fabric_task.m` -> `opr/matlab/processing/` (or keep on your
-  personal path); `run_fabric.m` -> your `run_opr` repo
-  (`gRadar.path_override`), edited per season.
-- `+ptt` (from the project root) must be on the MATLAB path, e.g. copy to
-  `opr/matlab/+ptt` or your `run_opr` repo.
-- For compiled cluster modes, add `{'fabric_task.m' 2}` to
-  `gRadar.cluster.hidden_depend_funs` in startup.m and re-run
-  cluster_compile. `cluster.type = 'debug'` needs none of that.
+- Nothing is deployed: clone the repo anywhere (e.g. beside your `opr/`
+  and `run_opr/`) and `run('<clone>/opr_fabric/run_fabric.m')` after your
+  OPR startup. The script puts this checkout's `+ptt` and `fabric.m` /
+  `fabric_task.m` at the front of the path, and runs the chain it creates
+  (`run_chain = false` for OPR's save-only behavior). Step-by-step:
+  [`docs/cresis_tutorial.md`](../docs/cresis_tutorial.md).
+- Do not copy `fabric.m`, `fabric_task.m` or `+ptt` into `opr/matlab` or
+  `run_opr`: a copy there goes stale and is exactly what shadowed code
+  looks like.
+- `cluster.type = 'slurm'` compiles `fabric_task` into your `cluster_job`
+  through `cluster_compile`, as for any OPR task. `cluster.type = 'debug'`
+  (the default in `run_fabric.m`) needs nothing.
+- `fabric.m` checks each frame's input product before submitting: frames
+  with none are skipped, and if none of the requested frames has one it
+  errors with the season's `CSARP_polarimetric*` products listed, since a
+  wrong `fabric.in_path` would otherwise produce tasks that complete with
+  no output.
 - Param spreadsheet: add a `fabric` worksheet (row 1 field names, row 2
   type codes, one row per segment matching the `cmd` sheet order), e.g.
   `out_path`(t), `in_path`(t), `fc`(r), `block_size`(r),
