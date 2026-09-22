@@ -7,8 +7,8 @@
 %
 % MATLAB here is the CReSIS one - the local licence has been failing with
 % error 5001 - so this normally runs on mem1 and the .mat files come back.
-% point this at the repo (or its server mirror) holding +ptt
-if ~exist('ptt_root','var'), ptt_root = '/kucresis/scratch/hoffmana_sta/fabric/tmp_ptt'; end
+% ptt_root defaults to the checkout this file sits in; out_dir to the cwd
+if ~exist('ptt_root','var'), ptt_root = fileparts(fileparts(fileparts(mfilename('fullpath')))); end % this checkout's root, holding +ptt
 addpath(ptt_root);
 rng(11);
 fc = 750e6;
@@ -33,7 +33,7 @@ o = ptt.traveltimeFabricML(dt_obs, z, struct('fc', fc, 'sigma_ns', S_NS, ...
 o_stiff = ptt.traveltimeFabricML(dt_obs, z, struct('fc', fc, 'sigma_ns', S_NS, ...
   'prior', [0.03 0.05 600], 'res_min', 0.15));
 
-if ~exist('out_dir','var'), out_dir = ptt_root; end
+if ~exist('out_dir','var'), out_dir = pwd; end
 save(fullfile(out_dir,'intuition.mat'), ...
   'z','dl_true','dt_true','dt_obs','dl_naive','S_NS','k', ...
   '-v7');

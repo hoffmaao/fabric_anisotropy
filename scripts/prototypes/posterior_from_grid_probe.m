@@ -44,7 +44,7 @@
 % If log det M is flat in theta_0 the two agree up to a constant and the
 % grid is already a posterior; if it is not, a Bayesian treatment must
 % carry it.
-if ~exist('ptt_root','var'), ptt_root='/kucresis/scratch/hoffmana_sta/fabric/tmp_ptt'; end
+if ~exist('ptt_root','var'), ptt_root = fileparts(fileparts(fileparts(mfilename('fullpath')))); end % this checkout's root, holding +ptt
 addpath(ptt_root);
 rng(3);
 fc=750e6; z=(400:2:900).'; psi=(0:3:177)*pi/180;
