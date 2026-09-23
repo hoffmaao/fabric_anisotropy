@@ -41,8 +41,10 @@ LINES = [
      r"\ +\ i\,\mu\,\sin\delta$", 1.24),
     (r"$D \;=\; 1\ -\ \frac{1-\mu^{2}}{2}\,\left(1-\cos\delta\right)$", 1.24),
     (r"$\delta(z) \;=\; \delta_0\ +\ \delta'\,(z-z_c)$", 1.06),
-    (r"$P(\psi) \;=\; (a_1+i\,a_2)\,\sin 2\psi\ +\ a_3\,\sin^{2} 2\psi$", 1.06),
-    (r"$w(\psi,z) \;=\; \frac{|C|^{2}}{\max\left(1-|C|^{2},\ 0.02\right)}$", 1.24),
+    (r"$P(\psi) \;=\; (a_1+i\,a_2)\,\sin 2\psi"
+     r"\ +\ a_3\,\sin^{2} 2\psi$", 1.06),
+    (r"$w(\psi,z) \;=\; "
+     r"\frac{|C|^{2}}{\max\left(1-|C|^{2},\ 0.02\right)}$", 1.24),
     (r"$\Delta\lambda \;=\; \delta'\,/\,g,"
      r"\qquad g \;=\; \frac{2\pi f_c\,\Delta\varepsilon}{n\,c}$", 1.22),
     (r"$\delta' \,\geq\, 0,"
@@ -67,5 +69,6 @@ for (tex, size), gap in zip(LINES, gaps):
     y -= (gap / total) * 0.93
 
 fn = os.path.join(OUT, 'ls_equations.png')
-fig.savefig(fn, dpi=220, facecolor='white', bbox_inches='tight', pad_inches=0.35)
+fig.savefig(fn, dpi=220, facecolor='white', bbox_inches='tight',
+            pad_inches=0.35)
 print('wrote %s' % fn)

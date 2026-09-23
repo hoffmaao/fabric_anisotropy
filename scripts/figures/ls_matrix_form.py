@@ -41,7 +41,9 @@ MF = 'dejavuserif'
 fig = plt.figure(figsize=(13.4, 10.4))
 fig.patch.set_facecolor('white')
 ax = fig.add_axes([0, 0, 1, 1])
-ax.set_xlim(0, 100); ax.set_ylim(0, 100); ax.axis('off')
+ax.set_xlim(0, 100)
+ax.set_ylim(0, 100)
+ax.axis('off')
 
 
 def t(x, y, s, size=12, color=INK, ha='center', weight=None):
@@ -56,7 +58,8 @@ def box(cx, cy, w, h, face, ec=EDGE):
                                 zorder=1))
 
 
-t(50, 96.6, 'Separable nonlinear weighted least squares, by variable projection',
+t(50, 96.6,
+  'Separable nonlinear weighted least squares, by variable projection',
   16, INK, weight='bold')
 t(50, 92.8, 'the solve that returns fabric DIRECTION as well as strength '
   r'($\mathtt{ptt.quadpolFabricLS}$)', 11, MUTED)
@@ -89,7 +92,8 @@ cols = [r'$\mathrm{Re}\,H$', r'$s$', r'$0$', r'$q$',
         r'$\mathrm{Im}\,H$', r'$0$', r'$s$', r'$0$']
 for r_ in range(2):
     for c_ in range(4):
-        x = X0 + c_*CW; y = Y0 + (1-r_)*RH
+        x = X0 + c_*CW
+        y = Y0 + (1-r_)*RH
         ax.add_patch(Rectangle((x, y), CW, RH, facecolor='white',
                                edgecolor=EDGE, lw=0.9, zorder=2))
         t(x + CW/2, y + RH/2, cols[r_*4 + c_], 12.5)
@@ -133,7 +137,8 @@ t(50, 19.4, r'$J(m_n) \;=\; \tilde{d}^{T}\tilde{W}\tilde{d} \;-\; '
   r'\left(\Phi^{T}\tilde{W}\tilde{d}\right)^{T}'
   r'\left(\Phi^{T}\tilde{W}\Phi + \Lambda\right)^{-1}'
   r'\left(\Phi^{T}\tilde{W}\tilde{d}\right)$', 13.5)
-t(50, 15.0, r'$\hat{m}_n = \arg\min_{\,\Theta\,\times\,D_0\,\times\,D\prime} J,'
+t(50, 15.0, r'$\hat{m}_n = '
+  r'\arg\min_{\,\Theta\,\times\,D_0\,\times\,D\prime} J,'
   r'\qquad \delta\prime \geq 0,\qquad \gamma \in [0,\ 1.05]$', 12.5)
 
 # ------------------------------------------------------------------- output
@@ -145,5 +150,6 @@ t(70, 7.6, 'DIRECTION', 9.5, MUTED, weight='bold')
 t(70, 4.2, r'$\hat{\theta}_0$ , unique modulo $\pi$', 13)
 
 fn = os.path.join(OUT, 'ls_matrix_form.png')
-fig.savefig(fn, dpi=200, facecolor='white', bbox_inches='tight', pad_inches=0.3)
+fig.savefig(fn, dpi=200, facecolor='white', bbox_inches='tight',
+            pad_inches=0.3)
 print('wrote %s' % fn)

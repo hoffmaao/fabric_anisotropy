@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Compare the constant-axis (_ct) quad-pol products against the per-window ones.
+"""Compare the constant-axis (_ct) quad-pol products against the per-window
+ones.
 
 The _ct batch answers one question: does holding the fabric axis constant in
 depth, per along-track segment, describe these sites better than letting every
@@ -13,15 +14,15 @@ the two products identical when the block residual had moved by 0.05.
 
 Three numbers decide it, and they are not interchangeable:
 
-  th_spread_seg     Contrast-weighted circular SD of the per-window axis minima
-                    BEFORE the axis is held, per segment. This is the test of
-                    the ASSUMPTION. Small means the windows already agreed and
-                    holding them costs nothing; large means the column
-                    genuinely rotates and the held axis is an average of a
-                    rotation.
-  sec_resid_ls      Block fit residual. Holding an axis removes a free parameter
-                    per window, so the residual can only rise. How MUCH it
-                    rises is the price of the assumption.
+  th_spread_seg     Contrast-weighted circular SD of the per-window axis
+                    minima BEFORE the axis is held, per segment. This is the
+                    test of the ASSUMPTION. Small means the windows already
+                    agreed and holding them costs nothing; large means the
+                    column genuinely rotates and the held axis is an average
+                    of a rotation.
+  sec_resid_ls      Block fit residual. Holding an axis removes a free
+                    parameter per window, so the residual can only rise. How
+                    MUCH it rises is the price of the assumption.
   theta_const_q     Pooled contrast. Reports how sharply the pooled curve is
                     peaked, NOT whether the windows agreed - measured higher on
                     a rotating synthetic than a constant one. Never read it as
@@ -35,7 +36,8 @@ Three numbers decide it, and they are not interchangeable:
 Runs where the products live (mem1), since the products are HDF5 and stay
 server-side:
 
-  python3 scripts/compare_const_theta.py [stage_dir]   # default <work>/stages/quadpol
+  python3 scripts/compare_const_theta.py [stage_dir]
+      # default <work>/stages/quadpol
 """
 import os
 import sys
@@ -52,7 +54,8 @@ except ImportError:
 _WORK = os.environ.get("FABRIC_ROOT") or os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_STAGE = os.path.join(_WORK, "stages", "quadpol")
-Z_BAND = (200.0, 1500.0)     # quotable fabric starts ~200 m (co-pol reference offset)
+# quotable fabric starts ~200 m (co-pol reference offset)
+Z_BAND = (200.0, 1500.0)
 
 # Verdict thresholds on the contrast-weighted per-window spread. PROVISIONAL:
 # the synthetic in test_quadpol_const_theta gives 2 deg constant vs 25 deg
@@ -76,7 +79,8 @@ SITES = [
     ("20250112", "Ridge A"), ("20250113", "Ridge A"), ("20250115", "Ridge A"),
     ("20250117", "Ridge A"),
     ("20260106", "Eastwind"), ("20260107", "Eastwind"),
-    ("20260109", "Eastwind"), ("20260119", "Eastwind"), ("20260121", "Eastwind"),
+    ("20260109", "Eastwind"), ("20260119", "Eastwind"),
+    ("20260121", "Eastwind"),
 ]
 
 
@@ -88,7 +92,10 @@ def site_of(tag):
 
 
 def circ_mean_deg(th, w=None):
-    """Weighted circular mean of a mod-180 axis via the doubled angle. Never unwrap."""
+    """Weighted circular mean of a mod-180 axis via the doubled angle.
+
+    Never unwrap.
+    """
     th = np.asarray(th, float).ravel()
     w = np.ones_like(th) if w is None else np.asarray(w, float).ravel()
     g = np.isfinite(th) & np.isfinite(w) & (w > 0)
@@ -153,7 +160,8 @@ def read(fn):
         # free profile wandered before anything was held
         th_band = th_seg[:, mw]
         q_band = q_seg[:, mw]
-        depth_sd = np.nanmedian([circ_sd_deg(row) for row in th_band]) if th_band.size else np.nan
+        depth_sd = (np.nanmedian([circ_sd_deg(row) for row in th_band])
+                    if th_band.size else np.nan)
         spread = get(r, "th_spread_seg").ravel()
         held = get(r, "held_seg", 0).ravel()
         # uncertainty fields (products built with the jackknife / split-half):
@@ -187,27 +195,39 @@ def read(fn):
         if se_blk.shape[-1] != z.size and se_blk.size > 1:
             se_blk = se_blk.T
         return dict(
-            se_theta=np.nanmedian(se_th[:, mw]) if se_th.shape[-1] == zw.size else np.nan,
+            se_theta=(np.nanmedian(se_th[:, mw])
+                      if se_th.shape[-1] == zw.size else np.nan),
             se_theta_unres=(float(np.mean(sat[:, mw]))
-                            if sat.shape[-1] == zw.size and sat.size else np.nan),
+                            if sat.shape[-1] == zw.size and sat.size
+                            else np.nan),
             se_theta_n=(np.nanmedian(n_rep[:, mw])
-                        if n_rep.shape[-1] == zw.size and n_rep.size else np.nan),
-            se_dlam=np.nanmedian(se_dl[:, mw]) if se_dl.shape[-1] == zw.size else np.nan,
-            se_blk=np.nanmedian(se_blk[:, mz]) if se_blk.shape[-1] == z.size else np.nan,
+                        if n_rep.shape[-1] == zw.size and n_rep.size
+                        else np.nan),
+            se_dlam=(np.nanmedian(se_dl[:, mw])
+                     if se_dl.shape[-1] == zw.size else np.nan),
+            se_blk=(np.nanmedian(se_blk[:, mz])
+                    if se_blk.shape[-1] == z.size else np.nan),
             nseg=int(th_seg.shape[0]),
-            th=circ_mean_deg(th_band, np.where(np.isfinite(q_band), q_band, 0) + 1e-6),
+            th=circ_mean_deg(th_band,
+                             np.where(np.isfinite(q_band), q_band, 0) + 1e-6),
             depth_sd=depth_sd,
-            dlam=np.nanmedian(sec_dlam[:, mz]) if sec_dlam.size > 1 else np.nan,
-            dlam_deep=np.nanmedian(sec_dlam[:, deep]) if sec_dlam.size > 1 else np.nan,
-            resid=np.nanmedian(sec_res[:, mz]) if sec_res.size > 1 else np.nan,
-            finite=np.isfinite(sec_dlam[:, mz]).mean() if sec_dlam.size > 1 else np.nan,
-            spread=np.nanmedian(spread) if np.isfinite(spread).any() else np.nan,
+            dlam=(np.nanmedian(sec_dlam[:, mz])
+                  if sec_dlam.size > 1 else np.nan),
+            dlam_deep=(np.nanmedian(sec_dlam[:, deep])
+                       if sec_dlam.size > 1 else np.nan),
+            resid=(np.nanmedian(sec_res[:, mz])
+                   if sec_res.size > 1 else np.nan),
+            finite=(np.isfinite(sec_dlam[:, mz]).mean()
+                    if sec_dlam.size > 1 else np.nan),
+            spread=(np.nanmedian(spread)
+                    if np.isfinite(spread).any() else np.nan),
             n_held=int(np.nansum(held)),
         )
 
 
 DLAM_ISO = 0.01        # below this the windows carry no axis (dlam_min_theta)
-RESID_FAILS = 0.40     # block residual at which the single-column model is not fitting
+# block residual at which the single-column model is not fitting
+RESID_FAILS = 0.40
 
 
 def verdict(spr, dres, dlam, resid):
@@ -240,7 +260,8 @@ def verdict(spr, dres, dlam, resid):
 
 def main():
     stage = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_STAGE
-    ct_files = sorted(glob.glob(os.path.join(stage, "quadpol_section_*_ct.mat")))
+    ct_files = sorted(glob.glob(os.path.join(stage,
+                                             "quadpol_section_*_ct.mat")))
     if not ct_files:
         sys.exit("no _ct products in %s - has the batch run?" % stage)
 
@@ -259,38 +280,49 @@ def main():
         rows.append((site_of(tag), tag, a, b))
 
     print("band %.0f-%.0f m; th = contrast-weighted axis the blocks inherit; "
-          "sd_z = depth spread of the FREE segment profiles; spread = per-window "
+          "sd_z = depth spread of the FREE segment profiles; "
+          "spread = per-window "
           "minima spread before holding (_ct); resid/dlam/finite = block fits"
           % Z_BAND)
-    print("%-11s %-16s %4s %4s  %6s %6s %6s %5s  %6s  %6s %6s %+7s  %6s %6s  %5s %5s"
-          % ("site", "frame", "nseg", "held", "th_def", "th_ct", "dth", "sd_z",
-             "spread", "res_df", "res_ct", "dres", "dl_def", "dl_ct", "fin_d", "fin_c"))
+    print("%-11s %-16s %4s %4s  %6s %6s %6s %5s  %6s  "
+          "%6s %6s %+7s  %6s %6s  %5s %5s"
+          % ("site", "frame", "nseg", "held", "th_def", "th_ct", "dth",
+             "sd_z", "spread", "res_df", "res_ct", "dres", "dl_def", "dl_ct",
+             "fin_d", "fin_c"))
     print("-" * 128)
     by_site = {}
     for site, tag, a, b in rows:
         dth = circ_diff_deg(b["th"], a["th"])
         dres = b["resid"] - a["resid"]
-        print("%-11s %-16s %4d %4d  %6.1f %6.1f %+6.1f %5.1f  %6.1f  %6.3f %6.3f %+7.3f  %6.3f %6.3f  %5.2f %5.2f"
-              % (site, tag, b["nseg"], b["n_held"], a["th"], b["th"], dth, a["depth_sd"],
-                 b["spread"], a["resid"], b["resid"], dres, a["dlam"], b["dlam"],
-                 a["finite"], b["finite"]))
+        print("%-11s %-16s %4d %4d  %6.1f %6.1f %+6.1f %5.1f  %6.1f  "
+              "%6.3f %6.3f %+7.3f  %6.3f %6.3f  %5.2f %5.2f"
+              % (site, tag, b["nseg"], b["n_held"], a["th"], b["th"], dth,
+                 a["depth_sd"], b["spread"], a["resid"], b["resid"], dres,
+                 a["dlam"], b["dlam"], a["finite"], b["finite"]))
         by_site.setdefault(site, []).append((a, b, dth, dres))
         # per-frame verdict too: sites mix regimes (WAIS Divide is one strong
         # divide frame and one isotropic frame; Ridge A holds on some lines
         # and costs 0.03-0.04 on others)
-        print("%-11s %-16s   -> %s" % ("", "", verdict(b["spread"], dres, a["dlam"], a["resid"])))
+        print("%-11s %-16s   -> %s"
+              % ("", "", verdict(b["spread"], dres, a["dlam"], a["resid"])))
 
     # what the numbers above are worth: the _ct products' own standard
     # errors, where the products carry them (segment jackknife, block
     # split-half); a dth well inside se_th is no change at all
     if any(np.isfinite(b["se_dlam"]) for _, _, _, b in rows):
-        print("\nuncertainty (_ct products, band medians): se_th = held-axis SE (deg), "
+        print("\nuncertainty (_ct products, band medians): "
+              "se_th = held-axis SE (deg), "
               "n = sub-blocks the SE was formed from, "
-              "unres = fraction of cells where the axis SE could not be resolved. "
-              "unres is only comparable at equal n: the abstention threshold scales "
-              "as ~1.343/(2*sqrt(n-1)) rad, so 17.2 deg of replicate scatter is "
-              "resolvable at n = 6 but 8.4 deg is not at n = 22 - see ptt.circAxisSE. "
-              "se_dl = segment dlam SE, se_blk = pooled block split-half sigma")
+              "unres = fraction of cells where the axis SE "
+              "could not be resolved. "
+              "unres is only comparable at equal n: "
+              "the abstention threshold scales "
+              "as ~1.343/(2*sqrt(n-1)) rad, "
+              "so 17.2 deg of replicate scatter is "
+              "resolvable at n = 6 but 8.4 deg is not at n = 22 - "
+              "see ptt.circAxisSE. "
+              "se_dl = segment dlam SE, "
+              "se_blk = pooled block split-half sigma")
         print("%-11s %-16s %7s %4s %6s %7s %7s"
               % ("site", "frame", "se_th", "n", "unres", "se_dl", "se_blk"))
         for site, tag, a, b in rows:
@@ -302,7 +334,8 @@ def main():
                      100 * unres, b["se_dlam"], b["se_blk"]))
 
     print("\n%-11s %6s  %8s  %6s  %7s  %7s  %7s  %s"
-          % ("SITE", "frames", "med|dth|", "sd_z", "spread", "d_resid", "d_dlam", "assumption"))
+          % ("SITE", "frames", "med|dth|", "sd_z", "spread", "d_resid",
+             "d_dlam", "assumption"))
     print("-" * 96)
     for site in sorted(by_site):
         v = by_site[site]
@@ -314,7 +347,8 @@ def main():
         dl_site = np.nanmedian([a["dlam"] for a, _, _, _ in v])
         res_site = np.nanmedian([a["resid"] for a, _, _, _ in v])
         print("%-11s %6d  %8.1f  %6.1f  %7.1f  %+7.4f  %+7.4f  %s"
-              % (site, len(v), adth, sdz, spr, dres, ddl, verdict(spr, dres, dl_site, res_site)))
+              % (site, len(v), adth, sdz, spr, dres, ddl,
+                 verdict(spr, dres, dl_site, res_site)))
 
     if orphans:
         print("\n%d _ct product(s) with no default counterpart to compare:"
