@@ -9,7 +9,7 @@ if strcmpi(ext,'.jpg') || strcmpi(ext,'.png')
   try
     print(h_fig, fn, ['-d' device], '-r100');
   catch ME
-    warning('opr_saveas stub: print failed (%s)', ME.message);
+    warning('opr_saveas:printFailed', 'opr_saveas stub: print failed (%s)', ME.message);
   end
 else
   saveas(h_fig, fn);
