@@ -79,13 +79,15 @@ def arrow(x0, y0, x1, y1, color=INK, lw=1.5):
 panel(CX, 95.2, CW, 7.4, MAIN)
 title(CX, 97.6, 'MEASURED FIELD')
 eq(CX, 95.0, r'$C(\psi, z)$', 16)
-note(CX, 92.6, r'HH$-$VV coherence at every synthetic azimuth $\psi$, every depth $z$')
+note(CX, 92.6, r'HH$-$VV coherence at every synthetic azimuth $\psi$, '
+     r'every depth $z$')
 arrow(CX, 91.2, CX, 88.6)
 
 # ---------------------------------------------------------------- weight
 panel(CX, 84.4, CW, 8.4, MAIN)
 title(CX, 87.4, 'WEIGHT  (Cramer-Rao)')
-eq(CX, 84.2, r'$w(\psi,z) \;=\; \frac{|C|^{2}}{\max(1-|C|^{2},\ 0.02)}$', 16)
+eq(CX, 84.2,
+   r'$w(\psi,z) \;=\; \frac{|C|^{2}}{\max(1-|C|^{2},\ 0.02)}$', 16)
 note(CX, 81.2, 'down-weights decorrelated cells; the 0.02 floor caps the gain')
 arrow(CX, 79.9, CX, 77.4)
 
@@ -97,10 +99,12 @@ note(CX, 70.0, r'the fabric direction $\theta_0$ enters the fit ONLY here',
      9.6, ACC)
 eq(CX, 67.2, r"$\delta(z) \;=\; \delta_0 \;+\; \delta'\,(z-z_c)$", 15)
 eq(CX - 14.5, 63.4,
-   r'$N = \frac{1-\mu^{2}}{2} + \frac{1+\mu^{2}}{2}\cos\delta + i\mu\sin\delta$', 13)
+   r'$N = \frac{1-\mu^{2}}{2} + \frac{1+\mu^{2}}{2}\cos\delta'
+   r' + i\mu\sin\delta$', 13)
 eq(CX + 17.0, 63.4,
    r'$D = 1 - \frac{1-\mu^{2}}{2}(1-\cos\delta)$', 13)
-eq(CX, 59.4, r'$\hat{C}(\psi,z) \;=\; \gamma\,\dfrac{N}{D} \;+\; P(\psi)$', 16.5)
+eq(CX, 59.4,
+   r'$\hat{C}(\psi,z) \;=\; \gamma\,\dfrac{N}{D} \;+\; P(\psi)$', 16.5)
 note(CX, 56.6,
      r'$\delta_0$  accumulated two-way phase        '
      r"$\delta'$  its rate with depth", 9.6)
@@ -154,9 +158,11 @@ panel(CX, 8.4, CW, 9.4, MAIN)
 title(CX, 11.8, 'CONSTANT-DIRECTION MODE   (optional)')
 eq(CX, 8.6, r'$\hat{\theta}_0 \;=\; \mathrm{arg\,min}_{\ \theta}\ '
    r'\sum_{W}\ \frac{J_W(\theta)}{C^{2}_{W}}$', 16)
-note(CX, 5.2, 'one axis for the whole segment; each window normalised by its own\n'
+note(CX, 5.2,
+     'one axis for the whole segment; each window normalised by its own\n'
      'weighted coherence power, so the surface cannot outvote the column')
 
 fn = os.path.join(OUT, 'ls_flowchart.png')
-fig.savefig(fn, dpi=200, facecolor='white', bbox_inches='tight', pad_inches=0.3)
+fig.savefig(fn, dpi=200, facecolor='white', bbox_inches='tight',
+            pad_inches=0.3)
 print('wrote %s' % fn)

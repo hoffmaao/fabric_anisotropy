@@ -32,15 +32,23 @@ import scar_style                        # noqa: E402
 from scar_style import INK, MUTED        # noqa: E402
 
 OUT = scar_style.out_dir(sys.argv)
-SRC = os.environ.get('INTUITION_DIR', os.path.dirname(os.path.abspath(__file__)))
+SRC = os.environ.get('INTUITION_DIR',
+                     os.path.dirname(os.path.abspath(__file__)))
 a = loadmat(os.path.join(SRC, 'intuition.mat'))
 b = loadmat(os.path.join(SRC, 'intuition2.mat'))
 
-z = a['z'].ravel(); dl_true = a['dl_true'].ravel()
-dt_true = a['dt_true'].ravel(); dt_obs = a['dt_obs'].ravel()
-dl_naive = a['dl_naive'].ravel(); S_NS = float(np.ravel(a['S_NS'])[0])
-zz = b['zz'].ravel(); dl = b['dl'].ravel(); sg = b['sg'].ravel(); rs = b['rs'].ravel()
-dl2 = b['dl2'].ravel(); rs2 = b['rs2'].ravel()
+z = a['z'].ravel()
+dl_true = a['dl_true'].ravel()
+dt_true = a['dt_true'].ravel()
+dt_obs = a['dt_obs'].ravel()
+dl_naive = a['dl_naive'].ravel()
+S_NS = float(np.ravel(a['S_NS'])[0])
+zz = b['zz'].ravel()
+dl = b['dl'].ravel()
+sg = b['sg'].ravel()
+rs = b['rs'].ravel()
+dl2 = b['dl2'].ravel()
+rs2 = b['rs2'].ravel()
 
 TRUE, MEAS, SOLVE, BAD = '#1baf7a', '#2a78d6', '#4a3aa7', '#eb6834'
 
@@ -93,7 +101,9 @@ ax[3].set_title('inverted with a prior\n(ptt.traveltimeFabricML)',
 ax[3].set_xlabel(r'$\Delta\lambda$')
 ax[3].set_xlim(0, 0.10)
 err_s = np.nanstd(dl[ok] - dl_true[ok])
-ax[3].text(0.97, 0.985, 'error %.4f, %.0fx better,\nand it reports its own $\\pm1\\sigma$'
+ax[3].text(0.97, 0.985,
+           'error %.4f, %.0fx better,\n'
+           'and it reports its own $\\pm1\\sigma$'
            % (err_s, err_n / max(err_s, 1e-12)),
            transform=ax[3].transAxes, fontsize=9.0, color=SOLVE,
            ha='right', va='top', linespacing=1.6)
@@ -117,7 +127,8 @@ ax[3].plot(dl2[ok2], zz[ok2], color='#c0392b', lw=1.6, ls=':')
 ax[4].plot(rs, zz, color=SOLVE, lw=1.8)
 ax[4].plot(rs2, zz, color='#c0392b', lw=1.6, ls=':')
 ax[4].axvline(0.5, color=MUTED, lw=1.0, ls='--')
-ax[4].set_title('how much is data?\nresolution diagonal', fontsize=11.5, color=INK)
+ax[4].set_title('how much is data?\nresolution diagonal', fontsize=11.5,
+                color=INK)
 ax[4].set_xlabel('data $\\leftrightarrow$ prior')
 ax[4].set_xlim(0, 1)
 ax[4].text(0.5, 0.02, '1 = the datum decided it\n0 = the prior did',

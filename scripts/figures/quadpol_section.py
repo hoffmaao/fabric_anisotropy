@@ -100,7 +100,8 @@ def main():
         # never from the tag: this repo's tags do not encode the site (the
         # 2024 tags alone span Thwaites, WAIS Divide and McMurdo) and a
         # default carried a Ridge A title onto a WAIS Divide frame.
-        fla = float(np.nanmedian(lat)); flo = float(np.nanmedian(lon))
+        fla = float(np.nanmedian(lat))
+        flo = float(np.nanmedian(lon))
         site_key, site_title = 'unknown', 'unknown site'
         for _k, _cfg in qs.SITES.items():
             if qs.in_site(_cfg, fla, flo, TAG):

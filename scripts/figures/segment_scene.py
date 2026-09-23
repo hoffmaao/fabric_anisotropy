@@ -88,7 +88,8 @@ def axis_to_direction_deg(axis_deg, dir_deg):
 def cumdist_km(lat, lon):
     la, lo = np.radians(lat), np.radians(lon)
     dla, dlo = np.diff(la), np.diff(lo)
-    a = np.sin(dla / 2) ** 2 + np.cos(la[:-1]) * np.cos(la[1:]) * np.sin(dlo / 2) ** 2
+    a = (np.sin(dla / 2) ** 2
+         + np.cos(la[:-1]) * np.cos(la[1:]) * np.sin(dlo / 2) ** 2)
     return np.r_[0.0, np.cumsum(6371.0 * 2 * np.arcsin(np.sqrt(a)))]
 
 
@@ -183,8 +184,10 @@ def read_surface(x0, x1, y0, y1, epsg):
 
     Windowed with xarray so the 13333x13333 grid is never fully read.
     """
-    fn = {3031: os.path.join(BEDM, 'Antarctica', 'BedMachineAntarctica-v3.nc'),
-          3413: os.path.join(BEDM, 'Greenland', 'BedMachineGreenland-v5.nc')}.get(epsg)
+    fn = {3031: os.path.join(BEDM, 'Antarctica',
+                             'BedMachineAntarctica-v3.nc'),
+          3413: os.path.join(BEDM, 'Greenland',
+                             'BedMachineGreenland-v5.nc')}.get(epsg)
     if fn is None or not os.path.exists(fn):
         return None
     import xarray as xr
@@ -194,7 +197,8 @@ def read_surface(x0, x1, y0, y1, epsg):
     w = d['surface'].sel(x=slice(x0, x1), y=ysl)
     if w.size == 0:
         return None
-    return dict(x=w['x'].values, y=w['y'].values, z=np.asarray(w.values, float))
+    return dict(x=w['x'].values, y=w['y'].values,
+                z=np.asarray(w.values, float))
 
 
 def slope_azimuth(surf, bx, by, gn_deg):
@@ -283,7 +287,8 @@ def main():
             continue
         cx, cy = T.transform(lo, la)
         ctx_tracks.append((cx, cy))
-        ctx_x = np.r_[ctx_x, cx]; ctx_y = np.r_[ctx_y, cy]
+        ctx_x = np.r_[ctx_x, cx]
+        ctx_y = np.r_[ctx_y, cy]
 
     dom_x = np.r_[bx, ctx_x]
     dom_y = np.r_[by, ctx_y]
@@ -300,7 +305,8 @@ def main():
     zb = (ct['z'] >= BAND[0]) & (ct['z'] <= BAND[1])
     a = np.deg2rad(th[zb, :])
     with np.errstate(invalid='ignore'):
-        axis_blk = np.degrees(np.angle(np.nanmean(np.exp(2j * a), axis=0))) / 2 % 180
+        axis_blk = (np.degrees(np.angle(np.nanmean(np.exp(2j * a), axis=0)))
+                    / 2 % 180)
     axis_deg = axis_mean_deg(axis_blk)              # frame summary
 
     fig = plt.figure(figsize=(16.2, 8.6), layout='constrained')
@@ -338,7 +344,8 @@ def main():
         flow_az = np.nan
         if surf is not None:
             im = axm.pcolormesh(surf['x'] / 1e3, surf['y'] / 1e3, surf['z'],
-                                cmap='cividis', shading='auto', rasterized=True)
+                                cmap='cividis', shading='auto',
+                                rasterized=True)
             cb = fig.colorbar(im, ax=axm, orientation='horizontal',
                               shrink=0.72, pad=0.06, aspect=32)
             why = ('domain max %.0f m yr$^{-1}$' % dom_max

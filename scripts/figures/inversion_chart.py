@@ -36,7 +36,9 @@ MF = 'dejavuserif'
 fig = plt.figure(figsize=(13.33, 7.5))
 fig.patch.set_facecolor('white')
 ax = fig.add_axes([0, 0, 1, 1])
-ax.set_xlim(0, 100); ax.set_ylim(0, 100); ax.axis('off')
+ax.set_xlim(0, 100)
+ax.set_ylim(0, 100)
+ax.axis('off')
 
 
 def panel(cx, cy, w, h, face, ec=EDGE):
@@ -66,10 +68,15 @@ xs = [13.5, 37.5, 61.5, 85.5]
 
 panel(xs[0], CY, W, H, ICE)
 txt(xs[0], 82.2, 'THE ICE  (Fujita matrix)', 11, MUTED, 'bold')
-txt(xs[0], 78.0, r'$S_N = D^{2}\,[\Pi R T R\prime]\,R\Gamma R\prime\,[\Pi R T R\prime]$', 10.2)
-txt(xs[0], 73.6, r'$\Rightarrow\ \Delta\phi(z) \propto \int_H^z \!(\lambda_x-\lambda_y)\,dz\prime$', 12.2)
+txt(xs[0], 78.0,
+    r'$S_N = D^{2}\,[\Pi R T R\prime]\,R\Gamma R\prime\,'
+    r'[\Pi R T R\prime]$', 10.2)
+txt(xs[0], 73.6,
+    r'$\Rightarrow\ \Delta\phi(z) \propto \int_H^z '
+    r'\!(\lambda_x-\lambda_y)\,dz\prime$', 12.2)
 txt(xs[0], 69.6, r'$\Delta t = \Delta\phi \,/\, 2\pi f_c$', 12.2)
-txt(xs[0], 66.0, 'layer by layer, then collapsed\nfor one axis in one window', 8.8, MUTED)
+txt(xs[0], 66.0, 'layer by layer, then collapsed\nfor one axis in one window',
+    8.8, MUTED)
 
 # ------------------------------------------------------------- what we get
 panel(xs[1], CY, W, H, MEAS)
@@ -82,8 +89,12 @@ txt(xs[1], 71.0, 'HH$-$VV coherence at every\nsynthesized azimuth $\\psi$,\n'
 panel(xs[2], CY, W, H, FIT)
 txt(xs[2], 82.0, 'FIT, PER WINDOW', 11, MUTED, 'bold')
 txt(xs[2], 78.0, r'$\theta_0 \qquad \dfrac{d\Delta\phi}{dz}$', 15)
-txt(xs[2], 70.8, 'one axis and one phase rate,\nfrom the SHAPE of $C(\\psi,z)$', 9.0, MUTED)
-txt(xs[2], 66.6, 'fits the CLOSED FORM, not the\nmatrix - exact for a fixed axis', 8.8, ACC)
+txt(xs[2], 70.8,
+    'one axis and one phase rate,\nfrom the SHAPE of $C(\\psi,z)$',
+    9.0, MUTED)
+txt(xs[2], 66.6,
+    'fits the CLOSED FORM, not the\nmatrix - exact for a fixed axis',
+    8.8, ACC)
 
 # --------------------------------------------------------------- convert
 panel(xs[3], CY, W, H, FIT)
@@ -131,17 +142,22 @@ txt(73.0, 23.6, 'uses the ACCUMULATED delay, not the local rate;\n'
 
 # ------------------------------------------------------------- the caveat
 panel(50, 8.6, 88.0, 15.0, '#fff5f5', RED)
-txt(50, 14.2, 'WHAT THE PRIOR IS DOING, AND WHAT THE CLOSED FORM COSTS', 10.5, RED, 'bold')
-txt(50, 8.2, 'Inverting an integral differentiates the noise. Measured on a delay with '
-    'signal-to-noise 71, differencing gives an error of 0.104 -\nlarger than the '
-    '0.02-0.09 contrast being measured. The prior is what makes the problem solvable, '
-    'and it sets what counts as structure.', 9.4, INK)
-txt(50, 4.4, 'The closed form the fit evaluates is the Fujita matrix collapsed for ONE '
-    'layer with a fixed axis. Checked against the matrix: axis exact, '
+txt(50, 14.2, 'WHAT THE PRIOR IS DOING, AND WHAT THE CLOSED FORM COSTS',
+    10.5, RED, 'bold')
+txt(50, 8.2,
+    'Inverting an integral differentiates the noise. Measured on a delay '
+    'with signal-to-noise 71, differencing gives an error of 0.104 -\n'
+    'larger than the 0.02-0.09 contrast being measured. The prior is what '
+    'makes the problem solvable, and it sets what counts as structure.',
+    9.4, INK)
+txt(50, 4.4,
+    'The closed form the fit evaluates is the Fujita matrix collapsed for '
+    'ONE layer with a fixed axis. Checked against the matrix: axis exact, '
     r'$\lambda_x-\lambda_y$ 0.0499 vs 0.0500.' '\n'
-    'Give it a column whose axis turns 60 deg and the misfit rises 6.9x - which is '
-    'the constant-eigenframe assumption, priced.', 9.0, RED)
+    'Give it a column whose axis turns 60 deg and the misfit rises 6.9x - '
+    'which is the constant-eigenframe assumption, priced.', 9.0, RED)
 
 fn = os.path.join(OUT, 'inversion_chart.png')
-fig.savefig(fn, dpi=200, facecolor='white', bbox_inches='tight', pad_inches=0.25)
+fig.savefig(fn, dpi=200, facecolor='white', bbox_inches='tight',
+            pad_inches=0.25)
 print('wrote %s' % fn)
