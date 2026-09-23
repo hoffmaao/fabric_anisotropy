@@ -482,7 +482,8 @@ bash opr_fabric/test/run_all_tests.sh test_fabric_task test_quadpol
 `quick` leaves out the eight synthetics that take minutes each (the
 quad-pol and EastGRIP ones; the list is in `run_all_tests.m`). It is the
 gate's test command in `.no-mistakes.yaml`. Run the full suite by hand
-before merging a change to that code.
+before merging a change to that code. On a shared CReSIS node, prefix
+`MATLAB_THREADS=8 nice`: uncapped, one test took ~65 of mem1's 112 cores.
 
 `test/test_fabric_task.m` builds a synthetic CSARP_polarimetric frame from
 a known fabric (with noise, wrong-sign convention, unwrapping constant,
