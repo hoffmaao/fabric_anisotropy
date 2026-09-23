@@ -5,7 +5,9 @@ max-line-length = 79
 
 exclude =
     .git,
-    __pycache__
+    __pycache__,
+    # gitignored output; may hold local scratch scripts that are not repo code
+    figs
 
 # Every figure script calls matplotlib.use('Agg') before importing pyplot so
 # it renders headless, which necessarily puts module-level imports after a
