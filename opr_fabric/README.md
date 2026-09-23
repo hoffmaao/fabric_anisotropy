@@ -77,9 +77,11 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
 - Do not copy `fabric.m`, `fabric_task.m` or `+ptt` into `opr/matlab` or
   `run_opr`: a copy there goes stale and is exactly what shadowed code
   looks like.
-- `cluster.type = 'slurm'` compiles `fabric_task` into your `cluster_job`
-  through `cluster_compile`, as for any OPR task. `cluster.type = 'debug'`
-  (the default in `run_fabric.m`) needs nothing.
+- `cluster.type = 'slurm'` compiles `fabric_task` and all of `+ptt` into
+  your `cluster_job` on every launch (~3 min, since that binary is shared
+  with every other OPR task), and needs MATLAB's `bin/` on `PATH` for
+  `mcc`: tutorial step 4. `cluster.type = 'debug'` (the default in
+  `run_fabric.m`) needs nothing.
 - `fabric.m` checks each frame's input product before submitting: frames
   with none are skipped, and if none of the requested frames has one it
   errors with the season's `CSARP_polarimetric*` products listed, since a
@@ -465,6 +467,22 @@ Season/data caveats to check before interpreting results:
   reduce `num_intervals`, or (joint mode) raise `reg`.
 
 ## Test
+
+Every test is a script that errors if any of its checks fails.
+`test/run_all_tests.m` runs them as one suite and names every failure at
+the end. `test/run_all_tests.sh` is the same from a shell: it finds
+MATLAB, and exits non-zero if any test failed.
+
+```sh
+bash opr_fabric/test/run_all_tests.sh quick   # the 14 fast tests, ~2 min
+bash opr_fabric/test/run_all_tests.sh         # all 22, over an hour
+bash opr_fabric/test/run_all_tests.sh test_fabric_task test_quadpol
+```
+
+`quick` leaves out the eight synthetics that take minutes each (the
+quad-pol and EastGRIP ones; the list is in `run_all_tests.m`). It is the
+gate's test command in `.no-mistakes.yaml`. Run the full suite by hand
+before merging a change to that code.
 
 `test/test_fabric_task.m` builds a synthetic CSARP_polarimetric frame from
 a known fabric (with noise, wrong-sign convention, unwrapping constant,
