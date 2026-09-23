@@ -16,11 +16,12 @@ function varargout = run_all_tests(selection)
 % Each test is a script that starts with clear and ends by erroring if any
 % of its checks failed, so a thrown error is the whole verdict. A test runs
 % inside a helper function's workspace, where its clear cannot reach the
-% runner or the caller's base workspace, and the path, working directory,
-% warning state and open figures are restored after it: test_fabric_task
-% puts the OPR stubs on the path, and they must not leak into the next test
-% or into a run_fabric in the same session. A failing test is reported and
-% the suite carries on, so one run names every failure.
+% runner or the caller's base workspace. After it, the path, working
+% directory and warning state are restored and the figures it opened are
+% closed (figures that were already open stay): test_fabric_task puts the
+% OPR stubs on the path, and they must not leak into the next test or into
+% a run_fabric in the same session. A failing test is reported and the
+% suite carries on, so one run names every failure.
 
 here = fileparts(mfilename('fullpath'));
 listing = dir(fullfile(here, 'test_*.m'));
@@ -54,6 +55,7 @@ for k = 1:numel(names)
   saved_path = path;
   saved_dir = pwd;
   saved_warn = warning;
+  saved_figs = findall(groot, 'Type', 'figure');
   t = tic;
   try
     H_run(fullfile(here, [names{k} '.m']));
@@ -67,7 +69,8 @@ for k = 1:numel(names)
   path(saved_path);
   cd(saved_dir);
   warning(saved_warn);
-  close all force;
+  figs = findall(groot, 'Type', 'figure');
+  close(figs(~ismember(figs, saved_figs)), 'force');
 end
 
 fprintf('\n%-30s %-6s %9s\n', 'test', 'result', 'seconds');
