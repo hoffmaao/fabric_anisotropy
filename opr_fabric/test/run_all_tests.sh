@@ -8,7 +8,11 @@
 #
 # MATLAB is $MATLAB_BIN if set, else `matlab` on PATH, else the newest
 # install in the usual places: /Applications on a Mac, /opt/sw/matlab on the
-# CReSIS machines. On a shared node, run it under nice.
+# CReSIS machines. MATLAB_THREADS=N caps its threads. Uncapped, MATLAB takes
+# every core it sees, which on a 112-core CReSIS node was ~65 cores for one
+# test, so on a shared node run it as
+#
+#   MATLAB_THREADS=8 nice bash opr_fabric/test/run_all_tests.sh quick
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 
@@ -21,7 +25,7 @@ if [ -z "$ml" ]; then
     /opt/sw/matlab/*/bin/matlab 2>/dev/null || true) | sort | tail -n 1)
 fi
 if [ -z "$ml" ] || [ ! -x "$ml" ]; then
-  echo "run_all_tests.sh: no MATLAB found; set MATLAB_BIN to its bin/matlab" >&2
+  echo "run_all_tests.sh: no MATLAB found; set MATLAB_BIN" >&2
   exit 2
 fi
 
@@ -33,5 +37,13 @@ else
   list=$(printf "'%s'," "$@")
   call="run_all_tests({${list%,}})"
 fi
-echo "run_all_tests.sh: $ml -batch \"$call\"" >&2
-exec "$ml" -batch "addpath('$here'); $call"
+cap=
+if [ -n "${MATLAB_THREADS:-}" ]; then
+  if ! [[ $MATLAB_THREADS =~ ^[1-9][0-9]*$ ]]; then
+    echo "run_all_tests.sh: MATLAB_THREADS must be a positive integer" >&2
+    exit 2
+  fi
+  cap="maxNumCompThreads($MATLAB_THREADS); "
+fi
+echo "run_all_tests.sh: $ml -batch \"$cap$call\"" >&2
+exec "$ml" -batch "${cap}addpath('$here'); $call"
