@@ -189,7 +189,9 @@ out.dP_hv(~isfinite(A_hv)) = NaN;
 % too - a 15 m band at the default win_m = 30 that a caller would read as
 % decoherence rather than as the model's own boundary handling. Truncating
 % at bed_row instead leaves every row more than (nw-1)/2 above the bed
-% bit-identical (the kernel never reaches the cut) and gives the rows next
+% unchanged to roundoff (the kernel never reaches the cut; conv2 may sum
+% the shorter column in a different order, so not bit-for-bit - see
+% test_ershadi_seven.m verdict 3c) and gives the rows next
 % to the bed the same zero-padded edge treatment the bottom of a bedless
 % depth axis already gets.
 dz = median(abs(diff(z)));

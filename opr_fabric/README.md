@@ -474,8 +474,8 @@ the end. `test/run_all_tests.sh` is the same from a shell: it finds
 MATLAB, and exits non-zero if any test failed.
 
 ```sh
-bash opr_fabric/test/run_all_tests.sh quick   # the 14 fast tests, ~2 min
-bash opr_fabric/test/run_all_tests.sh         # all 22, over an hour
+bash opr_fabric/test/run_all_tests.sh quick   # the 14 fast tests, 2-4 min
+bash opr_fabric/test/run_all_tests.sh         # all 22, ~3 h on mem1 at 8 threads
 bash opr_fabric/test/run_all_tests.sh test_fabric_task test_quadpol
 ```
 

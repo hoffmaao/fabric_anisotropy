@@ -70,8 +70,12 @@
 %      the rows above the bed only. Both halves are asserted, because
 %      trimming the window is only correct if it changes nothing away
 %      from the bed: C at bed_row and every row above it is finite, and
-%      further than half a window above the bed it is BIT-IDENTICAL to
-%      the same column modelled with no bed at all.
+%      further than half a window above the bed it matches the same
+%      column modelled with no bed at all to roundoff (1e-12). Not
+%      bit-for-bit: conv2 over the trimmed rows need not sum in the same
+%      order as over the whole column, which gave 5e-16 on R2024b/Linux
+%      and exactly 0 on R2025b/macOS. A real change of window would show
+%      at 1e-2 or more.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_ershadi_seven.m')"
 clear;
@@ -253,7 +257,7 @@ hb = (nwb - 1) / 2;
 c_below = all(isnan(fmb.C(ib+1:end, :)), 'all');
 c_above = all(isfinite(fmb.C(max(ib-hb,1):ib, :)), 'all');
 d_far = max(abs(fmb.C(1:max(ib-hb-1,1), :) - fmn.C(1:max(ib-hb-1,1), :)), [], 'all');
-ok_band = c_below && c_above && d_far == 0;
+ok_band = c_below && c_above && d_far < 1e-12;
 fprintf(['3c. the bed NaN band is the sub-bed rows and no more:   %s ' ...
   '(C finite through bed_row and the %d rows above; |dC| vs no bed %.0e)\n'], ...
   H_tick(ok_band), hb, d_far);
