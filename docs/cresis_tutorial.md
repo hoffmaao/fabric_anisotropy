@@ -47,9 +47,9 @@ on your path is the one thing that could run old code.
 
 To check the clone before touching real data, run the fast half of the test
 suite. It builds synthetic radar data with a known fabric and stubs out OPR,
-so it needs neither data nor your OPR setup. It takes ~2 min and should end
-with `14 passed, 0 failed`. `MATLAB_THREADS=8` keeps it to 8 cores; uncapped,
-MATLAB takes most of a shared node:
+so it needs neither data nor your OPR setup. It takes about 4 min on mem1 and
+should end with `14 passed, 0 failed`. `MATLAB_THREADS=8` keeps it to 8
+cores; uncapped, MATLAB takes most of a shared node:
 
 ```sh
 MATLAB_THREADS=8 nice bash fabric_anisotropy/opr_fabric/test/run_all_tests.sh quick
