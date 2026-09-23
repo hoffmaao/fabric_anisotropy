@@ -45,6 +45,15 @@ That is the whole install. Do NOT copy anything into `opr/matlab` or
 `run_opr`. The scripts find their own checkout, and a stale copy elsewhere
 on your path is the one thing that could run old code.
 
+To check the clone before touching real data, run the fast half of the test
+suite. It builds synthetic radar data with a known fabric and stubs out OPR,
+so it needs neither data nor your OPR setup. It takes ~2 min and should end
+with `14 passed, 0 failed`:
+
+```sh
+nice bash fabric_anisotropy/opr_fabric/test/run_all_tests.sh quick
+```
+
 ## 2. Run the dual-pol example
 
 Start MATLAB the way you normally do for OPR, so your `startup.m` runs

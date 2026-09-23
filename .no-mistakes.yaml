@@ -1,0 +1,10 @@
+# Gate configuration for no-mistakes, see
+# https://kunchenguid.github.io/no-mistakes/reference/repo-config/
+# commands.* are read from the default branch only, so an edit here takes
+# effect once it is merged.
+commands:
+  # Targeted baseline, run before the test agent: the fast tier of the
+  # MATLAB suite, ~2 min. The full suite (over an hour, dominated by the
+  # quad-pol and EastGRIP synthetics) is too slow for every push; run it by
+  # hand before merging changes to that code (opr_fabric/README.md, "Test").
+  test: "bash opr_fabric/test/run_all_tests.sh quick"
