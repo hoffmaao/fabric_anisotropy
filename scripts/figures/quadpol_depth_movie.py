@@ -52,7 +52,6 @@ matplotlib.use('Agg')
 import matplotlib.patheffects as mpe                   # noqa: E402
 import matplotlib.pyplot as plt                        # noqa: E402
 from matplotlib.collections import LineCollection      # noqa: E402
-from pyproj import Transformer                         # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import antarctic_basemap as ab                         # noqa: E402

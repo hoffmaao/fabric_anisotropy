@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt          # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import scar_style                        # noqa: E402
-from scar_style import INK, MUTED        # noqa: E402
+from scar_style import INK               # noqa: E402
 
 OUT = scar_style.out_dir(sys.argv)
 
