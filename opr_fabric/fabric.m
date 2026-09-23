@@ -350,8 +350,13 @@ if num_in == 0 && num_missing > 0
   else
     season_dir = fileparts(fileparts(in_dir));
     avail = dir(fullfile(season_dir,'CSARP_polarimetric*'));
-    avail_msg = sprintf(' Polarimetric products in this season:%s', ...
-      sprintf('\n  %s', avail.name));
+    if isempty(avail)
+      avail_msg = sprintf(' No CSARP_polarimetric* products in\n  %s', ...
+        season_dir);
+    else
+      avail_msg = sprintf(' Polarimetric products in this season:%s', ...
+        sprintf('\n  %s', avail.name));
+    end
   end
   error('fabric:noInput', ['No requested frame of %s has an input product ' ...
     'in\n  %s\nCheck fabric.in_path.%s'], param.day_seg, in_dir, avail_msg);
