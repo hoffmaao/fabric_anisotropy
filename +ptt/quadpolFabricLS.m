@@ -96,14 +96,43 @@ function out = quadpolFabricLS(S, z, opts)
 %         rotating a sub-block's moments by -h maps the antenna bases
 %         sin2(phi) to sin2(psi - h)),
 %         q_min (0.05), dlam_min_theta (0.01), theta_step_deg (3),
-%         weighting ('crb' default | 'uniform')
+%         weighting ('crb' default | 'uniform'),
+%         theta_grid ([] = the full 0..180 grid at theta_step_deg; else
+%         an explicit grid in radians, a vector for all windows or
+%         [Nw x Ng] per window - resampling replicates search +-15 deg
+%         around the full-data axis; q_theta measured over a narrow span
+%         is not on the full-range scale, so such a pass must be given
+%         window_ok and gates nothing itself),
+%         window_ok ([] = decide per window from q_min / dlam_min_theta as
+%         usual; else an [Nw x 1] logical from the full-data, full-grid
+%         fit - out.window_ok - naming the windows that own an axis. A
+%         resampling replicate inherits that verdict instead of
+%         re-deriving it from its narrow grid, so it abstains on exactly
+%         the windows its parent rejected and is never dropped for the
+%         width of the grid it was given),
+%         theta_const (false; true holds ONE axis for the whole column,
+%         voted from the per-window theta curves - see the
+%         CONSTANT-ORIENTATION MODE block), theta_const_q_min (0.02, the
+%         normalised curve range below which a window does not vote)
 %
 % Output fields (per window centre zw [Nw x 1])
 %   zw, theta0, dlam, gamma, leak (pass-A per-window pedestal magnitude,
 %   a calibration diagnostic), resid (weighted rms), q_theta, delta0,
 %   pedestal ([1 x 3] frame estimate, NaN when not estimated), and
 %   dlam_z / theta0_z interpolated back onto z. grad_per_dlam echoes the
-%   conversion constant.
+%   conversion constant. theta_cost [Nw x Ngrid] is every window's theta
+%   cost curve from the free grid search over theta_grid (raw weighted
+%   misfit, minimised over delta0 and ddelta at each node) with theta_c2
+%   its data-power normaliser - the curves the constant-orientation vote
+%   pools, exported so a pooling rule can be examined offline; NaN when
+%   the axis was caller-supplied. window_ok [Nw x 1] logical is the
+%   per-window verdict this fit reached (free mode: which windows own an
+%   axis; constant mode: which windows voted), to be handed back in as
+%   opts.window_ok by a resampling pass. Constant mode adds theta_const (the held
+%   axis, NaN if the vote failed and the column fell back to per-window
+%   axes), theta_const_q (mean per-window contrast at that axis),
+%   theta_const_n (voting windows) and theta_spread_deg (the assumption
+%   check - see the block).
 
 if nargin < 3, opts = struct(); end
 fc = H_opt(opts, 'fc', 750e6);
@@ -118,7 +147,23 @@ theta0_in = H_opt(opts, 'theta0', []);
 ped_in = H_opt(opts, 'pedestal', 'frame');
 q_min = H_opt(opts, 'q_min', 0.05);
 dlam_min_theta = H_opt(opts, 'dlam_min_theta', 0.01);
+% Whether a window carries enough azimuthal contrast to own an axis is a
+% property of the WINDOW, settled once by the full-data fit on the full
+% grid. A resampling replicate is handed that decision instead of
+% re-deriving it from the narrow grid it was given.
+window_ok_in = H_opt(opts, 'window_ok', []);
+% Constant fabric orientation over the fitted column. Off by default so
+% existing results are unchanged; see the CONSTANT-ORIENTATION MODE block.
+theta_const = H_opt(opts, 'theta_const', false);
+% a window votes on the pooled axis only if its own theta cost curve varies
+% by more than this fraction of its data power - a flat curve has no axis
+pool_q_min = H_opt(opts, 'theta_const_q_min', 0.02);
 th_step = H_opt(opts, 'theta_step_deg', 3);
+% An explicit theta search grid (radians; a vector shared by every window,
+% or [Nw x Ng] per window) replaces the full 0..180 grid. Resampling
+% replicates use it to search only +-15 deg around the full-data axis,
+% which is what makes a jackknife of the frame pass affordable.
+th_grid_in = H_opt(opts, 'theta_grid', []);
 
 z = z(:);
 Nt = numel(z);
@@ -180,6 +225,14 @@ Nw = numel(zw);
 jdec = max(1, round(2 / max(dz, eps)));
 
 % theta0 supplied by the caller, in whichever of the three forms
+if ~isempty(window_ok_in)
+  window_ok_in = logical(window_ok_in(:));
+  if numel(window_ok_in) ~= Nw
+    error('ptt:quadpolFabricLS:windowOk', ...
+      'opts.window_ok has %d entries for %d windows', numel(window_ok_in), Nw);
+  end
+end
+
 th_fix = nan(Nw, 1);
 if ~isempty(theta0_in)
   if isstruct(theta0_in)
@@ -205,9 +258,27 @@ if ~isempty(theta0_in)
   end
 end
 
-% --- everything the window fitter needs, bundled once
+% --- everything the window fitter needs, bundled once.
+% A caller-supplied grid may be a RESTRICTED search (the jackknife's
+% +-15 deg around the full-data axis). q_theta measured across it is NOT
+% comparable to one measured across the full 0-180 range, and nothing here
+% tries to make it so: a narrow-grid pass does not adjudicate whether its
+% windows have an axis at all. It is handed that verdict in
+% opts.window_ok, so the contrast it computes is a diagnostic only and the
+% grid's width cannot gate anything.
+if isempty(th_grid_in)
+  th_grid = (0:th_step:180-th_step) * pi/180;
+elseif isvector(th_grid_in)
+  th_grid = th_grid_in(:).';
+else
+  th_grid = th_grid_in;
+  if size(th_grid, 1) ~= Nw
+    error('ptt:quadpolFabricLS:thetaGrid', ...
+      'opts.theta_grid has %d rows for %d windows', size(th_grid, 1), Nw);
+  end
+end
 P = struct('z', z, 'zw', zw, 'half', half, 'jdec', jdec, 'psi', psi, ...
-  'th_grid', (0:th_step:180-th_step) * pi/180, ...
+  'th_grid', th_grid, ...
   'dd_grid', linspace(0, dlam_max * grad_per_dlam, 26), ...
   'd0_grid', (0:15:345) * pi/180, ...
   'dd_max', dlam_max * grad_per_dlam, 'th_fix', th_fix);
@@ -255,11 +326,165 @@ else
     'opts.pedestal must be ''frame'', ''window'', [1 x 3], or a field');
 end
 
+% --- CONSTANT-ORIENTATION MODE. One theta0 for the whole column instead of
+% one per window: the windows vote by their own theta cost curves, which the
+% grid search already computed, and the winner is refit into every window.
+%
+% WHY IT IS OFTEN THE BETTER MODEL. Per-window theta0 spends one free
+% parameter per window on a quantity that at a divide does not vary: Ridge
+% A's frame axis is 96.5 +- 7.4 deg across 36 frames, while its per-window
+% scatter within a frame is ~13 deg - i.e. most of that scatter is
+% estimation noise, not ice. Removing those degrees of freedom leaves the
+% depth-varying quantity that IS physical (delta0 and its gradient, hence
+% dlam) better determined, and hands downstream steps an axis stable enough
+% to condition on.
+%
+% WEIGHTING. Each window's curve is NORMALISED by its own data power
+% (theta_c2) before the sum, i.e. pooled on the q_theta scale, so a window
+% votes in proportion to how sharply ITS curve is peaked and nothing else.
+% Raw-cost pooling was tried first and is wrong on real data: the data
+% power - the CRB-weighted coherence power - runs 100-1000x higher in the
+% near-surface windows than at depth, and on Ridge A frame 009 seven
+% windows at 57-147 m carried 86% of the raw vote and put the axis at 102
+% deg while every window from 200 m to the bottom sat at 93-96 deg (the
+% frame's published value). Those surface windows are exactly where the
+% co-pol reference offset makes the model untrustworthy, and a raw sum
+% lets them outvote the whole column. Normalised, the vote lands on 96
+% with or without any depth cut, so no site-specific depth enters here.
+% A flat curve still carries nothing - its normalised range is small - and
+% windows flat within pool_q_min of their own power are excluded outright.
+%
+% WHEN NOT TO USE IT. It is a MODEL ASSUMPTION, not a refinement: where the
+% axis genuinely rotates with depth - Thwaites' margin, EastGRIP - it will
+% return some average of the rotation and the per-window residuals will say
+% so. Check out.theta_const_q (the pooled contrast) and the residual
+% profile before adopting it at a new site.
+th_c = NaN; theta_const_q = NaN; theta_spread_deg = NaN; n_theta_pool = 0;
+held = false; vote_ok = [];
+Rfree = R;   % the per-window pass: its curves ARE the vote, and stay the diagnostic
+if theta_const && isempty(theta0_in)
+  if size(P.th_grid, 1) > 1
+    error('ptt:quadpolFabricLS:thetaGrid', ...
+      'constant-theta mode pools curves across windows and needs one shared theta_grid');
+  end
+  ok_w = all(isfinite(R.cost_th), 2) & isfinite(R.c2) & R.c2 > 0;
+  if ~isempty(window_ok_in)
+    % a replicate pools exactly the windows its parent accepted, so every
+    % replicate votes on the same set and the pooled axis is comparable
+    % across them. Re-deciding here from a narrow grid is what left
+    % replicates voting on different window sets, and a segment where
+    % enough of them fell below the floor returned theta_const = NaN.
+    ok_w = ok_w & window_ok_in;
+  else
+    % a window only votes if its own curve is not flat ...
+    rng_w = max(R.cost_th, [], 2) - min(R.cost_th, [], 2);
+    ok_w = ok_w & rng_w > pool_q_min * max(R.c2, realmin);
+    % ... and only if the free fit would have TRUSTED its axis: the same
+    % q_min / dlam_min_theta rule that abstains a per-window theta0 below.
+    % A window with no phase gradient has a minimum, but it is where noise
+    % put it - on frame 009 the 160-190 m windows, where the co-pol power
+    % collapses, all bottomed a quarter turn off (the (theta+90, -delta)
+    % ambiguity) with q ~0.5. Let in, they do little to the vote but they
+    % turn the spread diagnostic into a false rotation.
+    ok_w = ok_w & R.q_theta >= q_min & R.dlam / grad_per_dlam >= dlam_min_theta;
+  end
+  vote_ok = ok_w;
+  if nnz(ok_w) >= 3
+    Cn = R.cost_th(ok_w, :) ./ max(R.c2(ok_w), realmin);   % q_theta scale
+    pooled = sum(Cn, 1);
+    [~, ib] = min(pooled);
+    th_c = P.th_grid(ib);
+    % Sub-grid refinement: a parabola through the minimum and its two
+    % neighbours. Without it the held axis is quantised to the grid step
+    % (3 deg by default) and so is anything derived from it - a jackknife
+    % over sub-blocks reports zero spread whenever every replicate lands
+    % on the same node, which is not an uncertainty of 0 deg. The full
+    % grid is periodic in pi, so its end nodes wrap; a reduced grid
+    % (theta_grid supplied) has real edges and is left alone there.
+    Ng = numel(pooled);
+    full_grid = isempty(th_grid_in);
+    if Ng >= 3 && (full_grid || (ib > 1 && ib < Ng))
+      im = mod(ib - 2, Ng) + 1; ip = mod(ib, Ng) + 1;
+      pm = pooled(im); p0 = pooled(ib); pp = pooled(ip);
+      curv = pm - 2*p0 + pp;
+      if curv > 0
+        step_g = abs(angle(exp(2i * (P.th_grid(min(ib+1, Ng)) - P.th_grid(max(ib-1, 1)))))) / (2 * (min(ib+1, Ng) - max(ib-1, 1)));
+        th_c = th_c + 0.5 * (pm - pp) / curv * step_g;
+      end
+    end
+    % pooled contrast: the mean per-window contrast at the pooled axis, on
+    % the same scale q_theta uses per window
+    theta_const_q = (max(pooled) - min(pooled)) / nnz(ok_w);
+    % IS THE ASSUMPTION TRUE HERE? The pooled contrast does NOT answer that
+    % - measured on synthetics it came out HIGHER on a rotating column
+    % (0.225) than on a constant one (0.219), because it reports how
+    % sharply the pooled curve is peaked, not whether the windows agreed.
+    % What answers it is the SPREAD of the per-window minima: windows of a
+    % constant column all bottom at the same theta, windows of a rotating
+    % one bottom across the rotation. Reported as a circular standard
+    % deviation of the doubled angle, in degrees, with each minimum
+    % weighted by its window's contrast: a near-flat window's minimum is
+    % where noise put it (on frame 009 four such windows sat a quarter
+    % turn off, the (theta+90, -delta) ambiguity), and unweighted they
+    % would report a rotation the column does not have.
+    [~, iw] = min(R.cost_th(ok_w, :), [], 2);
+    th_w = P.th_grid(iw);
+    qw = max(R.q_theta(ok_w), 0);
+    Rw = sum(qw(:) .* exp(2i * th_w(:))) / max(sum(qw), realmin);
+    theta_spread_deg = rad2deg(sqrt(max(-2*log(max(abs(Rw), realmin)), 0))) / 2;
+    P.th_fix = repmat(th_c, Nw, 1);
+    if isnan(pedestal(1))
+      R = H_fit_windows(Cm, Wc, P, []);
+    else
+      R = H_fit_windows(Cm, Wc, P, pedestal);
+    end
+    R.theta0(:) = th_c;                 % held, not re-estimated
+    % The held refit computes no theta curve (nothing to search), so the
+    % per-window axis information and the vote it was drawn from come
+    % from the free pass: q_theta stays "how much axis does THIS window
+    % carry", which the handoff and the spread diagnostic both need.
+    R.q_theta = Rfree.q_theta;
+    R.cost_th = Rfree.cost_th;
+    R.c2 = Rfree.c2;
+    n_theta_pool = nnz(ok_w);
+    held = true;
+  else
+    n_theta_pool = nnz(ok_w);
+    warning('ptt:quadpolFabricLS:noPool', ...
+      ['constant-theta mode: only %d window(s) carry a trusted, non-flat ' ...
+      'theta curve, need 3; falling back to per-window theta0'], nnz(ok_w));
+  end
+end
+
 theta0 = R.theta0; dlam = R.dlam / grad_per_dlam; gam = R.gam;
 resid = R.resid; q_theta = R.q_theta; delta0 = R.delta0;
 
-if isempty(theta0_in)
-  theta0(q_theta < q_min | dlam < dlam_min_theta) = NaN;
+% Per-window abstention on the axis: a window with no fabric or a flat
+% curve has no axis of its own. A HELD column is exempt for the same
+% reason a caller-supplied theta0 is - the axis is the column's, not the
+% window's, and dropping it from the near-isotropic windows would hand
+% those depths back to a different model downstream (the blocks would
+% fall back to the frame profile there, mixing held and free axes in one
+% section).
+% A resampling replicate does not re-decide this. It is handed the parent
+% window's verdict in opts.window_ok and abstains on exactly the windows
+% the parent rejected, whatever grid it searched - its own contrast, which
+% is not on the full-range scale, gates nothing. Re-deriving it from a
+% +-15 deg grid is what dropped replicate values for having been
+% narrow-searched, silently, since nothing downstream reports it.
+if isempty(theta0_in) && ~held
+  if isempty(window_ok_in)
+    window_ok = q_theta >= q_min & dlam >= dlam_min_theta;
+  else
+    window_ok = window_ok_in;
+  end
+  theta0(~window_ok) = NaN;
+elseif ~isempty(vote_ok)
+  % held: the axis is the column's, so the windows that DECIDED it are the
+  % set a replicate must inherit, not the ones that carry a theta0
+  window_ok = vote_ok;
+else
+  window_ok = isfinite(theta0);
 end
 
 % interpolate back onto z for the section plumbing; the phasor keeps the
@@ -283,6 +508,11 @@ out = struct('zw', zw, 'theta0', theta0, 'dlam', dlam, 'gamma', gam, ...
   'leak', leak_diag, 'pedestal', pedestal, ...
   'resid', resid, 'q_theta', q_theta, 'delta0', delta0, ...
   'theta0_z', theta0_z, 'dlam_z', dlam_z, ...
+  'theta_const', th_c, 'theta_const_q', theta_const_q, ...
+  'theta_spread_deg', theta_spread_deg, ...
+  'theta_const_n', n_theta_pool, ...
+  'theta_grid', P.th_grid, 'theta_cost', Rfree.cost_th, ...
+  'theta_c2', Rfree.c2, 'window_ok', window_ok, ...
   'grad_per_dlam', grad_per_dlam, 'psi', psi);
 
 end
@@ -310,7 +540,8 @@ function R = H_fit_windows(Cm, Wc, P, ped)
 Nw = numel(P.zw);
 R = struct('theta0', nan(Nw,1), 'dlam', nan(Nw,1), 'gam', nan(Nw,1), ...
   'resid', nan(Nw,1), 'q_theta', nan(Nw,1), 'delta0', nan(Nw,1), ...
-  'leak', nan(Nw,1), 'ped_coef', nan(Nw,3));
+  'leak', nan(Nw,1), 'ped_coef', nan(Nw,3), ...
+  'cost_th', nan(Nw, size(P.th_grid, 2)), 'c2', nan(Nw,1));
 psi = P.psi;
 sb = sin(2 * psi(:));
 s2b = sb.^2;
@@ -355,7 +586,7 @@ for w = 1:Nw
   if isfinite(P.th_fix(w))
     ths = P.th_fix(w);
   else
-    ths = P.th_grid;
+    ths = P.th_grid(min(w, size(P.th_grid, 1)), :);
   end
   best = struct('cost', inf, 'th', NaN, 'd0', NaN, 'dd', NaN);
   cost_th = inf(numel(ths), 1);
@@ -393,7 +624,11 @@ for w = 1:Nw
   % isotropic window is flat here and its theta0 means nothing.
   if numel(ths) > 1
     R.q_theta(w) = (max(cost_th) - best.cost) / max(C2, realmin);
+    % the whole theta cost curve, kept so a CONSTANT-orientation fit can
+    % pool it across windows instead of re-running the grid search
+    R.cost_th(w, :) = cost_th(:).';
   end
+  R.c2(w) = C2;
 
   % polish from the best grid node. fminsearch is base MATLAB; the linear
   % nuisances stay closed-form inside the objective, and ddelta is kept

@@ -33,7 +33,8 @@ shallow half is where the co-polarized comparison is still unresolved at
 about a factor of two, so treat the top few frames as the LS estimator's
 own answer rather than as a cross-validated one.
 
-Usage: python quadpol_depth_movie.py <out_dir> [site]
+Usage: python quadpol_depth_movie.py <out_dir> [site] [variant]
+       variant '' (default products) or 'ct' (constant-orientation)
 """
 import glob
 import json
@@ -51,16 +52,26 @@ matplotlib.use('Agg')
 import matplotlib.patheffects as mpe                   # noqa: E402
 import matplotlib.pyplot as plt                        # noqa: E402
 from matplotlib.collections import LineCollection      # noqa: E402
-from pyproj import Transformer                         # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import antarctic_basemap as ab                         # noqa: E402
 import quadpol_sites as qs                             # noqa: E402
+import scar_style  # noqa: E402
 from scar_style import DATA, INK, MUTED                # noqa: E402
-from scar_style import FIGS  # noqa: E402
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else FIGS
+OUT = scar_style.out_dir(sys.argv)
 SITE = sys.argv[2] if len(sys.argv) > 2 else 'ridge_a'
+# PRODUCT VARIANT. '' reads the default products; 'ct' reads the
+# constant-orientation ones (quadpol_section_<tag>_ct.mat), which hold one
+# fabric axis per along-track segment instead of one per depth window.
+# The two must never be mixed in one movie: the glob below would otherwise
+# load a frame twice, once per variant, and every block would be drawn
+# twice at two different answers. So the variant is an explicit choice and
+# the loader filters on it in both directions.
+VARIANT = (sys.argv[3] if len(sys.argv) > 3 else '').lstrip('_')
+if VARIANT not in ('', 'ct'):
+    raise SystemExit("variant must be '' or 'ct', got %r" % VARIANT)
+SUF = ('_' + VARIANT) if VARIANT else ''
 
 FPS, HOLD = 25, 6
 BAR_FRAC = 0.035       # orientation bar half-length as a fraction of span
@@ -117,7 +128,10 @@ else:
     BEDS = {}
     print('no %s; blocks are drawn without bed masking' % BED_FILE)
 
-T = Transformer.from_crs('EPSG:4326', 'EPSG:3031', always_xy=True)
+# Projection follows the SITE, not the hemisphere this stack grew up in.
+# EPSG:3031 was hard-coded here, which places a Greenland site somewhere
+# meaningless instead of failing.
+T = qs.site_transformer(CFG)
 
 
 def find_ffmpeg():
@@ -136,6 +150,13 @@ def load():
         tag = os.path.basename(fn)[len('quadpol_section_'):-len('.mat')]
         if re.search(r'_z\d+$', tag):
             continue
+        # variant filter, both directions (see VARIANT above)
+        if tag.endswith('_ct') != (VARIANT == 'ct'):
+            continue
+        # the bed file and the site's season rules are keyed by the FRAME,
+        # not by which estimator variant produced it, so strip the suffix
+        # before either is consulted
+        base_tag = tag[:-len(SUF)] if SUF and tag.endswith(SUF) else tag
         with h5py.File(fn) as f:
             r = f['res']
             z = np.array(r['z']).ravel()
@@ -151,7 +172,7 @@ def load():
             lon0 = float(np.array(r['lon0']).ravel()[0])
             lat1 = float(np.array(r['lat1']).ravel()[0])
             lon1 = float(np.array(r['lon1']).ravel()[0])
-        if not qs.in_site(CFG, lat, lon, tag):
+        if not qs.in_site(CFG, lat, lon, base_tag):
             continue
         ok = np.isfinite(blat) & np.isfinite(blon)
         if not ok.any():
@@ -160,7 +181,7 @@ def load():
         ex, ey = T.transform([lon0, lon1], [lat0, lat1])
         # bed depth per block, filtered by the same mask as the positions so
         # index j means the same block in both
-        bed = BEDS.get(tag)
+        bed = BEDS.get(base_tag)
         if bed is None:
             # a bed file that does not name this frame is NOT the same as no
             # bed file at all: it means the run that wrote it did not cover
@@ -170,7 +191,7 @@ def load():
                 print('WARNING: %s carries no bed for %s; its blocks are '
                       'drawn unmasked - rerun scripts/make_bed_by_block.py '
                       "with this survey's site root"
-                      % (os.path.basename(BED_FILE), tag))
+                      % (os.path.basename(BED_FILE), base_tag))
             bedv = np.full(int(ok.sum()), np.nan)
         elif len(bed) != ok.size:
             # a stale bed file cut against a different block size masks the
@@ -178,7 +199,8 @@ def load():
             print('WARNING: %s lists %d bed values for %d blocks in %s; '
                   'bed masking skipped for this frame - rebuild it with '
                   'scripts/make_bed_by_block.py'
-                  % (os.path.basename(BED_FILE), len(bed), ok.size, tag))
+                  % (os.path.basename(BED_FILE), len(bed), ok.size,
+                     base_tag))
             bedv = np.full(int(ok.sum()), np.nan)
         else:
             bedv = np.array([np.nan if b is None else b for b in bed],
@@ -189,7 +211,10 @@ def load():
                            ex=ex, ey=ey))
     if not frames:
         raise SystemExit('no sections within %.0f deg of %s under %s'
-                         % (qs.SITE_RADIUS_DEG, SITE, DATA))
+                         % (qs.SITE_RADIUS_DEG, SITE, DATA)
+                         + ('' if not VARIANT else
+                            " for variant '%s' - are the _ct products "
+                            'mirrored locally?' % VARIANT))
     return frames
 
 
@@ -200,7 +225,7 @@ def main():
     print('%d frames, %d depth windows (%.0f m window, %.0f m step)'
           % (len(frames), centres.size, WIN_M, STEP_M))
 
-    proj = ab.proj3031()
+    proj = qs.site_proj(CFG)
     cmap, norm = plt.get_cmap('Blues'), plt.Normalize(0.0, VMAX)
     allx = np.concatenate([f['pts'][:, 0] for f in frames])
     ally = np.concatenate([f['pts'][:, 1] for f in frames])
@@ -383,9 +408,16 @@ def main():
                 ha='left', va='center', zorder=6, path_effects=HALO,
                 transform=proj)
 
+        # The bar caption MUST follow the variant. In the constant-
+        # orientation products the axis is held for the whole segment, so
+        # saying "at this depth" of a bar that cannot move by construction
+        # invites a viewer to read a still axis as a measured result about
+        # this depth window. Only the colour varies down the column here.
+        bar_txt = (r'bars: fabric axis $\theta_0$, HELD through the column'
+                   if VARIANT == 'ct' else
+                   r'bars: fabric axis $\theta_0$ at this depth')
         ax.set_title(('%s: fabric contrast through the column\n' % TITLE)
-                     + r'track colour: $\Delta\lambda$ per block; '
-                     + r'bars: fabric axis $\theta_0$ at this depth'
+                     + r'track colour: $\Delta\lambda$ per block; ' + bar_txt
                      + '\n'
                      + ('grey: LS residual fading %.2f to %.2f, or the bed '
                         'inside this window' % (RESID_GOOD, RESID_BAD)),
@@ -403,7 +435,7 @@ def main():
     seq = os.path.join(fdir, 'seq_%05d.png')
     for i, p in enumerate(sorted(glob.glob(os.path.join(fdir, 'd*.png')))):
         os.rename(p, seq % i)
-    mp4 = os.path.join(OUT, 'quadpol_depth_movie_%s.mp4' % SITE)
+    mp4 = os.path.join(OUT, 'quadpol_depth_movie_%s%s.mp4' % (SITE, SUF))
     subprocess.run([find_ffmpeg(), '-y', '-framerate', str(FPS), '-i', seq,
                     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20',
                     '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', mp4],

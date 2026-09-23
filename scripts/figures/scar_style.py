@@ -24,8 +24,15 @@ from the back of a room where five graded viridis dots do not.
 """
 import os
 
+# pyplot is imported INSIDE the two functions that need it, never at module
+# scope. Importing pyplot RESOLVES AND BINDS A BACKEND, so a module-level
+# import here would bind one the moment any script imported this file - and
+# every consumer is a batch figure script whose first act is
+# matplotlib.use('Agg'). One did land its `import scar_style` above that
+# guard, and the interactive macosx backend was imported before the guard
+# ran. Keeping pyplot out of module scope removes the ordering contract
+# rather than restating it, so import position here cannot matter again.
 import matplotlib.patheffects as pe
-import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import transforms
 from matplotlib.colors import hsv_to_rgb
@@ -47,6 +54,37 @@ FIGS = os.environ.get('FABRIC_FIGS') or os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..',
                  'figs'))
 os.makedirs(FIGS, exist_ok=True)
+
+
+def out_dir(argv, pos=1, default=None):
+    """Output directory from argv[pos], falling back to `default` or FIGS.
+
+    An EMPTY argument means "use the default", not "use the cwd". Scripts here
+    take the output directory first and their selectors after it, so choosing a
+    site or a variant forces argv[1] to be supplied and '' is the natural way
+    to leave the output alone. Resolving that to the cwd drops figures and
+    movies into the repository root - the one path that is not the gitignored
+    figs/ - with nothing warning that it happened.
+
+    `pos` indexes whatever list is passed, so a script that has already
+    sliced or spliced sys.argv passes its own list and its own position.
+    `default` is for a script whose output genuinely belongs somewhere other
+    than FIGS - a prototype rooted in its own scratch tree, or a cache of
+    intermediate frames - so it can take the empty-argument guard without
+    having its destination moved.
+
+    The directory returned is CREATED. FIGS exists because this module makes
+    it at import, but a `default` root or a caller-supplied path had no such
+    guarantee, and three prototypes raised FileNotFoundError from savefig
+    whenever they ran anywhere their hand-rolled relative default did not
+    already exist. Creating it here is what makes the returned path usable
+    rather than merely resolved, so no caller has to remember the makedirs.
+    """
+    val = argv[pos].strip() if len(argv) > pos else ''
+    d = val or (FIGS if default is None else default)
+    os.makedirs(d, exist_ok=True)
+    return d
+
 
 FIGSIZE = (13.0, 5.8)
 DPI = 200
@@ -259,6 +297,7 @@ def draw_ifg_ends(ax, dist):
 
 def two_panel_figure(proj):
     """The shared slide geometry: map panel left, interferogram right."""
+    import matplotlib.pyplot as plt
     fig = plt.figure(figsize=FIGSIZE, dpi=DPI, layout='constrained')
     gs = fig.add_gridspec(1, 2, width_ratios=[0.82, 1.18])
     axm = fig.add_subplot(gs[0, 0], projection=proj)
@@ -276,6 +315,7 @@ def ifg_panel(ax, fig, dist, t_us, phase, coh, ylabel='TWTT (μs)',
               extent=[dist[0], dist[-1], t_us[-1], t_us[0]])
     ax.set_xlabel('distance along profile (km)')
     ax.set_ylabel(ylabel)
+    import matplotlib.pyplot as plt
     sm = plt.cm.ScalarMappable(cmap='hsv',
                                norm=plt.Normalize(-np.pi, np.pi))
     # Clear of the image frame: at pad=0.01 the axes spine and the

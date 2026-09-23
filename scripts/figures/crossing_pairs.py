@@ -80,8 +80,8 @@ from pyproj import Transformer           # noqa: E402
 from scipy.stats import binomtest        # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import scar_style  # noqa: E402
 from scar_style import DATA, INK, MUTED  # noqa: E402
-from scar_style import FIGS  # noqa: E402
 
 DEFAULT_MAX_SEP = 300.0
 DEFAULT_PREFIX = '2025'
@@ -400,7 +400,7 @@ def report(name, pairs, diffs):
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else list(argv)
-    out_dir = argv[0] if len(argv) > 0 else FIGS
+    out_dir = scar_style.out_dir(argv, 0)
     max_sep = float(argv[1]) if len(argv) > 1 else DEFAULT_MAX_SEP
     prefix = argv[2] if len(argv) > 2 else DEFAULT_PREFIX
 

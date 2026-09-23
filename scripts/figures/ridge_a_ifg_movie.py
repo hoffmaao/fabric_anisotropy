@@ -46,7 +46,6 @@ import antarctic_basemap as ab             # noqa: E402
 import scar_style as sty                   # noqa: E402
 from scar_style import (DPI, INK, PROFILE_C, PROFILE_FX,  # noqa: E402
                         PROFILE_LW, TRACK_C)
-from scar_style import FIGS  # noqa: E402
 
 _argv = list(sys.argv[1:])
 # --still <tag> renders that ONE segment as a PNG and stops. It exists so
@@ -62,8 +61,10 @@ if '--still' in _argv:
     STILL = _argv[i + 1]
     del _argv[i:i + 2]
 
-IFG_DIR = _argv[0] if len(_argv) > 0 else 'ifg_movie'
-OUT = _argv[1] if len(_argv) > 1 else FIGS
+IFG_DIR = _argv[0] if _argv and _argv[0].strip() else os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..',
+                 'ifg_movie'))
+OUT = sty.out_dir(_argv, 1)
 FPS = int(_argv[2]) if len(_argv) > 2 else 25
 SEC_PER_SEG = float(_argv[3]) if len(_argv) > 3 else 1.07
 BATCH = os.path.expanduser('~/data/opr/fabric_batch')

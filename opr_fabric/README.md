@@ -68,14 +68,25 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
 
 ## Deployment on the CReSIS servers
 
-- `fabric.m`, `fabric_task.m` -> `opr/matlab/processing/` (or keep on your
-  personal path); `run_fabric.m` -> your `run_opr` repo
-  (`gRadar.path_override`), edited per season.
-- `+ptt` (from the project root) must be on the MATLAB path, e.g. copy to
-  `opr/matlab/+ptt` or your `run_opr` repo.
-- For compiled cluster modes, add `{'fabric_task.m' 2}` to
-  `gRadar.cluster.hidden_depend_funs` in startup.m and re-run
-  cluster_compile. `cluster.type = 'debug'` needs none of that.
+- Nothing is deployed: clone the repo anywhere (e.g. beside your `opr/`
+  and `run_opr/`) and `run('<clone>/opr_fabric/run_fabric.m')` after your
+  OPR startup. The script puts this checkout's `+ptt` and `fabric.m` /
+  `fabric_task.m` at the front of the path, and runs the chain it creates
+  (`run_chain = false` for OPR's save-only behavior). Step-by-step:
+  [`docs/cresis_tutorial.md`](../docs/cresis_tutorial.md).
+- Do not copy `fabric.m`, `fabric_task.m` or `+ptt` into `opr/matlab` or
+  `run_opr`: a copy there goes stale and is exactly what shadowed code
+  looks like.
+- `cluster.type = 'slurm'` compiles `fabric_task` and all of `+ptt` into
+  your `cluster_job` on every launch (~3 min, since that binary is shared
+  with every other OPR task), and needs MATLAB's `bin/` on `PATH` for
+  `mcc`: tutorial step 4. `cluster.type = 'debug'` (the default in
+  `run_fabric.m`) needs nothing.
+- `fabric.m` checks each frame's input product before submitting: frames
+  with none are skipped, and if none of the requested frames has one it
+  errors with the season's `CSARP_polarimetric*` products listed, since a
+  wrong `fabric.in_path` would otherwise produce tasks that complete with
+  no output.
 - Param spreadsheet: add a `fabric` worksheet (row 1 field names, row 2
   type codes, one row per segment matching the `cmd` sheet order), e.g.
   `out_path`(t), `in_path`(t), `fc`(r), `block_size`(r),
@@ -456,6 +467,23 @@ Season/data caveats to check before interpreting results:
   reduce `num_intervals`, or (joint mode) raise `reg`.
 
 ## Test
+
+Every test is a script that errors if any of its checks fails.
+`test/run_all_tests.m` runs them as one suite and names every failure at
+the end. `test/run_all_tests.sh` is the same from a shell: it finds
+MATLAB, and exits non-zero if any test failed.
+
+```sh
+bash opr_fabric/test/run_all_tests.sh quick   # the 14 fast tests, ~2 min
+bash opr_fabric/test/run_all_tests.sh         # all 22, over an hour
+bash opr_fabric/test/run_all_tests.sh test_fabric_task test_quadpol
+```
+
+`quick` leaves out the eight synthetics that take minutes each (the
+quad-pol and EastGRIP ones; the list is in `run_all_tests.m`). It is the
+gate's test command in `.no-mistakes.yaml`. Run the full suite by hand
+before merging a change to that code. On a shared CReSIS node, prefix
+`MATLAB_THREADS=8 nice`: uncapped, one test took ~65 of mem1's 112 cores.
 
 `test/test_fabric_task.m` builds a synthetic CSARP_polarimetric frame from
 a known fabric (with noise, wrong-sign convention, unwrapping constant,

@@ -89,6 +89,49 @@ SITES = {
     'thwaites': dict(lat=-76.45, lon=-107.67, title='Thwaites margin',
                      z_band=(200.0, 1200.0), z_deep=(1000.0, 1450.0),
                      vmax=0.13, movie=(200.0, 1050.0), win=150.0, step=20.0),
+    # THE KAMB LINE. The January 2023 traverse leg that leaves WAIS Divide
+    # camp on a bearing of about 200 deg and runs 84 km southwest, into the
+    # Ross-side catchment that drains through Kamb Ice Stream, then returns
+    # on 21 January. It is matched by SEGMENT, not by position, and it has
+    # to be: the leg sits 0.9 deg from the WAIS Divide centre below, well
+    # inside the 2 deg radius, so on position alone every frame of it is
+    # absorbed into the camp grid and labelled WAIS Divide - which is what
+    # happened the first time a figure was made from 20230120_05.
+    #
+    # NAMING, stated so nobody is misled by it later: this is the line
+    # TOWARD Kamb, in its upper catchment. The Kamb Ice Stream trunk is at
+    # about -82.4, -135.5, which is 518 km from WAIS Divide camp, and the
+    # farthest point of this leg is still 440 km from it
+    # (scripts/figures/kamb_or_wais.py, figs/kamb_or_wais.png). Nothing
+    # here is a measurement of the trunk, and a section from it must not be
+    # presented as one.
+    'kamb': dict(lat=-79.90, lon=-113.20, title='Kamb line',
+                 segs=('20230118_11', '20230118_13', '20230120_04',
+                       '20230120_05', '20230121_02', '20230121_03',
+                       '20230121_04'),
+                 z_band=(200.0, 1200.0), z_deep=(1000.0, 1450.0),
+                 vmax=0.25, movie=(200.0, 1400.0), win=150.0, step=20.0),
+    # EASTGRIP / NEGIS - the only NORTHERN site here, hence epsg 3413.
+    # Everything else in this stack is Antarctic and EPSG:3031 is the
+    # default; without the override a Greenland site projects to nonsense
+    # rather than failing.
+    #
+    # TWO CAUTIONS, both measured, before anything from this site is shown.
+    # (1) POSITIONS. 21 of the 29 constant-orientation frames carry corrupt
+    # coordinates, sitting at about 0 N, 2 E - the 20240621 and 20240622
+    # segments, whose trajectories were never repaired. Selection here is by
+    # POSITION, so those frames simply do not match this site and drop out
+    # on their own, which is the behaviour that rule was written for.
+    # (2) THE CONTRAST DOES NOT MATCH THE CORE. Over 300-800 m the median
+    # dlam is 0.026 on the valid-coordinate frames, where Weikusat (2022)
+    # implies 0.17-0.57; only 1 of those 8 frames reaches it. That is NOT
+    # explained by the corrupt frames - they sit at 0.022, statistically the
+    # same - nor by the constant-orientation mode, nor by coherence. The
+    # season is qlook, never SAR focused, and its channels are badly
+    # unequalised (VH/HV +17 to +29 dB). Treat this site as diagnostic.
+    'egrip': dict(lat=75.61, lon=-35.90, title='EastGRIP / NEGIS', epsg=3413,
+                  z_band=(200.0, 800.0), z_deep=(600.0, 900.0),
+                  vmax=0.12, movie=(200.0, 750.0), win=150.0, step=20.0),
     'wais_divide': dict(lat=-79.22, lon=-111.59, title='WAIS Divide',
                         z_band=(200.0, 1200.0), z_deep=(1000.0, 1450.0),
                         vmax=0.06, movie=(200.0, 700.0), win=150.0, step=20.0),
@@ -128,6 +171,14 @@ def get(site):
 def in_site(cfg, la, lo, tag=None):
     """Is this frame inside the named site?
 
+    A site may pin `segs`, a tuple of day_seg strings, and then membership
+    is decided by the segment ALONE - position is not consulted at all.
+    That is for a site which is a chosen subset of a larger survey rather
+    than a separate place: the Kamb line leaves WAIS Divide camp and stays
+    within its radius the whole way, so no box can separate the two.
+    Sites pinning `segs` must be declared BEFORE the survey they sit
+    inside, since callers take the first match.
+
     A site may pin `years`, in which case the tag's season must match too.
     Position alone cannot separate Eastwind from the McMurdo Ice Shelf
     transect: they overlap spatially and are told apart by season.
@@ -136,12 +187,52 @@ def in_site(cfg, la, lo, tag=None):
     few km at these latitudes - at Ridge A's 86.6 S it is 6.7 km, so the
     same physical radius spans far more degrees than it does at 76 S.
     """
+    if cfg.get('segs'):
+        # a segment-pinned site needs the tag; without one it cannot match,
+        # rather than silently falling through to its position box
+        if tag is None:
+            return False
+        return any(tag.startswith(sg) for sg in cfg['segs'])
     if cfg.get('years') and tag is not None:
         if tag[:4] not in cfg['years']:
             return False
     d_lon = abs((lo - cfg['lon'] + 180.0) % 360.0 - 180.0)
     return (abs(la - cfg['lat']) < SITE_RADIUS_DEG
             and d_lon < SITE_RADIUS_DEG * 3.0)
+
+
+def site_epsg(cfg):
+    """Projected CRS code for a site, by hemisphere.
+
+    Everything in this stack was written for Antarctica and hard-coded
+    EPSG:3031, which silently projects a Greenland site to nonsense rather
+    than failing. Sites now carry their own code and default to 3031, so
+    the Antarctic entries are untouched and a northern one has to say so.
+    """
+    return int(cfg.get('epsg', 3031))
+
+
+def site_transformer(cfg):
+    """Lon/lat to the site's projected metres."""
+    return Transformer.from_crs('EPSG:4326', 'EPSG:%d' % site_epsg(cfg),
+                                always_xy=True)
+
+
+def site_proj(cfg):
+    """Cartopy CRS matching site_transformer.
+
+    cartopy is imported lazily: several callers of this module only need
+    coordinates and should not have to install a mapping stack to get them.
+    """
+    import cartopy.crs as ccrs
+    e = site_epsg(cfg)
+    if e == 3031:
+        return ccrs.SouthPolarStereo(true_scale_latitude=-71.0)
+    if e == 3413:
+        # NSIDC Sea Ice Polar Stereographic North
+        return ccrs.NorthPolarStereo(central_longitude=-45.0,
+                                     true_scale_latitude=70.0)
+    raise ValueError('no cartopy projection wired for EPSG:%d' % e)
 
 
 def square_extent(bx, by, pad=1.18):
@@ -162,16 +253,21 @@ def square_extent(bx, by, pad=1.18):
     return (cx - half, cx + half, cy - half, cy + half), span_x, span_y
 
 
-def grid_north_az(lat, lon, step=0.02):
+def grid_north_az(lat, lon, step=0.02, cfg=None):
     """Azimuth of GRID north [deg E of true north] at each lat/lon.
 
     Measured, not assumed: step a little way true north, see where that
     lands in projected coordinates, and read off the angle between true
     north and the grid's +y axis. On EPSG:3031 this equals the longitude,
     but measuring it keeps the code correct if the projection changes.
+
+    Pass the site cfg for anything outside Antarctica: without it this
+    measures grid north on EPSG:3031, which for a northern site is a
+    confident answer to the wrong question.
     """
     lat = np.atleast_1d(np.asarray(lat, float))
     lon = np.atleast_1d(np.asarray(lon, float))
-    x0, y0 = T3031.transform(lon, lat)
-    x1, y1 = T3031.transform(lon, lat + step)
+    tf = T3031 if cfg is None else site_transformer(cfg)
+    x0, y0 = tf.transform(lon, lat)
+    x1, y1 = tf.transform(lon, lat + step)
     return (-np.degrees(np.arctan2(x1 - x0, y1 - y0))) % 360.0

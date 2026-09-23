@@ -27,9 +27,15 @@ import sys
 import h5py
 import numpy as np
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                'figures'))
+import scar_style                            # noqa: E402
+
 SITE = sys.argv[1] if len(sys.argv) > 1 else (
     '/cresis/nvme/opr_data/accum/2024_Antarctica_Ground2')
-OUT = sys.argv[2] if len(sys.argv) > 2 else 'ifg_movie'
+IFG_CACHE = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), '..', 'ifg_movie'))
+OUT = scar_style.out_dir(sys.argv, 2, IFG_CACHE)
 MAX_COL = 1100          # display columns; the panel is ~1200 px wide
 MAX_ROW = 750           # display rows
 C_ICE = 299792458.0 / np.sqrt(3.171)

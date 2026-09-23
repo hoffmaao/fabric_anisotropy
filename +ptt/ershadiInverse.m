@@ -16,6 +16,19 @@ function out = ershadiInverse(fr, z, opts)
 % FAITHFUL CHOICES, with their sources:
 %   - Piecewise-constant intervals (their EDML parameterization, 3.5.2;
 %     50 m default). The Legendre alternative is not implemented.
+%     INTERVAL LENGTH HAS A LOWER BOUND SET BY LEVERAGE, not by noise.
+%     phi at a row is the phase accumulated over the whole stack above it,
+%     of which the interval being fitted contributes only its own share;
+%     when that share is small the stage has little purchase on its own
+%     theta and bends it to absorb upstream error instead. Measured on the
+%     test_ershadi_r synthetic, intervals carrying ~17% of the phase
+%     reaching their rows gave 5.7 deg of theta error, and QUADRUPLING the
+%     rows made it 11.1 - more data sharpens a biased objective rather
+%     than fixing it - while intervals carrying ~44% gave 0.4 deg. Check
+%     .theta_phase_rad against the accumulated phase at the interval's
+%     depth before trusting a fine parameterization; a short interval is
+%     safe for r (which is local to the layer) long before it is safe for
+%     theta.
 %   - Initial guess (3.5.3): theta0 from ptt.ershadiFabric's theta output,
 %     which is exactly their recipe (dP_HV minima, disambiguated by the
 %     phase polarity and the sign of Psi); r0 = 0 dB.
@@ -36,6 +49,19 @@ function out = ershadiInverse(fr, z, opts)
 %     of dP_HH (that is the whole basis of eq. 13) and it scales the
 %     C_HHVV phase excursion - so a theta fitted while r is pinned at the
 %     r0 = 0 dB guess is not the theta that goes with the fitted r.
+%   - WITHIN each stage the intervals are solved LAYER BY LAYER, TOP TO
+%     BOTTOM - the paper's own depth ordering (3.6) - by a coarse grid
+%     plus a bounded 1-D fmincon polish per interval, not by one joint
+%     fmincon over every interval. The joint form was tried first and
+%     failed the paper's own Table-2 seven-layer model: their 3.5.3
+%     initial guesses assume "theta does not vary significantly with
+%     depth", Table 2 violates that by design, and from those guesses the
+%     joint fit left the deepest layer's theta 66 deg off. Top-down makes
+%     interval k's subproblem depend only on the already-fitted stack
+%     above and its own parameter, and the grid removes the dependence on
+%     the initial guess entirely. For r the per-interval solve is exact,
+%     not an approximation: a layer's reflection ratio enters only its own
+%     rows, so given theta the joint optimum IS the interval-wise one.
 %   - Bounds (3.5.4): 0 < theta_i < pi, -30 dB < r_i < 30 dB, enforced by
 %     fmincon bound constraints (they used log-barriers inside the cost
 %     with fmincon; interior-point bounds are the same mechanism, owned by
@@ -111,6 +137,14 @@ function out = ershadiInverse(fr, z, opts)
 %                                   data - they are not interchangeable
 %   .r13_reason_key                 cellstr naming codes 0..5
 %   .r13_gate                       the per-interval code 0..3 behind them
+%   .theta_fitted                   per interval: was its theta actually
+%                                   fitted, or held at the initial guess
+%                                   because the interval accumulates too
+%                                   little birefringent phase to constrain
+%                                   an axis (see MIN_TH_PHASE)
+%   .theta_phase_rad                the two-way accumulated phase each
+%                                   interval carries, the quantity that
+%                                   decision is made on
 %   .theta0_int                     the INITIAL-GUESS theta per interval -
 %                                   returned because r13 is conditioned on
 %                                   it, so measuring theta_int against it is
@@ -200,7 +234,18 @@ if isempty(fitset)
 end
 
 % --- accepted dlam and initial theta per interval (3.5.3/3.5.4)
-dlam_int = zeros(Nint, 1);
+% NaN, not zero. An interval with no usable dlam has an UNKNOWN one, and
+% zero is a specific physical claim - no birefringence - that makes the
+% forward model's dP_HH collapse to the reflection-ratio term alone, so
+% the r stage then absorbs whatever azimuthal structure is present
+% (on Ridge A, the heading-dependent antenna pedestal) and reports it as
+% scattering anisotropy. Measured: 61% of deep Ridge A intervals fell to
+% the zero initialisation because ershadiFabric NaNs its dlam below the
+% |C| > 0.4 gate and the site's median |C| is 0.47, and the resulting
+% r profiles split by heading family at 6.8 dB - a pedestal artefact that
+% reads exactly like the COF-scattering signature being tested for.
+% Intervals that stay NaN are excluded from the fit below.
+dlam_int = nan(Nint, 1);
 th0_int = zeros(Nint, 1);
 th0_res = zeros(Nint, 1);
 for k = 1:Nint
@@ -223,6 +268,39 @@ for k = 1:Nint
 end
 r0_int = zeros(Nint, 1);                 % "The initial guess for r0dB is zero"
 
+% --- dlam is ACCEPTED, never fitted (3.5.4), so an interval without one has
+% nothing to fit r against: the forward would model an isotropic column and
+% the r stage would absorb whatever azimuthal structure is present instead.
+% TWO ARRAYS, because two different needs. Intervals ABOVE the fit band
+% exist only to accumulate phase down to the rows being fitted, and a NaN
+% there makes the whole forward NaN - so the MODEL runs on a filled profile
+% (linear between known intervals, held at the ends). The REPORTED dlam_int
+% keeps its NaNs: what was measured and what was assumed for propagation
+% must never be the same array. Fitting is confined to measured intervals.
+dlam_known = isfinite(dlam_int) & dlam_int > 0;
+dlam_fwd = dlam_int;
+if any(dlam_known)
+  kk = find(dlam_known);
+  if isscalar(kk)
+    dlam_fwd(:) = dlam_int(kk);
+  else
+    dlam_fwd = interp1(zc_int(kk), dlam_int(kk), zc_int, 'linear', 'extrap');
+  end
+  dlam_fwd = max(dlam_fwd, 0);
+  dlam_fwd(dlam_known) = dlam_int(dlam_known);
+else
+  dlam_fwd(:) = 0;
+end
+fitset = fitset(dlam_known(fitset));
+if isempty(fitset)
+  error('ptt:ershadiInverse:noDlam', ...
+    ['no interval in the fit band has an accepted dlam - every one was ' ...
+    'gated out upstream (ptt.ershadiFabric NaNs dlam below its coh_min, ' ...
+    'default 0.4). Lower coh_min, lengthen interval_m so each interval ' ...
+    'catches usable rows, or narrow z_fit to the depths the coherence ' ...
+    'actually supports.']);
+end
+
 % --- observation fields, decimated and standardized once
 iz = find(band); iz = iz(1:dec_z:end);
 ip = 1:dec_p:numel(fr.psi);
@@ -236,17 +314,91 @@ std_of = @(A) deal_std(A);
 nrm = {@(A) (A - mu1)/s1, @(A) (A - mu2)/s2, @(A) (A - mu3)/s3};
 obs_n = {nrm{1}(obs.phi), nrm{2}(obs.hh), nrm{3}(obs.hv)};
 
-cost = @(th_all, r_all, w) H_cost(th_all, r_all, dlam_int, edges, ...
-  zsub, psi_fit, fwd, obs_n, nrm, w);
+cost = @(th_all, r_all, w) H_cost(th_all, r_all, dlam_fwd, edges, ...
+  zsub, psi_fit, fwd, obs_n, nrm, w, []);
+
+% Per-interval row sets for the LAYER-BY-LAYER stages, padded by the
+% model's phase-smoothing window so an interval's phi rows are evaluated
+% with their real neighbourhood and then trimmed - without the pad, edge
+% effects of the win_m moving average contaminate a third of a 50 m
+% interval on the decimated grid.
+dz_sub = median(abs(diff(zsub)));
+npad = max(2, ceil(fwd.win_m / max(dz_sub, eps)));
+rows_of = cell(Nint, 1); rows_pad = cell(Nint, 1); keep_of = cell(Nint, 1);
+for k = 1:Nint
+  hi = edges(k+1); if k == Nint, sel = zsub >= edges(k) & zsub <= hi;
+  else, sel = zsub >= edges(k) & zsub < hi; end
+  r_ = find(sel);
+  rows_of{k} = r_;
+  if isempty(r_), rows_pad{k} = r_; keep_of{k} = []; continue; end
+  p0 = max(1, r_(1) - npad); p1 = min(numel(zsub), r_(end) + npad);
+  rows_pad{k} = (p0:p1).';
+  keep_of{k} = r_ - p0 + 1;
+end
+costk = @(th_all, r_all, w, k) H_cost(th_all, r_all, dlam_fwd, edges, ...
+  zsub(rows_pad{k}), psi_fit, fwd, ...
+  {obs_n{1}(rows_of{k}, :), obs_n{2}(rows_of{k}, :), obs_n{3}(rows_of{k}, :)}, ...
+  nrm, w, keep_of{k});
 
 oopt = optimoptions('fmincon', 'Display', 'off', 'Algorithm', ...
   'interior-point', 'MaxIterations', max_iter, ...
-  'MaxFunctionEvaluations', 200 * numel(fitset));
+  'MaxFunctionEvaluations', 50 * max_iter);
 
 th = th0_int; rdb = r0_int;
-nf = numel(fitset);
-lb_th = zeros(nf, 1);      ub_th = pi * ones(nf, 1);      % 0 < theta < pi
-lb_r = -30 * ones(nf, 1);  ub_r = 30 * ones(nf, 1);       % +-30 dB
+TH_GRID = deg2rad(0:3:177);
+R_GRID = (-30:1.5:30);
+
+% --- theta supplied and HELD, rather than fitted.
+% Ershadi fit theta because the direct chain was the only axis estimate
+% they had. On this instrument it is not the best one: the published
+% chain's cross-polarized argmin is antenna-locked by a flat pedestal
+% (88.8 +- 2.0 deg over 36 Ridge A frames, 0.1 +- 0.7 at Thwaites - axes
+% pinned to the antenna frame across sites with different ice), which is
+% why ptt.quadpolFabricLS exists. Where a trusted axis profile is
+% available, handing it in is both more faithful to what is known and
+% better conditioned: the theta stage needs an interval to carry a large
+% share of the phase reaching its rows (see the leverage note above), a
+% condition Ridge A's dlam ~0.06 column does not meet at any interval
+% length that also resolves r. Fitting theta there DESTROYS a good initial
+% guess - measured on 20250108_02_009, stable 86-98 deg guesses were
+% thrown to 13, 27 and 139 deg - while r, being local to the reflector,
+% is well posed at the same interval length.
+% Supply as radians, one per interval (or a scalar for the whole column).
+th_fix = H_opt(opts, 'theta_int_fixed', []);
+if ~isempty(th_fix)
+  th_fix = th_fix(:);
+  if isscalar(th_fix), th_fix = repmat(th_fix, Nint, 1); end
+  if numel(th_fix) ~= Nint
+    error('ptt:ershadiInverse:thetaFixed', ...
+      'theta_int_fixed has %d values for %d intervals', ...
+      numel(th_fix), Nint);
+  end
+  bad = ~isfinite(th_fix);
+  th_fix(bad) = th0_int(bad);       % fall back per interval, not wholesale
+  th = mod(th_fix, pi);
+end
+fit_theta = isempty(th_fix);
+
+% --- which intervals can constrain their OWN theta at all.
+% An interval's axis is visible only through the birefringent phase it
+% accumulates: at zero accumulated phase the transmission matrix is the
+% identity for every theta, so the misfit is flat and the fit returns
+% whatever the optimizer wandered into. Fitting such an interval is worse
+% than not fitting it, because the staged design hands its theta to every
+% interval BELOW it - measured on the three-zone synthetic, a lid of
+% 100 m intervals at dlam 0.05 (2*gpd1*0.05*100 = 1.5 rad each) drove the
+% two strong zones under it from 0.2 deg of error to 5.8 deg.
+% Unidentifiable intervals therefore KEEP their initial guess (the data's
+% own dP_HV-minimum estimate) and are reported in .theta_fitted.
+% The threshold is on TWO-WAY accumulated phase across the interval's own
+% thickness. MIN_TH_PHASE = 2 rad is a judgement: it is comfortably above
+% the ~1.5 rad that measurably degraded the fit and comfortably below the
+% ~6 rad a 100 m interval carries at the dlam 0.2 of a developed fabric,
+% so it separates the two regimes this synthetic spans. It is not derived.
+MIN_TH_PHASE = H_opt(opts, 'min_theta_phase_rad', 2.0);
+gpd1_fwd = ptt.birefringentPhaseRate(fwd.fc, fwd.eps_perp, fwd.deps);
+dphi_own = 2 * gpd1_fwd * dlam_fwd(:) .* diff(edges(:));
+th_ident = dphi_own >= MIN_TH_PHASE;
 
 % --- staged fit, cycled. Each J0/J pair brackets its own stage: J0 is
 % evaluated at the parameters the stage STARTS from, so J0 - J is that
@@ -270,19 +422,49 @@ n_used = 0;
 for cyc = 1:n_cycles
   n_used = cyc;
 
-  % stage 1: theta intervals against w_theta (Table 3, theta row), r held
+  % stage 1: theta, LAYER BY LAYER, TOP TO BOTTOM (the paper's own words
+  % for its depth ordering, Sect. 3.6), against w_theta. A JOINT fmincon
+  % over all intervals was tried first and FAILED THE PAPER'S OWN Table-2
+  % model: their 3.5.3 initial guesses assume "theta does not vary
+  % significantly with depth", Table 2 violates that by design
+  % (45 -> 135 -> 120 deg), and from those guesses the joint fit landed
+  % L7 66 deg off while shallow layers held. Sequential top-down makes
+  % each subproblem well-posed: interval k's rows depend only on the
+  % ALREADY-FITTED intervals above it and on its own theta_k, so a coarse
+  % grid (multimodality-proof, no dependence on the initial guess) plus a
+  % bounded 1-D fmincon polish finds it without a starting point at all.
   if isnan(J0(cyc, 1)), J0(cyc, 1) = cost(th, rdb, w_th); end
-  f1 = @(p) cost(H_place(th, fitset, p), rdb, w_th);
-  [p1, J(cyc,1), ex(cyc,1)] = fmincon(f1, th(fitset), [], [], [], [], ...
-    lb_th, ub_th, [], oopt);
-  th = H_place(th, fitset, p1);
+  exmin = Inf;
+  for k = fitset(:).'
+    if ~fit_theta, break; end            % theta supplied and held
+    if isempty(rows_of{k}), continue; end
+    if ~th_ident(k), continue; end       % unidentifiable: hold at th0
+    Jg = arrayfun(@(t) costk(H_place(th, k, t), rdb, w_th, k), TH_GRID);
+    [~, ib] = min(Jg);
+    lo = max(0, TH_GRID(ib) - deg2rad(3));
+    hi = min(pi, TH_GRID(ib) + deg2rad(3));
+    fk = @(t) costk(H_place(th, k, t), rdb, w_th, k);
+    [tk, ~, ek] = fmincon(fk, TH_GRID(ib), [], [], [], [], lo, hi, [], oopt);
+    th(k) = tk; exmin = min(exmin, ek);
+  end
+  J(cyc, 1) = cost(th, rdb, w_th); ex(cyc, 1) = exmin;
 
-  % stage 2: r intervals against w_r (Table 3, r row), theta held
+  % stage 2: r, per interval against w_r. r_k only enters its own rows
+  % (the scattering is at the reflector, not in the propagation), so the
+  % per-interval 1-D solve IS the joint optimum given theta - staging
+  % loses nothing here.
   J0(cyc, 2) = cost(th, rdb, w_r);
-  f2 = @(p) cost(th, H_place(rdb, fitset, p), w_r);
-  [p2, J(cyc,2), ex(cyc,2)] = fmincon(f2, rdb(fitset), [], [], [], [], ...
-    lb_r, ub_r, [], oopt);
-  rdb = H_place(rdb, fitset, p2);
+  exmin = Inf;
+  for k = fitset(:).'
+    if isempty(rows_of{k}), continue; end
+    Jg = arrayfun(@(r) costk(th, H_place(rdb, k, r), w_r, k), R_GRID);
+    [~, ib] = min(Jg);
+    lo = max(-30, R_GRID(ib) - 1.5); hi = min(30, R_GRID(ib) + 1.5);
+    fk = @(r) costk(th, H_place(rdb, k, r), w_r, k);
+    [rk, ~, ek] = fmincon(fk, R_GRID(ib), [], [], [], [], lo, hi, [], oopt);
+    rdb(k) = rk; exmin = min(exmin, ek);
+  end
+  J(cyc, 2) = cost(th, rdb, w_r); ex(cyc, 2) = exmin;
 
   Jth_end = cost(th, rdb, w_th);
   Jtot = Jth_end + J(cyc, 2);
@@ -399,7 +581,7 @@ J0 = J0(1:n_used, :); J = J(1:n_used, :); ex = ex(1:n_used, :);
 % unknowable projection, so it MUST abstain the column below it. That is
 % correct abstention, not a defect. The two report separately below.
 Lint = diff(edges);
-dphi_int = 2 * gpd1 * dlam_int .* Lint;   % two-way phase each interval adds
+dphi_int = 2 * gpd1 * dlam_fwd .* Lint;   % two-way phase each interval adds
 coax_min = cos(2 * deg2rad(r13_coax_deg));
 w_ap = pi - acos(r13_cos_max);            % anti-phase half-window, rad
 neg_bound = r13_neg_frac * w_ap;
@@ -421,7 +603,7 @@ for k = 1:Nint
   if demoted, small(:) = false; end
   act = find(~small);
   jj = act(act < k);
-  cum_dl(k) = sum(dlam_int(jj) .* Lint(jj) .* ...
+  cum_dl(k) = sum(dlam_fwd(jj) .* Lint(jj) .* ...
     cos(2 * (th0_int(jj) - th0_int(k))));
   ta = th0_int(act);
   ok_axis = all(th0_res(act) >= r13_axis_res_min);
@@ -446,7 +628,7 @@ for i = find(band).'
     r13_reason(i) = gate(k);
     continue;
   end
-  delta2 = 2 * gpd1 * (cum_dl(k) + dlam_int(k) * (z(i) - edges(k)));
+  delta2 = 2 * gpd1 * (cum_dl(k) + dlam_fwd(k) * (z(i) - edges(k)));
   if cos(delta2) > r13_cos_max
     r13_reason(i) = 4;
     continue;
@@ -464,6 +646,18 @@ for k = 1:Nint
   th_row(m) = th(k); r_row(m) = rdb(k);
 end
 
+% WHICH AXES WERE ACTUALLY FITTED. th_ident says an interval carries enough
+% phase to constrain its own axis, but that is a necessary condition, not
+% the record of what happened: stage 1 only ever visits intervals in
+% `fitset` (those at or below z_fit(1) AND carrying an accepted dlam) that
+% also caught rows of z. An interval above the fit band still gets a
+% dphi_own from the INTERPOLATED dlam_fwd and would otherwise be reported
+% as fitted while its theta is still the initial guess - and this field is
+% saved straight into the product the heading-family analysis reads.
+in_fit = false(Nint, 1); in_fit(fitset) = true;
+has_rows = ~cellfun(@isempty, rows_of);
+th_fitted = th_ident & fit_theta & in_fit & has_rows;
+
 out = struct('z_int', zc_int, 'theta_int', th, 'r_db_int', rdb, ...
   'dlam_int', dlam_int, 'theta', th_row, 'r_db', r_row, 'r13_db', r13, ...
   'theta0_int', th0_int, 'theta0_res', th0_res, ...
@@ -471,12 +665,18 @@ out = struct('z_int', zc_int, 'theta_int', th, 'r_db_int', rdb, ...
   'r13_gate', gate, ...
   'J0', J0, 'J', J, 'exitflag', ex, 'n_cycles_used', n_used, ...
   'cycle_best', cyc_best, 'cycle_worsened', worsened, ...
+  'theta_fitted', th_fitted, 'theta_phase_rad', dphi_own, ...
+  'theta_was_supplied', ~fit_theta, ...
   'edges', edges, 'fitset', fitset);
 
 end
 
 % ---------------------------------------------------------------- helpers
-function J = H_cost(th_all, r_all, dlam_int, edges, zsub, psi, fwd, obs_n, nrm, w)
+function J = H_cost(th_all, r_all, dlam_int, edges, zsub, psi, fwd, obs_n, nrm, w, keep)
+%H_COST Weighted standardized misfit. `keep` trims the MODEL rows after
+% evaluation (the per-interval stages evaluate on a padded row set so the
+% phase-smoothing window sees its real neighbourhood, then keep only the
+% interval's own rows, which is what obs_n was sliced to); [] keeps all.
 NL = numel(th_all);
 layers = struct('top_m', num2cell(edges(1:NL).'), ...
   'dlam', num2cell(dlam_int.'), 'theta', num2cell(th_all.'), ...
@@ -486,7 +686,9 @@ J = 0;
 flds = {mod_.phi, mod_.dP_hh, mod_.dP_hv};
 for t = 1:3
   if w(t) == 0, continue; end
-  d = nrm{t}(flds{t}) - obs_n{t};
+  F = flds{t};
+  if ~isempty(keep), F = F(keep, :); end
+  d = nrm{t}(F) - obs_n{t};
   ok = isfinite(d);
   J = J + w(t) * sum(d(ok).^2) / max(nnz(ok), 1);
 end

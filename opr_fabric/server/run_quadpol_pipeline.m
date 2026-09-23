@@ -67,6 +67,57 @@ if z_max ~= 1500
 else
   ZTAG = '';
 end
+% CONSTANT FABRIC AXIS WITH DEPTH, per along-track segment. Overridable at
+% the call site or from a season driver; OFF by default because it is an
+% assumption about the site rather than a better estimator, and because
+% turning it on changes every fitted theta0.
+%
+% Products carry a "_ct" tag for the same reason non-default depths carry
+% "_z": a method change must NEVER clobber the products the batches and
+% every published number were built from, or the comparison that decides
+% whether the assumption helps becomes impossible to make.
+%
+% The tag splits in two here, and the split matters. ZTAG names the COREG
+% CACHE, which depends only on the depth window; PTAG names the PRODUCT.
+% theta_const changes the fit, not the coregistration that precedes it, so
+% it belongs to PTAG alone. Folding it into ZTAG would miss every existing
+% cache and re-coregister the whole survey to land byte-identical channels -
+% about 40 min and 0.7 GB per frame, ~84 GB over a full re-run.
+% IMAGE-SPLIT SEASONS. Some SAR-focused seasons ship each frame as more
+% than one image, named Data_img_NN_<day_seg>_<frm>.mat, where the images
+% are different range windows of the same traces rather than different
+% ice: in 2022_Antarctica_Ground's January 2023 segments img_01 spans
+% -4.05..12.94 us (about 1100 m of ice) and img_02 spans -11.05..54.38 us
+% (about 4600 m), on identical trace counts and the same 2.50 m SAR
+% spacing. Set img (e.g. 'img_02') to choose one.
+%
+% DEFINED HERE, ahead of the product tag below, because that tag reads it.
+% Defining it later instead worked only for callers that happened to set
+% img in their own workspace and errored for every caller that did not -
+% i.e. every season that is not image-split.
+if ~exist('img', 'var') || isempty(img)
+  img = '';
+else
+  img = char(img);
+end
+if ~exist('theta_const', 'var') || isempty(theta_const)
+  theta_const = false;
+end
+THETA_CONST = logical(theta_const);
+% TAG ORDER MATTERS, and it is '_ct' LAST. The image names a different
+% DATASET (a different range window of the same traces) while '_ct' names a
+% different METHOD applied to it, so the pair to compare is
+% <tag>_img_02.mat against <tag>_img_02_ct.mat. Putting '_ct' last keeps
+% that pairing a plain suffix strip, which is what scripts/compare_const_
+% theta.py does to find each product's default twin; '_ct_img_02' would
+% break it silently and leave every _ct product looking like an orphan.
+PTAG = ZTAG;
+if ~isempty(img)
+  PTAG = [PTAG, '_', img];
+end
+if THETA_CONST
+  PTAG = [PTAG, '_ct'];
+end
 FC = 750e6;
 PSI_STEP_DEG = 1;
 % dlam search ceiling for the LS estimator. Its default 0.25 predates any
@@ -116,6 +167,14 @@ else
 end
 CACHE_COREG = true;   % keep the coregistered channels; see below
 name = sprintf('Data_%s_%03d.mat', day_seg, frm);
+% The CHANNEL files take the image-prefixed name (see the img default
+% above); the polarimetric product, which is never image-split, keeps the
+% plain one.
+if isempty(img)
+  chan_name = name;
+else
+  chan_name = sprintf('Data_%s_%s_%03d.mat', img, day_seg, frm);
+end
 t_all = tic;
 
 %% 1-2. window, settings and source check, from the product
@@ -140,11 +199,28 @@ if exist(pol_fn, 'file') ~= 2
 end
 qlook_mode = exist(pol_fn, 'file') ~= 2;
 if qlook_mode
-  CHAN_DIR = 'CSARP_qlook_%s';
-  qfn = fullfile(site_root, sprintf(CHAN_DIR, 'HH'), day_seg, name);
+  % A MISSING POLARIMETRIC PRODUCT DOES NOT MEAN QLOOK CHANNELS. Two
+  % different families land here. EastGRIP ships CSARP_qlook_* and no
+  % polarimetric step was ever run. The January 2023 segments of
+  % 2022_Antarctica_Ground are SAR FOCUSED - CSARP_standardphase_* exists
+  % for all four channels - but their CSARP_polarimetric_unwrap
+  % directories were created and left empty, so the polarimetric step
+  % never ran on them either. Both need this branch's substitutes (the
+  % coregistration defaults, the picked surface, the window from z_max);
+  % they differ only in which directory holds the channels. Prefer the
+  % SAR-focused one when it is there: it is the better product and it is
+  % what every other site in this repo is inverted from.
+  CHAN_DIR = 'CSARP_standardphase_%s';
+  qfn = fullfile(site_root, sprintf(CHAN_DIR, 'HH'), day_seg, chan_name);
+  if exist(qfn, 'file') ~= 2
+    CHAN_DIR = 'CSARP_qlook_%s';
+    qfn = fullfile(site_root, sprintf(CHAN_DIR, 'HH'), day_seg, chan_name);
+  end
   if exist(qfn, 'file') ~= 2
     error('run_quadpol_pipeline:noProduct', ...
-      'neither a polarimetric product nor %s', qfn);
+      ['no polarimetric product, and no HH channel at %s (looked in ' ...
+       'CSARP_standardphase_HH and CSARP_qlook_HH%s)'], qfn, ...
+      H_tag(isempty(img), '', sprintf(' for image %s', img)));
   end
   P = load(qfn, 'Time', 'Surface', 'Latitude', 'Longitude', 'GPS_time');
   % QLOOK COORDINATES THAT ARE NOT ON THE ICE SHEET are rebuilt from the
@@ -203,7 +279,21 @@ if qlook_mode
       why = sprintf(['%d of its %d positioned traces sit below %d deg of ' ...
         'latitude'], n_located - n_polar, n_located, POLAR_LAT_MIN);
     end
-    ref_fn = fullfile(site_root, 'CSARP_reference_trajectory', ...
+    % REFERENCE TRAJECTORY ROOT. Defaults to site_root, but a season whose
+    % production trajectories are broken can be pointed at a repaired
+    % private tree without moving anything else. EastGRIP needs this:
+    % ref_20240620_01, ref_20240621_01 and ref_20240622_01 in the group
+    % tree are 100 PERCENT null island - every one of 581926, 869130 and
+    % 301949 samples at about 0 N 2 E - while the repaired copies under
+    % ~/scratch/opr_support_egrip/opr_data/... carry the real positions.
+    % Products built against the broken ones cannot be placed on a map and
+    % silently drop out of any position-selected figure.
+    if exist('ref_root', 'var') && ~isempty(ref_root)
+      rr = ref_root;
+    else
+      rr = site_root;
+    end
+    ref_fn = fullfile(rr, 'CSARP_reference_trajectory', ...
       sprintf('ref_%s.mat', day_seg));
     if exist(ref_fn, 'file') ~= 2
       error('run_quadpol_pipeline:noRefTraj', ...
@@ -211,6 +301,15 @@ if qlook_mode
         'cannot be positioned'], why, ref_fn);
     end
     RT = load(ref_fn, 'gps_time', 'lat', 'lon');
+    % A trajectory can exist and still be useless. Refuse a null-island
+    % file rather than writing another unplaceable product.
+    n_null = nnz(abs(RT.lat) < 1 & abs(RT.lon) < 5);
+    if n_null > 0.5 * numel(RT.lat)
+      error('run_quadpol_pipeline:nullRefTraj', ...
+        ['%s is %.0f%% null island (%d of %d samples); point ref_root at a ' ...
+         'repaired trajectory tree'], ref_fn, ...
+        100*n_null/numel(RT.lat), n_null, numel(RT.lat));
+    end
     [rt_gps, rt_ord] = sort(RT.gps_time(:));
     rt_lat = RT.lat(:); rt_lat = rt_lat(rt_ord);
     rt_lon = RT.lon(:); rt_lon = rt_lon(rt_ord);
@@ -279,8 +378,9 @@ if qlook_mode
   % happens to be this release.
   CO = struct('Tt', 101, 'Tx', 301, 'overlap_t', 50, 'overlap_x', 150, ...
     'search_t', 5, 'search_x', 5, 'one_dim_search_en', 1);
-  fprintf('=== %s_%03d === QLOOK MODE (no polarimetric product)\n', ...
-    day_seg, frm);
+  fprintf('=== %s_%03d === NO-POLARIMETRIC MODE, channels from %s%s\n', ...
+    day_seg, frm, sprintf(CHAN_DIR, '*'), ...
+    H_tag(isempty(img), '', sprintf(' (image %s)', img)));
   if ~dlam_ov, DLAM_MAX = 0.45; end
   fprintf('dlam search ceiling %.2f\n', DLAM_MAX);
   % Surface is NaN in these products, so the depth zero is picked here -
@@ -350,7 +450,7 @@ end
 % loading, so this costs nothing on the frames where it changes nothing.
 navail = inf;
 for k = 1:4
-  fnk = fullfile(site_root, sprintf(CHAN_DIR, upper(CHAN{k})), day_seg, name);
+  fnk = fullfile(site_root, sprintf(CHAN_DIR, upper(CHAN{k})), day_seg, chan_name);
   if exist(fnk, 'file') ~= 2
     error('run_quadpol_pipeline:missing', 'missing %s channel', CHAN{k});
   end
@@ -383,7 +483,7 @@ fprintf('window rbin %d:%d\n', r0, r1);
 
 S = struct();
 for k = 1:4
-  fn = fullfile(site_root, sprintf(CHAN_DIR, upper(CHAN{k})), day_seg, name);
+  fn = fullfile(site_root, sprintf(CHAN_DIR, upper(CHAN{k})), day_seg, chan_name);
   if exist(fn, 'file') ~= 2
     error('run_quadpol_pipeline:missing', 'missing %s channel', CHAN{k});
   end
@@ -394,7 +494,7 @@ for k = 1:4
   end
   S.(CHAN{k}) = q.Data(r0:r1, :);
   if k == 1, Tv = q.Time(r0:r1); end
-  if qlook_mode && isreal(S.(CHAN{k}))
+  if qlook_mode && isreal(S.(CHAN{k}))  % SAR-focused channels are complex
     error('run_quadpol_pipeline:notComplex', ...
       ['%s channel is REAL, not complex - the coherence fit needs the ' ...
        'full scattering matrix. Segment 20240618_01 of the EastGRIP ' ...
@@ -564,8 +664,14 @@ fprintf('depth window %.0f..%.0f m (%d samples)\n', z(1), z(end), numel(z));
 % keyed by the settings that produced it; any mismatch falls through to a
 % fresh coregistration.
 pairs = {'hh','vv'; 'hh','hv'; 'hh','vh'; 'hv','vh'};
+% The cache key carries the IMAGE as well as the depth window. ZTAG alone
+% would give img_01 and img_02 of one frame the same cache name, and since
+% they are different range windows the stored r0/r1/z check would reject
+% each other's file and re-coregister every time - 40 min and 0.7 GB
+% rewritten on every alternation, with the last writer winning.
 cache_fn = fullfile(out_dir, 'coreg_cache', ...
-  sprintf('creg_%s_%03d%s.mat', day_seg, frm, ZTAG));
+  sprintf('creg_%s_%03d%s%s.mat', day_seg, frm, ZTAG, ...
+  H_tag(isempty(img), '', ['_' img])));
 from_cache = false;
 if exist(cache_fn, 'file') == 2
   try
@@ -739,9 +845,22 @@ NBLK_ROT = 200;
 % laterally-varying frames; the pedestal stays frame-level because it is
 % an instrument constant. Curved frames keep the validated geographic
 % path (test_quadpol_curved.m) inside the helper.
+% theta_const: ONE axis per segment, constant in depth, still free to vary
+% along track (see ptt.quadpolFabricLS's CONSTANT-ORIENTATION MODE). It is
+% a MODEL ASSUMPTION about the site, so it is set at the call site or in
+% the season driver, never defaulted on: at a divide it removes per-window
+% axis noise and sharpens dlam, but where the axis rotates with depth -
+% Thwaites' margin, EastGRIP - it is simply wrong and measured 6x worse on
+% synthetics. out.theta_spread_seg records the per-window spread that says
+% which case a segment is in.
+% jackknife: standard errors of every segment's axis and dlam profile by
+% delete-one resampling over the segment's heading sub-blocks
+% (ptt.quadpolJackknife) - the estimate's measured repeatability, no noise
+% model. Blocks get theirs from a split-half below.
 fp = ptt.quadpolFrameTheta(T, z, az_tr, x_along, struct('fc', FC, ...
   'deramped', true, 'dlam_max', DLAM_MAX, 'seg_len_m', SEG_LEN_M, ...
-  'nblk_rot', NBLK_ROT, 'track_az', track_az));
+  'nblk_rot', NBLK_ROT, 'track_az', track_az, ...
+  'theta_const', THETA_CONST, 'jackknife', true));
 lsq = fp.lsq;
 curved = fp.curved;
 hspread = fp.hspread;
@@ -772,6 +891,28 @@ fprintf(['LS frame pass %.1f min (%s, heading p95 spread %.1f deg): ' ...
   nnz(okt), numel(th_geo_raw), ped_ant(1), ped_ant(2), ped_ant(3), ...
   H_tag(ischar(blk_ped), ' (FAILED marker; blocks fit their own)', ''), ...
   fp.nseg, (x_along(end) - x_along(1)) / max(fp.nseg, 1) / 1000);
+if THETA_CONST
+  % what the assumption cost and whether the windows agreed with it, per
+  % segment, so the log answers "should this site be held" on its own
+  fprintf('constant axis: %d of %d segment(s) held; per-window spread [%s] deg (frame %.1f)\n', ...
+    nnz(fp.held_seg), numel(fp.held_seg), ...
+    strtrim(sprintf('%.1f ', fp.th_spread_seg)), fp.th_spread_frame);
+end
+% se_theta abstains rather than reporting a value the bounded axis
+% statistic cannot resolve, so the counts say WHY a cell is NaN: the
+% replicates scattered past the resolvable range, or there were too few.
+% The unresolvable count is NOT comparable between frames of different
+% length: the resolution floor tightens with the sub-block count, so a
+% longer segment abstains at a smaller true scatter (17.2 deg at 6
+% sub-blocks, 8.4 deg at 22). See ptt.circAxisSE.
+n_sat = nnz(fp.se_theta_sat);
+n_few = nnz(isnan(fp.se_theta_seg) & ~fp.se_theta_sat);
+fprintf('jackknife: replicates [%s], at search edge [%s]; se_theta median %.1f deg, se_dlam median %.4f\n', ...
+  strtrim(sprintf('%d ', fp.jack_n)), strtrim(sprintf('%d ', fp.jack_edge)), ...
+  rad2deg(median(fp.se_theta_seg(:), 'omitnan')), median(fp.se_dlam_seg(:), 'omitnan'));
+fprintf('           se_theta resolved on %d of %d cells; %d unresolvable (median resultant %.2f), %d short\n', ...
+  nnz(isfinite(fp.se_theta_seg)), numel(fp.se_theta_seg), n_sat, ...
+  median(fp.se_theta_r(fp.se_theta_sat), 'omitnan'), n_few);
 
 %% 4b. the SECTION: both estimators, per along-track block
 % The frame-average profile above answers "what is the fabric here"; this
@@ -787,6 +928,12 @@ sec_theta = nan(numel(z), nb);
 sec_cmag = nan(numel(z), nb);
 sec_dlam_ls = nan(numel(z), nb);
 sec_resid_ls = nan(numel(z), nb);
+% SPLIT-HALF block noise. A 125-trace block has no sub-units to jackknife,
+% so each block is refit on its two halves with the same held axis and
+% pedestal; half the difference of two independent half-block estimates
+% is one draw of the full block's error (var_full = var(diff)/4). The
+% per-block draw is saved raw, and a pooled sigma is formed below.
+sec_dlam_ls_hdiff = nan(numel(z), nb);
 sec_lat = nan(1, nb); sec_lon = nan(1, nb); sec_az = nan(1, nb);
 for b = 1:nb
   j0 = (b-1)*NBLK_TR + 1;
@@ -818,6 +965,30 @@ for b = 1:nb
     'theta0', th_b, 'pedestal', blk_ped, 'dlam_max', DLAM_MAX));
   sec_dlam_ls(:, b) = ob_ls.dlam_z;
   sec_resid_ls(:, b) = interp1(ob_ls.zw, ob_ls.resid, z, 'linear');
+  % halves hold the axis the block used - or, where the block estimated
+  % its own, the block's fitted axis - so the halves' scatter is dlam's
+  % alone and the half fits stay as cheap as the block fit
+  th_h = th_b;
+  if isempty(th_h)
+    okh = isfinite(ob_ls.theta0);
+    if nnz(okh) >= 2
+      th_h = struct('z', ob_ls.zw(okh), 'theta', ob_ls.theta0(okh));
+    end
+  end
+  if ~isempty(th_h)
+    jm = floor((j0 + j1) / 2);
+    dh = nan(numel(z), 2);
+    for h = 1:2
+      if h == 1, jh = j0:jm; else, jh = jm+1:j1; end
+      Th = struct();
+      for k = 1:4, Th.(CHAN{k}) = T.(CHAN{k})(:, jh); end
+      oh = ptt.quadpolFabricLS(Th, z, struct('fc', FC, 'deramped', true, ...
+        'theta0', th_h, 'pedestal', blk_ped, 'dlam_max', DLAM_MAX));
+      dh(:, h) = oh.dlam_z;
+    end
+    sec_dlam_ls_hdiff(:, b) = dh(:, 1) - dh(:, 2);
+    clear Th oh;
+  end
   sec_lat(b) = mean(la(j0:j1));
   sec_lon(b) = mean(lo(j0:j1));
   p0b = deg2rad(la(j0)); p1b = deg2rad(la(j1));
@@ -828,6 +999,25 @@ for b = 1:nb
 end
 fprintf('section: %d blocks of %d traces, %.1f min\n', nb, NBLK_TR, ...
   toc(t0)/60);
+% Pooled block sigma: the RMS of the half-differences over a +-30 m depth
+% neighbourhood (two fit windows) and +-8 blocks (~2 km, the segment
+% scale), halved. Per-block single draws are far too noisy to quote, and
+% the noise varies with depth (coherence) and slowly along track; this
+% neighbourhood follows both. Cells with fewer than ~two blocks' worth of
+% finite rows abstain.
+NZ30 = round(30 / max(median(diff(z)), eps));
+kz = ones(2*NZ30 + 1, 1);
+kb = ones(1, 17);
+hm = isfinite(sec_dlam_ls_hdiff);
+h2 = sec_dlam_ls_hdiff.^2;
+h2(~hm) = 0;
+hnum = conv2(conv2(h2, kz, 'same'), kb, 'same');
+hcnt = conv2(conv2(double(hm), kz, 'same'), kb, 'same');
+sec_se_dlam_ls = 0.5 * sqrt(hnum ./ max(hcnt, 1));
+sec_se_dlam_ls(hcnt < 2 * (2*NZ30 + 1)) = NaN;
+fprintf('block split-half: %.0f%% of blocks measured; pooled se_dlam median %.4f (band %.0f-%.0f m: %.4f)\n', ...
+  100 * mean(any(hm, 1)), median(sec_se_dlam_ls(:), 'omitnan'), ...
+  Z_BAND(1), Z_BAND(2), median(sec_se_dlam_ls(z >= Z_BAND(1) & z < Z_BAND(2), :), 'all', 'omitnan'));
 fprintf('section dlam %.3f..%.3f (median %.3f) | LS median %.3f\n', ...
   min(sec_dlam(:)), max(sec_dlam(:)), median(sec_dlam(:), 'omitnan'), ...
   median(sec_dlam_ls(:), 'omitnan'));
@@ -889,10 +1079,20 @@ res = struct('tag', sprintf('%s_%03d', day_seg, frm), ...
   'ls_dlam_seg', single(fp.dlam_seg), ...
   'ls_resid_seg', single(fp.resid_seg), ...
   'ls_seg_x', fp.seg_x, 'ls_nseg', fp.nseg, 'seg_len_m', SEG_LEN_M, ...
+  'theta_const', THETA_CONST, 'th_spread_seg', fp.th_spread_seg, ...
+  'th_spread_frame', fp.th_spread_frame, 'held_seg', fp.held_seg, ...
   'theta0_ls', single(rad2deg(lsq.theta0_z(s))), ...
   'dlam_ls', single(lsq.dlam_z(s)), ...
   'sec_dlam_ls', single(sec_dlam_ls(s,:)), ...
   'sec_resid_ls', single(sec_resid_ls(s,:)), ...
+  'sec_dlam_ls_hdiff', single(sec_dlam_ls_hdiff(s,:)), ...
+  'sec_se_dlam_ls', single(sec_se_dlam_ls(s,:)), ...
+  'ls_se_theta_seg', single(rad2deg(fp.se_theta_seg)), ...
+  'ls_se_theta_n', single(fp.se_theta_n), ...
+  'ls_se_theta_r', single(fp.se_theta_r), ...
+  'ls_se_theta_sat', fp.se_theta_sat, ...
+  'ls_se_dlam_seg', single(fp.se_dlam_seg), ...
+  'ls_jack_n', fp.jack_n, 'ls_jack_edge', fp.jack_edge, ...
   'sec_dlam', single(sec_dlam(s,:)), 'sec_theta', single(sec_theta(s,:)), ...
   'sec_cmag', single(sec_cmag(s,:)), 'sec_lat', sec_lat, ...
   'sec_lon', sec_lon, 'sec_az', sec_az, 'nblk_tr', NBLK_TR, ...
@@ -907,7 +1107,7 @@ res = struct('tag', sprintf('%s_%03d', day_seg, frm), ...
 % whichever ran last break the other figure's reader, since this file is a
 % single `res` struct instead.
 out_fn = fullfile(out_dir, ...
-  sprintf('quadpol_section_%s_%03d%s.mat', day_seg, frm, ZTAG));
+  sprintf('quadpol_section_%s_%03d%s.mat', day_seg, frm, PTAG));
 save(out_fn, '-v7.3', 'res');
 fprintf('\nwrote %s (total %.1f min)\n', out_fn, toc(t_all)/60);
 

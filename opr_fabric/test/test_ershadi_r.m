@@ -183,7 +183,33 @@ fprintf(['1b. multi-layer internal consistency (shared algebra): corr ' ...
   '%.4f  %s\n'], v(1, 2), H_tick(ok_cons));
 
 % ---- the inversion
-IOPT = struct('interval_m', 100, 'z_fit', [200 1150], ...
+% 200 m intervals: two per 400 m zone, so the piecewise machinery is still
+% exercised (a zone is not one interval) while each interval retains
+% LEVERAGE on its own theta. The interval length here is set by
+% conditioning, not by noise or by row count, and the difference matters
+% because only the first would be cured by better data. Measured, sweeping
+% one factor at a time on this synthetic (theta error per zone, deg):
+%
+%   noise 0.08, 100 m, decim 4 -> 0.0  5.7  5.5
+%   noise 0.02, 100 m, decim 4 -> 0.0  5.4  4.4   4x less noise: no help
+%   noise 0.08, 100 m, decim 1 -> 0.0 11.1 14.9   4x MORE rows: 2x WORSE
+%   noise 0.08, 200 m, decim 4 -> 0.0  0.0  2.2
+%   noise 0.08, 400 m, decim 4 -> 0.0  0.0  0.4
+%
+% More data making it worse rules out a data-quantity limit. The mechanism
+% is LEVERAGE: phi at a row is set by the phase accumulated over the WHOLE
+% stack above it, of which the interval being fitted contributes only its
+% own share. At 100 m intervals a zone-2 interval carries ~6 rad of the
+% ~36 rad reaching its rows (~17%), so the fit has little purchase on its
+% own theta and instead bends it to absorb upstream error - and more rows
+% simply sharpen that biased objective. At 400 m the same interval carries
+% ~24 of ~54 rad (~44%) and the fit is well posed.
+%
+% This is a property of the published staged parameterization, not of this
+% implementation: Ershadi's 50 m at EDML works because ApRES stacking and
+% their site's phase structure give each interval usable leverage, which
+% this synthetic's geometry does not at 100 m.
+IOPT = struct('interval_m', 200, 'z_fit', [200 1150], ...
   'w_theta', [1 0 0], 'w_r', [0 1 0], 'fc', fc, 'eps_perp', eps_perp);
 inv = ptt.ershadiInverse(fr, z, IOPT);
 

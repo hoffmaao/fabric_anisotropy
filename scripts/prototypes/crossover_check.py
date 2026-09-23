@@ -49,6 +49,10 @@ import numpy as np
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt          # noqa: E402
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                '..', 'figures'))
+import scar_style                            # noqa: E402
+
 # PoRaPy is Lilien's PoRaCo package (not vendored here): point PORAPY_SRC at
 # its src/ directory. It imports line_profiler purely for the @profile
 # decorator, so a no-op module is injected rather than requiring the
@@ -61,7 +65,7 @@ sys.path.insert(0, os.environ.get('PORAPY_SRC', '.'))
 from PoRaPy.alignment import binned_best_offsets, binned_corrs  # noqa: E402
 
 NPZ = sys.argv[1] if len(sys.argv) > 1 else 'polpair_009.npz'
-OUT = sys.argv[2] if len(sys.argv) > 2 else '.'
+OUT = scar_style.out_dir(sys.argv, 2)
 
 C_ICE = 1.685e8            # PoRaPy's ice velocity, m/s
 FC = 750e6                 # our system centre frequency

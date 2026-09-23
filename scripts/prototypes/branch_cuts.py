@@ -15,17 +15,22 @@ Thwaites eastern-margin extract:
      vs filtered, the quantity the banded inversion actually needs.
 """
 import os
+import sys
 
 import matplotlib
 import numpy as np
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                '..', 'figures'))
+import scar_style                            # noqa: E402
 from scipy.io import loadmat
 from skimage.restoration import unwrap_phase
 
 SEG = '20240108_01_001'
-OUT = os.path.expanduser('~/projects/fabric_anisotropy/figs')
+OUT = scar_style.out_dir(sys.argv, 1, os.path.expanduser('~/projects/fabric_anisotropy/figs'))
 
 
 def wrap(a):

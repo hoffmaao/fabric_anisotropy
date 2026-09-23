@@ -26,11 +26,11 @@ import matplotlib.pyplot as plt
 from scipy.io import loadmat
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import scar_style  # noqa: E402
 
 SEG = sys.argv[1] if len(sys.argv) > 1 else '20240101_02_001'
 EXT = sys.argv[2] if len(sys.argv) > 2 else os.path.expanduser('~/data/opr/margin')
-OUT = sys.argv[3] if len(sys.argv) > 3 else os.path.join(
-    os.path.dirname(__file__), '..', '..', 'figs')
+OUT = scar_style.out_dir(sys.argv, 3)
 
 ITSLIVE_LOCAL = os.path.expanduser(
     '~/Downloads/ITS_LIVE_velocity_120m_RGI19A_0000_V02.1.nc')

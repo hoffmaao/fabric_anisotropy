@@ -47,10 +47,11 @@ from matplotlib.colors import TwoSlopeNorm   # noqa: E402
 from scipy.io import loadmat             # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import scar_style  # noqa: E402
 from scar_style import DATA, INK, MUTED, cumdist_km, field  # noqa: E402
-from scar_style import FIGS  # noqa: E402
+import quadpol_sites as qs               # noqa: E402
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else FIGS
+OUT = scar_style.out_dir(sys.argv)
 TAG = sys.argv[2] if len(sys.argv) > 2 else '20250108_02_009'
 # run_quadpol_pipeline.m writes this one; run_quadpol_frame.m writes
 # quadpol_<tag>.mat, which is a different layout read by
@@ -95,6 +96,21 @@ def main():
         lon = a('sec_lon').ravel().astype(float)
         track_az = float(a('track_az').ravel()[0])
         nbt = int(a('nblk_tr').ravel()[0])
+        # WHICH SITE IS THIS? Resolved from the frame's own coordinates,
+        # never from the tag: this repo's tags do not encode the site (the
+        # 2024 tags alone span Thwaites, WAIS Divide and McMurdo) and a
+        # default carried a Ridge A title onto a WAIS Divide frame.
+        fla = float(np.nanmedian(lat))
+        flo = float(np.nanmedian(lon))
+        site_key, site_title = 'unknown', 'unknown site'
+        for _k, _cfg in qs.SITES.items():
+            if qs.in_site(_cfg, fla, flo, TAG):
+                site_key, site_title = _k, _cfg['title']
+                break
+        if site_key == 'unknown':
+            print('WARNING: %.2f, %.2f matches no configured site; the '
+                  'figure is titled "unknown site" rather than guessing'
+                  % (fla, flo))
         # the LS-fit section exists once the pipeline has run with
         # ptt.quadpolFabricLS wired in; older .mat files draw the old layout
         has_ls = 'sec_dlam_ls' in res
@@ -183,7 +199,7 @@ def main():
                interpolation='nearest')
     axt.set_xlabel('distance along profile (km)', color=INK)
     axt.set_ylabel('depth (m)', color=INK)
-    axt.set_title(r'$\theta$ (deg E of N) - DIAGNOSTIC: on Ridge A this '
+    axt.set_title(r'$\theta$ (deg E of N) - DIAGNOSTIC: at Ridge A this '
                   'tracks the antenna frame, not the ice', fontsize=9.5,
                   color=MUTED)
 
@@ -214,7 +230,13 @@ def main():
         axp.plot(med, z, '-', color='#2a78d6', lw=2.0,
                  label='quad-pol median')
 
-    if os.path.exists(CO_FN):
+    # The co-polarized comparison exists for RIDGE A only, and it is a
+    # different survey's ice. Drawing it beside another frame invites
+    # reading an unrelated profile as this line's own co-pol answer -
+    # which is what happened the first time this script was pointed at a
+    # WAIS Divide frame, where it also titled the figure "Ridge A". Both
+    # are now decided by the site the frame's OWN coordinates fall in.
+    if site_key == 'ridge_a' and os.path.exists(CO_FN):
         S = loadmat(CO_FN, squeeze_me=True)['S']
         if 'ridge_a' in (S.dtype.names or ()):
             r = S['ridge_a'].item() if S['ridge_a'].dtype == object \
@@ -239,9 +261,9 @@ def main():
     for ax in ((ax_ls, axs, axt, axp) if has_ls else (axs, axt, axp)):
         ax.set_ylim(Z_SHOW[1], Z_SHOW[0])
 
-    fig.suptitle('Ridge A %s: quad-pol section (track %.0f$^\\circ$, '
+    fig.suptitle('%s %s: quad-pol section (track %.0f$^\\circ$, '
                  '%d blocks of %d traces)'
-                 % (TAG, track_az, dl.shape[1], nbt),
+                 % (site_title, TAG, track_az, dl.shape[1], nbt),
                  fontsize=12, color=INK)
     out = os.path.join(OUT, 'scar_quadpol_section_%s.png' % TAG)
     fig.savefig(out, dpi=200, bbox_inches='tight', facecolor='white')

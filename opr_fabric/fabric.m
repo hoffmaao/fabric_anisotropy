@@ -204,9 +204,44 @@ end
 %% Setup cluster
 % =====================================================================
 ctrl = cluster_new_batch(param);
-cluster_compile({'fabric_task.m'},ctrl.cluster.hidden_depend_funs,ctrl.cluster.force_compile,ctrl);
+% mcc runs in a fresh process that sees only its own startup.m path, not
+% this session's, so a checkout that run_fabric.m put on the path is
+% invisible to it: the compiled job then dies on the cluster with
+% "Unable to resolve the name 'ptt.blendTraveltime'". Name this checkout
+% explicitly - the task by full path, -I for its folder and the repo root,
+% and -a for the whole +ptt package. The flags ride in hidden_depend_funs
+% at check level 0, which cluster_compile appends to the mcc command as-is.
+% A fabric_task entry left in hidden_depend_funs by the old deployment
+% steps would make mcc resolve a second, possibly stale, copy by name, so
+% drop it: only this checkout's task goes in, by full path.
+fabric_dir = fileparts(mfilename('fullpath'));
+repo_dir = fileparts(fabric_dir);
+mcc_flags = {sprintf('-I ''%s'' -I ''%s'' -a ''%s''', fabric_dir, repo_dir, ...
+  fullfile(repo_dir,'+ptt')), 0};
+hidden_depend_funs = ctrl.cluster.hidden_depend_funs;
+if ~isempty(hidden_depend_funs)
+  keep = true(size(hidden_depend_funs));
+  for dep_idx = 1:numel(hidden_depend_funs)
+    [~,dep_name] = fileparts(hidden_depend_funs{dep_idx}{1});
+    keep(dep_idx) = ~strcmp(dep_name,'fabric_task');
+  end
+  hidden_depend_funs = hidden_depend_funs(keep);
+end
+% Always compile under slurm/torque: cluster_job is shared by every OPR
+% task, so another task's recompile drops fabric_task and +ptt from it, and
+% the date check cannot see +ptt functions reached through handles.
+force_compile = ctrl.cluster.force_compile ...
+  || any(strcmpi(ctrl.cluster.type,{'slurm','torque'}));
+cluster_compile({fullfile(fabric_dir,'fabric_task.m')}, ...
+  [hidden_depend_funs {mcc_flags}],force_compile,ctrl);
 
 ctrl_chain = {};
+
+% Input product directory, resolved exactly as fabric_task.m resolves it.
+% A frame whose product is missing would otherwise run a task that warns,
+% writes nothing and still completes - so check here, before submitting.
+in_dir = opr_filename_out(param,param.fabric.in_path);
+num_in = 0; num_missing = 0;
 
 %% Block: Create tasks (one for each frame)
 % =====================================================================
@@ -226,6 +261,18 @@ for frm_idx = 1:length(param.cmd.frms)
     continue;
   end
   frm_id = sprintf('%s_%03d', param.day_seg, frm);
+
+  if param.fabric.img == 0
+    in_fn = fullfile(in_dir, sprintf('Data_%s.mat', frm_id));
+  else
+    in_fn = fullfile(in_dir, sprintf('Data_img_%02d_%s.mat', param.fabric.img, frm_id));
+  end
+  if ~exist(in_fn,'file')
+    fprintf('Skipping %s (no input product %s)\n', frm_id, in_fn);
+    num_missing = num_missing + 1;
+    continue;
+  end
+  num_in = num_in + 1;
 
   % Prepare task inputs
   % =================================================================
@@ -290,6 +337,29 @@ for frm_idx = 1:length(param.cmd.frms)
 
   ctrl = cluster_new_task(ctrl,sparam,dparam,'dparam_save',0);
 
+end
+
+if num_in == 0 && num_missing > 0
+  % Nothing to do because fabric.in_path is wrong, not because the work is
+  % done: say which products this season does have. An absolute in_path is
+  % outside the season tree, so there is no season to list.
+  in_path = param.fabric.in_path;
+  if in_path(1) == '/' || in_path(1) == '\' ...
+      || (ispc && (contains(in_path,':\') || contains(in_path,':/')))
+    avail_msg = '';
+  else
+    season_dir = fileparts(fileparts(in_dir));
+    avail = dir(fullfile(season_dir,'CSARP_polarimetric*'));
+    if isempty(avail)
+      avail_msg = sprintf(' No CSARP_polarimetric* products in\n  %s', ...
+        season_dir);
+    else
+      avail_msg = sprintf(' Polarimetric products in this season:%s', ...
+        sprintf('\n  %s', avail.name));
+    end
+  end
+  error('fabric:noInput', ['No requested frame of %s has an input product ' ...
+    'in\n  %s\nCheck fabric.in_path.%s'], param.day_seg, in_dir, avail_msg);
 end
 
 ctrl = cluster_save_dparam(ctrl);
