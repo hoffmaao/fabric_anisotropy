@@ -81,7 +81,9 @@ function out = fabricGLS(obs, z, opts)
 %        .n_looks (20)   INDEPENDENT looks behind each sample
 %        .n_indep_psi    independent azimuths behind the Np columns. Use 4
 %                        for channel-synthesized azimuths, Np (default)
-%                        for physically rotated antennas. See REDUNDANCY.
+%                        for physically rotated antennas. See REDUNDANCY:
+%                        left at the default on synthesised azimuths the
+%                        dlam sigma is about 2.6x too small.
 %        .n_indep_z      independent depth samples behind the Nz rows,
 %                        default Nz. Roughly range-window / sample-spacing.
 %        .use            cellstr of observables (default: all supplied)
@@ -162,23 +164,25 @@ hstep = max(hstep, 1e-9);
 % diagonal C_d counting each repeat as fresh evidence should come out too
 % tight. opts.n_indep_psi was added to correct that.
 %
-% VERDICT 5 OF test_fabric_gls MEASURED THE OPPOSITE, and the option
-% therefore stays OFF. Under noise confined to a rank-4 azimuthal subspace
-% the diagonal posterior is not optimistic at all - the reported/empirical
-% ratio comes out near 1.15, i.e. mildly CONSERVATIVE - while n_indep_psi =
-% 4 multiplies every sigma by sqrt(Np/4) (2.1x at the default 18 azimuths)
-% and overshoots to about 2.4. Azimuth redundancy is simply not what
-% threatens these error bars. Do not turn n_indep_psi on for
-% channel-synthesized azimuths; verdict 5 exists to record the measurement
-% that stops exactly that reflex, and it prints both ratios every run.
+% VERDICT 5 OF test_fabric_gls MEASURES EXACTLY THAT, on the corrected
+% forward model (issue #29): under noise confined to a rank-4 azimuthal
+% subspace the diagonal posterior reports 0.38 of the true dlam scatter -
+% near the 1/sqrt(Np/4) = 0.47 that counting eighteen azimuths as fresh
+% evidence predicts - and n_indep_psi = 4 brings it to 1.27. An earlier
+% reading of that verdict found the naive posterior slightly conservative
+% (1.15) and the correction an overshoot (2.43), and kept the option off
+% on that evidence; it was measured with the model's coherence windowed
+% over the three 10 m caller rows of that test's grid instead of over
+% 30 m at a fine step, and did not survive the forward's correction. The
+% default is still Np, because a physically rotated antenna set does have
+% Np independent azimuths and a default that halves every sigma is a
+% decision for the caller; on channel-synthesised azimuths pass 4.
 %
-% The option is kept, and documented, for data that genuinely does repeat
-% samples. Rather than build a dense C_d for a matrix this large, the
-% variances are inflated by the redundancy ratio, which is exactly
-% equivalent for the posterior scale: set n_indep_psi to the number of
-% INDEPENDENT azimuths and n_indep_z to the number of independent depth
-% samples. Defaults assume independence, so an unset option never silently
-% inflates anything.
+% The option inflates the variances by the redundancy ratio, which is
+% exactly equivalent for the posterior scale to a dense C_d for a matrix
+% this large: set n_indep_psi to the number of INDEPENDENT azimuths and
+% n_indep_z to the number of independent depth samples. Defaults assume
+% independence, so an unset option never silently inflates anything.
 %
 % This is a SEPARATE question from how far the posterior can be trusted at
 % all; see the LOWER BOUNDS note at the solution below, which measures a

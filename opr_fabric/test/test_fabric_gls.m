@@ -22,10 +22,17 @@
 %      documented as such rather than quietly widened by a fudge factor.
 %   5. CORRELATED AZIMUTHS. Verdicts 1-4 give the solver independent noise,
 %      which real synthesized azimuths never have. Under noise confined to
-%      a rank-4 azimuthal subspace the diagonal posterior turns out to
-%      stay slightly CONSERVATIVE, not optimistic - the opposite of what
-%      motivated opts.n_indep_psi - so that option stays off by default
-%      and this verdict is what keeps it off.
+%      a rank-4 azimuthal subspace the diagonal posterior IS optimistic -
+%      measured 0.38 of the true scatter for dlam, near the 1/sqrt(18/4)
+%      = 0.47 that counting four independent azimuths as eighteen predicts
+%      - and opts.n_indep_psi = 4 brings it back to 1.27. The verdict
+%      asserts that corrected calibration, and that the naive ratio sits
+%      below it. An earlier reading of this verdict measured the naive
+%      posterior slightly CONSERVATIVE (1.15) and kept the option off on
+%      that evidence; that number was an artefact of the forward model
+%      windowing its coherence over the three 10 m caller rows of this
+%      grid rather than over 30 m at a fine step (issue #29), and went
+%      away when the forward was corrected.
 %
 %   4. THE ORIENTATION PRIOR IS A PRIOR, NOT A CONSTRAINT. Given a column
 %      whose axis really does rotate with depth, a long theta correlation
@@ -169,16 +176,16 @@ rc = median(s_corr)  / max(std(d_corr),  eps);
 fprintf('\n5. azimuth noise with only 4 independent modes, dlam at mid-column:\n');
 fprintf('   assuming independence: reported/empirical %.2f\n', rn);
 fprintf('   with n_indep_psi = 4:  reported/empirical %.2f\n', rc);
-% MEASURED, and not what was expected. Confining the noise to four
-% azimuthal modes does NOT make the diagonal posterior optimistic: the
-% naive ratio comes out near 1.15, slightly conservative, while applying
-% n_indep_psi = 4 multiplies it by sqrt(Np/4) = 2.1 and overshoots to
-% about 2.4. So azimuth redundancy is not the thing that threatens these
-% error bars, and n_indep_psi must stay OFF by default. It is kept as a
-% documented option for data that really does repeat samples, and this
-% verdict is what stops anyone turning it on by reflex.
-ok5 = rn > 0.5 && rn < 3;
-fprintf('   a diagonal C_d stays safe under azimuth correlation:   %s\n', H_tick(ok5));
+% MEASURED on the corrected forward model: confining the noise to four
+% azimuthal modes makes the diagonal posterior optimistic by about 2.6x
+% (naive ratio 0.38, near the 1/sqrt(Np/4) = 0.47 that counting each
+% synthesised azimuth as fresh evidence predicts), and n_indep_psi = 4
+% brings it to 1.27. The earlier reading of 1.15 naive / 2.43 corrected,
+% which kept the option off, was measured with the coherence windowed
+% over three 10 m rows and did not survive the fix of issue #29. The
+% assertion is on the corrected ratio, and on the redundancy being real.
+ok5 = rc > 0.5 && rc < 3 && rn < rc;
+fprintf('   n_indep_psi = 4 restores calibration under azimuth correlation: %s\n', H_tick(ok5));
 
 fails = ~ok1 + ~ok2 + ~ok3 + ~ok4 + ~ok5;
 fprintf('\n%s (%.1f min)\n', H_tick(fails == 0), toc(t0)/60);
