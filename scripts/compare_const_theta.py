@@ -188,12 +188,6 @@ def band_top(tag, beds):
     return min(Z_MAX, beds[tag] - BED_MARGIN_M)
 
 
-def frame_band(cfg, z_top):
-    """(z_lo, z_hi) for a frame at site cfg."""
-    z_lo = cfg["z_band"][0] if cfg else Z_LO_DEFAULT
-    return z_lo, z_top
-
-
 def read(fn, z_lo, z_top):
     """One product's numbers over the quotable band, z_lo to z_top.
 
@@ -339,9 +333,9 @@ def main():
         z_top = band_top(tag, beds)
         try:
             site, cfg = site_for(tag, *frame_pos(base))
-            z_lo, z_hi = frame_band(cfg, z_top)
-            a = read(base, z_lo, z_hi)
-            b = read(cf, z_lo, z_hi)
+            z_lo = cfg["z_band"][0] if cfg else Z_LO_DEFAULT
+            a = read(base, z_lo, z_top)
+            b = read(cf, z_lo, z_top)
         except (OSError, KeyError, ValueError) as e:
             orphans.append("%s (unreadable: %s)" % (tag, e))
             continue
