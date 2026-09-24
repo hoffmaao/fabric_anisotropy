@@ -144,7 +144,10 @@ function out = quadpolFabricLS(S, z, opts)
 %   misfit, minimised over delta0 and ddelta at each node) with theta_c2
 %   its data-power normaliser - the curves the constant-orientation vote
 %   pools, exported so a pooling rule can be examined offline; NaN when
-%   the axis was caller-supplied. window_ok [Nw x 1] logical is the
+%   the axis was caller-supplied. win_half is the window half-length [m]
+%   (win_fit_m / 2): a window is fitted only where zw + win_half <=
+%   z_valid, and a caller that must know which windows the record could
+%   not support reads it from here. window_ok [Nw x 1] logical is the
 %   per-window verdict this fit reached (free mode: which windows own an
 %   axis; constant mode: which windows voted), to be handed back in as
 %   opts.window_ok by a resampling pass. Constant mode adds theta_const (the held
@@ -529,7 +532,7 @@ if nnz(okd) >= 2
   dlam_z = interp1(zw, dlam, z, 'linear');
 end
 
-out = struct('zw', zw, 'theta0', theta0, 'dlam', dlam, 'gamma', gam, ...
+out = struct('zw', zw, 'win_half', half, 'theta0', theta0, 'dlam', dlam, 'gamma', gam, ...
   'leak', leak_diag, 'pedestal', pedestal, ...
   'resid', resid, 'q_theta', q_theta, 'delta0', delta0, ...
   'theta0_z', theta0_z, 'dlam_z', dlam_z, ...

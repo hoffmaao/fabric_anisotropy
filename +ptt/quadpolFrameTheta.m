@@ -86,6 +86,14 @@ function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 %            the record's coherent sub-bed returns vote on the held axis
 %            and feed the pedestal median as if they were ice - see
 %            SUB-BED WINDOWS in ptt.quadpolFabricLS.
+%            A pass's windows at or below its own z_valid are NOT ice and
+%            are never filled: th_seg stays NaN and q_seg 0 there in both
+%            modes, neither borrowed from a live neighbouring segment nor
+%            taken from the frame profile (a held segment's axis below
+%            its bed would otherwise be its neighbour's, and a block that
+%            clamps to that segment would inherit a depth-varying axis
+%            the constant model never asserted). The two fallbacks apply
+%            only to dead windows ABOVE the pass's z_valid.
 %
 % Output struct fp
 %   zw        [Nw x 1] window centres
@@ -94,8 +102,10 @@ function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 %   q_frame   [Nw x 1] its q_theta weights (0 where dead)
 %   th_seg    [Nw x Nseg] smoothed geographic profile per segment; every
 %             finite value is usable, NaN only where even the frame
-%             profile is dead
-%   q_seg     [Nw x Nseg] weights (0 where the segment fell back)
+%             profile is dead or the window is at or below the segment's
+%             own z_valid (never filled, see opts.z_bed)
+%   q_seg     [Nw x Nseg] weights (0 where the segment fell back or the
+%             window is at or below its z_valid)
 %   dlam_seg  [Nw x Nseg] per-segment dlam (diagnostic; blocks still fit
 %             their own)
 %   resid_seg [Nw x Nseg]
@@ -251,6 +261,7 @@ else
 end
 zw = lsq.zw;
 Nw = numel(zw);
+half = lsq.win_half;
 % A HELD column needs no depth smoothing - the profile is one number - and
 % must not get any: the kernel's weight threshold would drop windows from
 % a profile that is constant by construction. Its weight is the pooled
@@ -269,6 +280,9 @@ if TH_CONST && isfinite(lsq.theta_const)
 else
   [th_frame, q_frame] = H_smooth_profile(th_geo_raw, lsq.q_theta);
 end
+sub_frame = zw(:) + half > zv_frame;
+th_frame(sub_frame) = NaN;
+q_frame(sub_frame) = 0;
 
 % --- segmentation in along-track distance
 span = x_along(end) - x_along(1);
@@ -336,15 +350,17 @@ se_theta_r = nan(Nw, nseg);
 se_theta_sat = false(Nw, nseg);
 jack_n = zeros(1, nseg);
 jack_edge = zeros(1, nseg);
+zv_seg = inf(1, nseg);
 for s = 1:nseg
   js = find(x_along >= xb(s) & (x_along < xb(s+1) | s == nseg));
   seg_n(s) = numel(js);
   seg_x(s) = (xb(s) + xb(s+1)) / 2;
+  zv_seg(s) = H_zvalid(Z_BED, js, BED_MARGIN, zv_frame);
   if numel(js) < 32, continue; end
   [Mg, Msub, nsub] = H_geo_moments(T, az_tr, js, NBLK_ROT, CHAN);
   if isempty(Mg), continue; end
   os = segbase;   % carries theta_const: one axis per SEGMENT, constant in depth
-  os.z_valid = H_zvalid(Z_BED, js, BED_MARGIN, zv_frame);
+  os.z_valid = zv_seg(s);
   os.pedestal = H_ped_field(ped_ant, az_tr, js, PSI_FIT);
   o = ptt.quadpolFabricLS(struct('M', Mg), z, os);
   if nnz(isfinite(o.theta0)) < MIN_SEG_W, continue; end
@@ -391,21 +407,26 @@ for s = 1:nseg
     [th_seg(:, s), q_seg(:, s)] = H_smooth_profile(th_raw(:, s), q_raw(:, s));
   end
 end
+% windows at or below the segment's own z_valid are not ice: no axis, no
+% weight, and excluded from both fallbacks below
+sub_seg = zw(:) + half > zv_seg;
+th_seg(sub_seg) = NaN;
+q_seg(sub_seg) = 0;
 % fallback, two levels, value-only (weight stays 0 so the handoff
-% interpolation cannot be dragged): a dead segment window first BORROWS
-% the q-weighted phasor mean of the segments that are alive at that
-% window - the axis field is the slowly-varying quantity, and a live
-% neighbour beats any dead pooled fit - and only where no segment is
-% alive does the frame profile fill in
+% interpolation cannot be dragged): a dead segment window ABOVE its
+% z_valid first BORROWS the q-weighted phasor mean of the segments that
+% are alive at that window - the axis field is the slowly-varying
+% quantity, and a live neighbour beats any dead pooled fit - and only
+% where no segment is alive does the frame profile fill in
 dead = ~(q_seg > 0);
 ph_mat = q_seg .* exp(2i*th_seg);
 ph_mat(dead | ~isfinite(ph_mat)) = 0;
 ph_row = sum(ph_mat, 2);
 w_row = sum(q_seg .* ~dead, 2);
-borrow = dead & repmat(w_row > 0, 1, nseg);
+borrow = dead & ~sub_seg & repmat(w_row > 0, 1, nseg);
 thb = repmat(0.5 * angle(ph_row), 1, nseg);
 th_seg(borrow) = thb(borrow);
-fb = dead & ~borrow & repmat(isfinite(th_frame(:)), 1, nseg);
+fb = dead & ~borrow & ~sub_seg & repmat(isfinite(th_frame(:)), 1, nseg);
 thf = repmat(th_frame(:), 1, nseg);
 th_seg(fb) = thf(fb);
 

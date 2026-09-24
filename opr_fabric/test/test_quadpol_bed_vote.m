@@ -29,8 +29,10 @@
 %      synthetic no longer exercises the defect, and the test says so.)
 %   2. FIX: given the per-trace bed, every held axis is within 3 deg of
 %      the ice, and no window reaching below its segment's MEDIAN bed
-%      carries an axis or a contrast (above it, the traces already past
-%      their own bed are blanked, ptt.maskBelowBed).
+%      carries a contrast, an axis or a weight - th_seg NaN and q_seg 0,
+%      never filled from the neighbouring segment or the frame profile
+%      (above it, the traces already past their own bed are blanked,
+%      ptt.maskBelowBed).
 %   3. SUPERSET: an empty bed changes nothing, bit for bit.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_quadpol_bed_vote.m')"
@@ -106,12 +108,13 @@ leak = false;
 seg_med = [BED(1), median(z_bed(x_along >= 2000))];
 for k = 1:fp1.nseg
   deep = fp1.zw + half > seg_med(k) - 20;
-  leak = leak || any(isfinite(fp1.dlam_seg(deep, k)));
+  leak = leak || any(isfinite(fp1.dlam_seg(deep, k))) ...
+    || any(isfinite(fp1.th_seg(deep, k))) || any(fp1.q_seg(deep, k) > 0);
 end
 ok2b = ~leak;
 fails = fails + ~ok2 + ~ok2b;
 fprintf('  2a. every held axis within 3 deg of the ice: %s\n', H_tick(ok2));
-fprintf('  2b. no sub-bed window carries a contrast: %s\n', H_tick(ok2b));
+fprintf('  2b. no sub-bed window carries a contrast, an axis or a weight: %s\n', H_tick(ok2b));
 
 % 3. superset
 fp2 = ptt.quadpolFrameTheta(S, z, az_tr, x_along, setfield(OPTS, 'z_bed', [])); %#ok<SFLD>

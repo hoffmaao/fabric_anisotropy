@@ -44,8 +44,9 @@ function [z_bed, info] = bed_from_layer(site_root, day_seg, frm, la, lo, surf_t,
 %   surf_t     the pipeline's surface two-way time [s]
 %   opts       max_match_m (62.5, as make_bed_by_block.py), eps_ice (3.171)
 %
-% Output info: source ('' when no bed), file, n_picks, n_matched,
-%   n_bad (non-positive picks dropped), reason (why there is no bed)
+% Output info: source ('' when no bed, including when no trace lies within
+%   max_match_m of any pick), file, n_picks, n_matched, n_bad (non-positive
+%   picks dropped), reason (why there is no bed; '' when there is one)
 %
 % See also ptt.maskBelowBed, ptt.quadpolFrameTheta.
 
@@ -128,6 +129,10 @@ end
 m = isfinite(best) & best <= max_match & ibest > 0;
 z_bed(m) = bed(ibest(m));
 info.n_matched = nnz(m);
+if info.n_matched == 0
+  info.reason = sprintf('%d %s picks, none within %.0f m of a trace', info.n_picks, src, max_match);
+  info.source = '';
+end
 end
 
 function [tw, src] = H_bottom(tw_all, names)

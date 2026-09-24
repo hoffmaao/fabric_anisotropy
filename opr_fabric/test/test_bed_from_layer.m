@@ -24,7 +24,9 @@
 %      reason in info, never transposed until the counts agree - that is a
 %      positional bind wearing a name; no layer file, or no name catalogue,
 %      likewise gives all-NaN with the reason - never a bed bound by
-%      position.
+%      position. Traces that all lie beyond max_match_m of every pick get
+%      all-NaN with the reason AND an empty source, so the pipeline's log
+%      and its saved bed_source agree that no bed was applied.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_bed_from_layer.m')"
 clear;
@@ -110,12 +112,15 @@ twtt = twtt.'; %#ok<NASGU>                       % [Np x 3]: rows are no longer 
 save(fullfile(segdir, sprintf('Data_%s_003.mat', seg)), 'twtt', 'lat', 'lon', 'gps_time');
 [zb6, info6] = bed_from_layer(root, seg, 3, tlat, tlon, surf_t);
 [zb7, info7] = bed_from_layer(root, seg, 4, tlat, tlon, surf_t);
+[zb9, info9] = bed_from_layer(root, seg, 2, tlat_off, tlon, surf_t);
 delete(fullfile(segdir, sprintf('layer_%s.mat', seg)));
 [zb8, info8] = bed_from_layer(root, seg, 2, tlat, tlon, surf_t);
 ok6 = all(isnan(zb6)) && isempty(info6.source) && ~isempty(info6.reason) ...
-  && all(isnan(zb7)) && ~isempty(info7.reason) && all(isnan(zb8)) && ~isempty(info8.reason);
+  && all(isnan(zb7)) && ~isempty(info7.reason) && all(isnan(zb8)) && ~isempty(info8.reason) ...
+  && all(isnan(zb9)) && isempty(info9.source) && ~isempty(info9.reason);
 fprintf(['6. transposed twtt -> "%s";\n   no layer file -> "%s";\n' ...
-  '   no catalogue -> "%s": %s\n'], info6.reason, info7.reason, info8.reason, H_tick(ok6));
+  '   no catalogue -> "%s";\n   no trace near a pick -> "%s" (source "%s"): %s\n'], ...
+  info6.reason, info7.reason, info8.reason, info9.reason, info9.source, H_tick(ok6));
 fails = fails + ~ok6;
 
 fprintf('\n%s (%.1f s)\n', H_tick(fails == 0), toc(t0));
