@@ -37,10 +37,14 @@ function out = nymandTwoStep(obs, z, opts)
 % constant eigenframe, which is an assumption this repo has measured to
 % be consequential. (An earlier claim here that the held axis sits 42.6
 % degrees from the free-window axis was a units error - it is 1.7 degrees
-% median, 8.8 at p90 - so the assumption is mild at Ridge A.) The held axis sits a median of 1.7 degrees from the
-% free-window axis across 118 products, and that disagreement accounts
-% for most of a one-third reduction in dlam. Do not read this estimator's
-% strength against a free-axis one without accounting for that.
+% median, 8.8 at p90 - so the assumption is mild at Ridge A.) Where the
+% held and free products differ in strength, the axis assumption is not
+% what does it: over Ridge A's 36 frames the two modes' block dlam agree
+% within 1% (survey medians 0.0524 free, 0.0528 held), and the large gaps
+% at Taylor Dome, Eastwind and McMurdo came
+% from sub-bed windows capturing the held axis (see SUB-BED WINDOWS in
+% ptt.quadpolFabricLS). Compare this estimator's strength with a free-axis
+% one only on above-bed ice.
 %
 % obs fields:
 %   .psi     [1 x Np] azimuths [rad]

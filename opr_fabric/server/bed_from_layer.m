@@ -1,0 +1,173 @@
+function [z_bed, info] = bed_from_layer(site_root, day_seg, frm, la, lo, surf_t, opts)
+%BED_FROM_LAYER Per-trace bed depth of a frame from the season's CSARP_layer picks.
+%
+% [z_bed, info] = bed_from_layer(site_root, day_seg, frm, la, lo, surf_t, opts)
+%
+% z_bed is [1 x Nx] metres on the PIPELINE'S depth axis - the bed pick's
+% two-way time less the frame surface time surf_t the pipeline zeroes its
+% depth at, at solid-ice velocity (eps 3.171, the same ice model as the
+% depth axis and as scripts/make_bed_by_block.py) - and NaN for a trace
+% with no pick within opts.max_match_m of it. Traces are matched to picks
+% by POSITION, nearest pick wins, because the layer product is on its own
+% trace axis (a few hundred picks along a frame of thousands of traces).
+%
+% THE LAYERS ARE BOUND BY NAME, never by row. Names live once per segment
+% in layer_<seg>.mat (lyr_name; row i of the frame file's twtt is entry i),
+% and layer ORDER varies by season, so a positional bind differences a
+% different quantity per site: it once read a 224 m shelf as 1 m. The bed
+% preference, most trustworthy first, is the one make_bed_by_block.py
+% established (bottom_mc runs a median 44.6 m shallow of the polarimetric
+% picks and ranks last): the per-trace median of the bottom_HH/VV/HV/VH
+% picks the file carries; then `bottom`; then `bottom_mc`; then a uniquely
+% bottom-named layer. A frame whose layers cannot be named, or with no
+% layer file at all, returns all NaN and says so in info - not masking is
+% recoverable, masking ice away is not.
+%
+% WHY THE PIPELINE'S SURFACE AND NOT THE LAYER FILE'S. The bed has to land
+% on the axis the fabric is reported on, and that axis is zeroed at the
+% frame's median product Surface (or, in qlook mode, at the picked leading
+% edge). On a ground survey the per-trace surface pick differs from that
+% median by well under the 20 m margin the callers apply, so the two
+% conventions agree to within it; the json producer keeps the per-pick
+% difference because it has no pipeline surface to refer to.
+%
+% Inputs
+%   site_root  season product root holding CSARP_layer/<day_seg>/
+%   day_seg, frm
+%   la, lo     [Nx] per-trace position of the frame being inverted, after
+%              any cull (the axis z_bed comes back on)
+%   surf_t     the pipeline's surface two-way time [s]
+%   opts       max_match_m (62.5, as make_bed_by_block.py), eps_ice (3.171)
+%
+% Output info: source ('' when no bed), file, n_picks, n_matched,
+%   n_bad (non-positive picks dropped), reason (why there is no bed)
+%
+% See also ptt.maskBelowBed, ptt.quadpolFrameTheta.
+
+if nargin < 7, opts = struct(); end
+max_match = H_opt(opts, 'max_match_m', 62.5);
+eps_ice = H_opt(opts, 'eps_ice', 3.171);
+C_ICE = 299792458 / sqrt(eps_ice);
+la = la(:).'; lo = lo(:).';
+Nx = numel(la);
+z_bed = nan(1, Nx);
+info = struct('source', '', 'file', '', 'n_picks', 0, 'n_matched', 0, ...
+  'n_bad', 0, 'reason', '');
+
+seg_dir = fullfile(site_root, 'CSARP_layer', day_seg);
+fn = '';
+for pat = {'Data_%s_%03d.mat', 'layer_%s_%03d.mat'}
+  cand = fullfile(seg_dir, sprintf(pat{1}, day_seg, frm));
+  if exist(cand, 'file') == 2, fn = cand; break; end
+end
+if isempty(fn)
+  info.reason = sprintf('no CSARP_layer file for %s_%03d under %s', day_seg, frm, site_root);
+  return
+end
+info.file = fn;
+D = load(fn);
+
+if isfield(D, 'twtt') && isfield(D, 'lat')
+  % OPR layerdata format: rows of twtt, names in the segment catalogue
+  plat = double(D.lat(:).'); plon = double(D.lon(:).');
+  tw = double(D.twtt);
+  names = {};
+  cat_fn = fullfile(seg_dir, sprintf('layer_%s.mat', day_seg));
+  if exist(cat_fn, 'file') == 2
+    L = load(cat_fn);
+    if isfield(L, 'lyr_name'), names = cellstr(L.lyr_name(:).'); end
+  end
+  if isempty(names)
+    info.reason = sprintf('%s carries no layer names (no layer_%s.mat catalogue)', fn, day_seg);
+    return
+  end
+  if size(tw, 1) ~= numel(names) && size(tw, 2) == numel(names)
+    tw = tw.';
+  end
+  if size(tw, 1) ~= numel(names)
+    info.reason = sprintf('%d layer names for %d pick rows in %s', numel(names), size(tw, 1), fn);
+    return
+  end
+elseif isfield(D, 'layerData') && isfield(D, 'Latitude')
+  % legacy CReSIS format: a cell of layers, each carrying its own name and
+  % value{end}.data as the pick
+  plat = double(D.Latitude(:).'); plon = double(D.Longitude(:).');
+  names = {}; tw = [];
+  for i = 1:numel(D.layerData)
+    lay = D.layerData{i};
+    if ~isfield(lay, 'value') || isempty(lay.value), continue; end
+    v = lay.value{end};
+    if ~isfield(v, 'data'), continue; end
+    names{end+1} = H_name(lay); %#ok<AGROW>
+    tw(end+1, :) = double(v.data(:).'); %#ok<AGROW>
+  end
+else
+  info.reason = sprintf('%s has no recognised layer fields', fn);
+  return
+end
+names = lower(strtrim(names));
+
+[tw_b, src] = H_bottom(tw, names);
+if isempty(tw_b)
+  info.reason = sprintf('no bottom layer among {%s} in %s', strjoin(names, ', '), fn);
+  return
+end
+info.source = src;
+n = min([numel(plat), numel(plon), numel(tw_b)]);
+plat = plat(1:n); plon = plon(1:n); tw_b = tw_b(1:n);
+bed = (tw_b - surf_t) * C_ICE / 2;
+bad = ~(bed > 0);                        % non-positive or NaN picks do not vote
+info.n_bad = nnz(isfinite(bed) & bed <= 0);
+ok = isfinite(plat) & isfinite(plon) & ~bad;
+info.n_picks = nnz(ok);
+if ~any(ok)
+  info.reason = sprintf('%s: every %s pick is unpositioned or malformed', fn, src);
+  return
+end
+plat = plat(ok); plon = plon(ok); bed = bed(ok);
+
+% nearest pick per trace, haversine, within max_match
+R_E = 6371000;
+tl = deg2rad(la); to = deg2rad(lo);
+pl = deg2rad(plat); po = deg2rad(plon);
+best = inf(1, Nx); ibest = zeros(1, Nx);
+for i = 1:numel(pl)
+  a = sin((tl - pl(i))/2).^2 + cos(tl) .* cos(pl(i)) .* sin((to - po(i))/2).^2;
+  d = 2 * R_E * asin(min(1, sqrt(a)));
+  hit = d < best;
+  best(hit) = d(hit); ibest(hit) = i;
+end
+m = isfinite(best) & best <= max_match & ibest > 0;
+z_bed(m) = bed(ibest(m));
+info.n_matched = nnz(m);
+end
+
+function [tw, src] = H_bottom(tw_all, names)
+% the bed preference of make_bed_by_block.py, in its order
+tw = []; src = '';
+pol = {'bottom_hh', 'bottom_vv', 'bottom_hv', 'bottom_vh'};
+ip = find(ismember(names, pol));
+if ~isempty(ip)
+  tw = median(tw_all(ip, :), 1, 'omitnan');
+  src = sprintf('median(%s)', strjoin(names(ip), ','));
+  return
+end
+for want = {'bottom', 'bottom_mc'}
+  i = find(strcmp(names, want{1}));
+  if isscalar(i), tw = tw_all(i, :); src = want{1}; return; end
+end
+i = find(contains(names, 'bottom'));
+if isscalar(i), tw = tw_all(i, :); src = names{i}; end
+end
+
+function s = H_name(lay)
+s = '';
+if isfield(lay, 'name')
+  if iscell(lay.name), s = lay.name{1}; else, s = lay.name; end
+end
+s = char(s);
+end
+
+function v = H_opt(o, f, d)
+if isstruct(o) && isfield(o, f) && ~isempty(o.(f)), v = o.(f); else, v = d; end
+end

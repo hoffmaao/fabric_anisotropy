@@ -246,6 +246,29 @@ units).
     validated on a 90-deg arc; the header owns the detail, and
     `opr_fabric/test/test_quadpol_segmented.m` /
     `test_quadpol_curved.m` are its regressions.
+    WHERE THE ICE ENDS (`opts.z_bed`, a per-trace bed depth; none by
+    default): every trace is blanked below its own bed less a margin
+    (`ptt.maskBelowBed`), so each moment averages only the traces still
+    in ice at that depth, and a window is fitted only where at least half
+    the traces of its pass - the frame, or the segment - are still in ice
+    at its bottom edge (`ptt.quadpolFabricLS`'s `z_valid` at the median
+    bed); the sub-block pooling and the jackknife weigh each sub-block by
+    its traces in ice per depth. That follows a bed which varies along
+    the line - 567-996 m inside one Taylor Dome frame, 42-300 m on one
+    Eastwind line - where a single depth cut cannot (a 5th-percentile
+    cut, tried first, left an Eastwind frame no window at all). The
+    pipeline reads the bed from the season's `CSARP_layer` picks
+    (`opr_fabric/server/bed_from_layer.m`, bound by name), masks the
+    record before any estimator sees it, and saves each block's bed as
+    `sec_bed`. The record runs past the bed at the thin-ice
+    sites, and what is there is not noise but coherent, polarised bed
+    and basal returns the model reads as fabric: of the windows that
+    cleared the constant-axis vote gates, 95% at Eastwind and McMurdo and
+    35% at Taylor Dome lay below the bed, and the held axis landed a
+    median 51 / 41 / 9 deg off the ice above it (Ridge A, whose record
+    ends in ice: 0.4 deg). They fed the frame pedestal median the same
+    way. `opr_fabric/test/test_quadpol_bed_vote.m` reproduces the capture
+    and pins the fix.
     CONSTANT ORIENTATION WITH DEPTH (`opts.theta_const`, off by
     default; the pipeline's `theta_const=true` writes `_ct` products
     beside the defaults, never over them): one axis per segment, voted

@@ -70,7 +70,22 @@ function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 %            theta_const (false; true holds ONE axis per segment, constant
 %            in depth - see below),
 %            jackknife (false; true adds sub-block jackknife standard
-%            errors per segment, see ptt.quadpolJackknife)
+%            errors per segment, see ptt.quadpolJackknife),
+%            z_bed ([] = no bed known; else [Nx] per-trace bed depth [m],
+%            NaN where unpicked) and bed_margin_m (20): every trace is
+%            blanked below its own bed less the margin (ptt.maskBelowBed),
+%            so each moment averages only traces still in ice at that
+%            depth, and a window is fitted only where at least HALF the
+%            traces of its pass (the frame, or the segment) are still in
+%            ice at the window's bottom edge (ptt.quadpolFabricLS z_valid
+%            at the median bed). The two together follow a bed that varies
+%            along the line - 567-996 m inside one Taylor Dome frame, 42-
+%            300 m on one Eastwind line - which no single depth cut can:
+%            a 5th-percentile cut, tried first, left an Eastwind frame no
+%            window at all (p5 79 m against a 224 m median). Without a bed
+%            the record's coherent sub-bed returns vote on the held axis
+%            and feed the pedestal median as if they were ice - see
+%            SUB-BED WINDOWS in ptt.quadpolFabricLS.
 %
 % Output struct fp
 %   zw        [Nw x 1] window centres
@@ -169,6 +184,25 @@ CHAN = {'hh', 'vv', 'hv', 'vh'};
 Nx = size(T.hh, 2);
 az_tr = az_tr(:).';
 x_along = x_along(:).';
+
+% --- where the ice ends. Every frame-level pass stops at the frame's bed,
+% and each segment below at its own.
+Z_BED = H_opt(opts, 'z_bed', []);
+BED_MARGIN = H_opt(opts, 'bed_margin_m', 20);
+if ~isempty(Z_BED)
+  Z_BED = Z_BED(:).';
+  if numel(Z_BED) ~= Nx
+    error('ptt:quadpolFrameTheta:zBed', ...
+      'opts.z_bed has %d entries for %d traces', numel(Z_BED), Nx);
+  end
+  % idempotent: a caller that already masked (the pipeline does, for its
+  % section blocks) loses nothing by this second pass
+  T = ptt.maskBelowBed(T, z, Z_BED, BED_MARGIN);
+end
+zv_frame = H_zvalid(Z_BED, 1:Nx, BED_MARGIN, Inf);
+base.z_valid = zv_frame;
+fbase.z_valid = zv_frame;
+segbase.z_valid = zv_frame;
 
 % --- heading statistics on the doubled-angle phasor
 az0 = mod(rad2deg(angle(mean(exp(2i*deg2rad(az_tr)))))/2, 180);
@@ -308,6 +342,7 @@ for s = 1:nseg
   [Mg, Msub, nsub] = H_geo_moments(T, az_tr, js, NBLK_ROT, CHAN);
   if isempty(Mg), continue; end
   os = segbase;   % carries theta_const: one axis per SEGMENT, constant in depth
+  os.z_valid = H_zvalid(Z_BED, js, BED_MARGIN, zv_frame);
   os.pedestal = H_ped_field(ped_ant, az_tr, js, PSI_FIT);
   o = ptt.quadpolFabricLS(struct('M', Mg), z, os);
   if nnz(isfinite(o.theta0)) < MIN_SEG_W, continue; end
@@ -425,8 +460,13 @@ function [Mg, Msub, nsub] = H_geo_moments(T, az_tr, js, nblk_rot, chan)
 % are skipped (too few for a moment average worth rotating). The
 % sub-block moments and their trace counts are returned too - they are
 % the jackknife's resampling units, and Mg is exactly their weighted mean.
+% The counts are PER DEPTH, [Nt x n]: where traces are blanked below the
+% bed (ptt.maskBelowBed) a sub-block contributes only the traces still in
+% ice at each depth, and a depth with none carries no weight rather than
+% turning the pooled moment NaN. Unmasked, every column is constant and
+% the pooling is the plain trace-count mean it always was.
 Mg = [];
-wsum = 0;
+wsum = [];
 Msub = {};
 nsub = [];
 for jr = 1:nblk_rot:numel(js)
@@ -438,13 +478,18 @@ for jr = 1:nblk_rot:numel(js)
   Mb = ptt.quadpolMoments(Sb, [1 numel(jj)]);
   hb = mod(rad2deg(angle(mean(exp(2i*deg2rad(az_tr(jj))))))/2, 180);
   Mr = ptt.rotateMoments(Mb, -deg2rad(hb));
-  if isempty(Mg), Mg = zeros(size(Mr)); end
-  Mg = Mg + Mr * numel(jj);
-  wsum = wsum + numel(jj);
+  cnt = sum(isfinite(Sb.(chan{1})), 2);        % traces in ice, per depth
+  Mz = Mr;
+  Mz(~isfinite(Mz)) = 0;
+  if isempty(Mg), Mg = zeros(size(Mr)); wsum = zeros(size(cnt)); end
+  Mg = Mg + Mz .* cnt;
+  wsum = wsum + cnt;
   Msub{end+1} = Mr; %#ok<AGROW>
-  nsub(end+1) = numel(jj); %#ok<AGROW>
+  nsub(:, end+1) = cnt; %#ok<AGROW>
 end
-if wsum > 0, Mg = Mg / wsum; end
+if ~isempty(wsum)
+  Mg = Mg ./ wsum;                             % 0/0 -> NaN where no ice
+end
 end
 
 function pfld = H_ped_field(ped_ant, az_tr, js, psi_fit)
@@ -457,4 +502,17 @@ c4h = real(mh4); s4h = imag(mh4);
 pfld = (ped_ant(1) + 1i*ped_ant(2)) ...
   * (c2h*sin(2*psi_fit(:)) - s2h*cos(2*psi_fit(:))) ...
   + ped_ant(3) * (0.5 - 0.5*(c4h*cos(4*psi_fit(:)) + s4h*sin(4*psi_fit(:))));
+end
+
+function zv = H_zvalid(z_bed, js, margin, fallback)
+% The deepest window bottom at which at least half of traces js are still in
+% ice: their MEDIAN picked bed, less the margin. Unpicked traces count as
+% ice (they are not masked either); with no pick at all the caller's
+% fallback stands (Inf when no bed is known).
+zv = fallback;
+if isempty(z_bed), return; end
+b = z_bed(js);
+if ~any(isfinite(b)), return; end
+b(~isfinite(b)) = Inf;
+zv = median(b) - margin;
 end

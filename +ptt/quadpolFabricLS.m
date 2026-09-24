@@ -113,7 +113,26 @@ function out = quadpolFabricLS(S, z, opts)
 %         theta_const (false; true holds ONE axis for the whole column,
 %         voted from the per-window theta curves - see the
 %         CONSTANT-ORIENTATION MODE block), theta_const_q_min (0.02, the
-%         normalised curve range below which a window does not vote)
+%         normalised curve range below which a window does not vote),
+%         z_valid (Inf: the depth [m] the record is ICE to - the bed less
+%         a margin. A window reaching below it is not fitted at all: it
+%         returns NaN everywhere, so it neither votes on a held axis nor
+%         enters the frame pedestal median nor hands an axis to anything
+%         downstream. See SUB-BED WINDOWS below.)
+%
+% SUB-BED WINDOWS. The record usually runs past the bed, and below it the
+% channels hold noise plus the antenna-fixed pedestal and nothing else. Such
+% a window still has a best-fitting axis - wherever the pedestal and the
+% noise put it - and nothing in its own statistics marks it as meaningless:
+% noise easily clears q_min and, because the free axis may flip a quarter
+% turn to keep the rate positive, dlam_min_theta too. MEASURED on the
+% constant-orientation products (23 Sep 2026): of the windows that passed
+% the vote gates, 95% at Eastwind (bed ~225 m) and McMurdo (~268 m) and
+% 35% at Taylor Dome (~837 m) lay below the bed, and because the vote
+% pools curves normalised by their own data power each counted as much as
+% an ice window. The held axis landed a median 51 / 41 / 9 deg off the
+% above-bed free axis (Ridge A, whose record ends in ice: 0.4 deg). Only
+% the caller knows where the bed is, so it says so here.
 %
 % Output fields (per window centre zw [Nw x 1])
 %   zw, theta0, dlam, gamma, leak (pass-A per-window pedestal magnitude,
@@ -164,6 +183,8 @@ th_step = H_opt(opts, 'theta_step_deg', 3);
 % replicates use it to search only +-15 deg around the full-data axis,
 % which is what makes a jackknife of the frame pass affordable.
 th_grid_in = H_opt(opts, 'theta_grid', []);
+% the depth the record is ice to; windows reaching below it are not fitted
+z_valid = H_opt(opts, 'z_valid', Inf);
 
 z = z(:);
 Nt = numel(z);
@@ -281,7 +302,7 @@ P = struct('z', z, 'zw', zw, 'half', half, 'jdec', jdec, 'psi', psi, ...
   'th_grid', th_grid, ...
   'dd_grid', linspace(0, dlam_max * grad_per_dlam, 26), ...
   'd0_grid', (0:15:345) * pi/180, ...
-  'dd_max', dlam_max * grad_per_dlam, 'th_fix', th_fix);
+  'dd_max', dlam_max * grad_per_dlam, 'th_fix', th_fix, 'z_valid', z_valid);
 
 pedestal = nan(1, 3);
 if isnumeric(ped_in)
@@ -439,6 +460,10 @@ if theta_const && isempty(theta0_in)
       R = H_fit_windows(Cm, Wc, P, pedestal);
     end
     R.theta0(:) = th_c;                 % held, not re-estimated
+    % ... except where no window was fitted at all - below z_valid, or
+    % with too little finite data - which is not a weak window the column
+    % speaks for but no measurement, and must not read as one downstream
+    R.theta0(~isfinite(R.c2)) = NaN;
     % The held refit computes no theta curve (nothing to search), so the
     % per-window axis information and the vote it was drawn from come
     % from the free pass: q_theta stays "how much axis does THIS window
@@ -559,6 +584,9 @@ os = optimset('Display', 'off', 'MaxFunEvals', 400, 'MaxIter', 400, ...
   'TolFun', 1e-6, 'TolX', 1e-6);
 
 for w = 1:Nw
+  % a window that reaches below the ice is noise and pedestal only; see
+  % SUB-BED WINDOWS in the header
+  if P.zw(w) + P.half > P.z_valid, continue; end
   jj = find(P.z >= P.zw(w) - P.half & P.z <= P.zw(w) + P.half);
   jj = jj(1:P.jdec:end);
   Cw = Cm(jj, :).';                 % [Nk x Nj]: azimuth rows, depth cols

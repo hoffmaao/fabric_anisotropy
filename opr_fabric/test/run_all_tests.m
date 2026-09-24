@@ -31,8 +31,8 @@ names = sort(erase({listing.name}, '.m'));
 % Sep 2026; every other test takes seconds. Update when a test is added or
 % its cost changes, so 'quick' stays quick.
 slow = {'test_egrip_blocks', 'test_egrip_cap', 'test_fabric_gls', ...
-  'test_quadpol_const_theta', 'test_quadpol_curved', 'test_quadpol_ls', ...
-  'test_quadpol_segmented', 'test_quadpol_uncertainty'};
+  'test_quadpol_bed_vote', 'test_quadpol_const_theta', 'test_quadpol_curved', ...
+  'test_quadpol_ls', 'test_quadpol_segmented', 'test_quadpol_uncertainty'};
 
 if nargin == 0 || isequal(selection, 'all')
   % every test
