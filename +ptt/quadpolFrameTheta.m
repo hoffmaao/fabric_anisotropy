@@ -254,16 +254,18 @@ Nw = numel(zw);
 % A HELD column needs no depth smoothing - the profile is one number - and
 % must not get any: the kernel's weight threshold would drop windows from
 % a profile that is constant by construction. Its weight is the pooled
-% contrast, uniform in depth, so the handoff interpolation between
-% segments stays depth-independent too (a depth-varying weight would turn
-% two constant neighbours into a depth-varying blend). A column whose vote
-% failed (theta_const NaN) fell back to per-window axes inside the
-% estimator and is treated as such here.
+% contrast, uniform over the windows that were fitted, so the handoff
+% interpolation between segments stays depth-independent too (a
+% depth-varying weight would turn two constant neighbours into a
+% depth-varying blend); a window the column never fitted (below z_valid)
+% carries no axis and so no weight. A column whose vote failed
+% (theta_const NaN) fell back to per-window axes inside the estimator and
+% is treated as such here.
 th_spread_frame = NaN;
 if isfield(lsq, 'theta_spread_deg'), th_spread_frame = lsq.theta_spread_deg; end
 if TH_CONST && isfinite(lsq.theta_const)
   th_frame = th_geo_raw(:);
-  q_frame = lsq.theta_const_q * ones(Nw, 1);
+  q_frame = lsq.theta_const_q * double(isfinite(th_frame));
 else
   [th_frame, q_frame] = H_smooth_profile(th_geo_raw, lsq.q_theta);
 end
@@ -351,7 +353,7 @@ for s = 1:nseg
   held_seg(s) = TH_CONST && isfinite(o.theta_const);
   if held_seg(s)
     % one axis, one weight (the pooled contrast) - see the frame profile
-    q_raw(:, s) = o.theta_const_q;
+    q_raw(:, s) = o.theta_const_q * double(isfinite(o.theta0));
   else
     qs = o.q_theta;
     qs(~isfinite(qs) | qs < 0) = 0;

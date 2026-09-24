@@ -71,7 +71,8 @@ function J = quadpolJackknife(Msub, nsub, z, os, ref, opts)
 % Output struct J (per window centre, as ref.zw)
 %   se_theta   [Nw x 1] standard error of theta0, radians, bounded and
 %              circular over the doubled angle - see ptt.circAxisSE
-%              (constant mode: one value, repeated)
+%              (constant mode: one value, repeated over the windows the
+%              full fit gave an axis; NaN where ref.theta0 is NaN)
 %   se_dlam    [Nw x 1] standard error of dlam
 %   se_theta_c scalar, constant mode: SE of the held axis (NaN otherwise)
 %   n_theta    [Nw x 1] replicates that contributed to se_theta
@@ -198,10 +199,12 @@ se_theta_c = NaN; n_theta_c = 0; r_theta_c = NaN; sat_theta_c = false;
 if held
   [se_theta_c, n_theta_c, r_theta_c, sat_theta_c] = ...
     ptt.circAxisSE(th_c_rep, MIN_REP);
-  se_theta(:) = se_theta_c;
-  n_theta(:) = n_theta_c;
-  r_theta(:) = r_theta_c;
-  sat_theta(:) = sat_theta_c;
+  okw = isfinite(ref.theta0(:));
+  se_theta = nan(Nw, 1);      se_theta(okw) = se_theta_c;
+  n_theta = zeros(Nw, 1);     n_theta(okw) = n_theta_c;
+  r_theta = nan(Nw, 1);       r_theta(okw) = r_theta_c;
+  sat_theta = false(Nw, 1);   sat_theta(okw) = sat_theta_c;
+  se_dlam(~okw) = NaN;
 end
 
 J = struct('se_theta', se_theta, 'se_dlam', se_dlam, ...

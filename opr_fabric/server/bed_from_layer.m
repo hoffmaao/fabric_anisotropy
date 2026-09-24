@@ -11,17 +11,22 @@ function [z_bed, info] = bed_from_layer(site_root, day_seg, frm, la, lo, surf_t,
 % by POSITION, nearest pick wins, because the layer product is on its own
 % trace axis (a few hundred picks along a frame of thousands of traces).
 %
-% THE LAYERS ARE BOUND BY NAME, never by row. Names live once per segment
-% in layer_<seg>.mat (lyr_name; row i of the frame file's twtt is entry i),
-% and layer ORDER varies by season, so a positional bind differences a
-% different quantity per site: it once read a 224 m shelf as 1 m. The bed
+% THE READER TAKES THE OPR LAYERDATA FORMAT ONLY - the frame file's twtt
+% rows, named by the segment's layer_<seg>.mat - which every season in use
+% ships. THE LAYERS ARE BOUND BY NAME, never by row. Names live once per
+% segment in that catalogue (lyr_name; row i of the frame file's twtt is
+% entry i), and layer ORDER varies by season, so a positional bind
+% differences a different quantity per site: it once read a 224 m shelf as
+% 1 m. With the catalogue in hand the ROWS of twtt are its layers: a file
+% whose row count disagrees with the catalogue is refused, never transposed
+% until the counts agree (that is a positional bind wearing a name). The bed
 % preference, most trustworthy first, is the one make_bed_by_block.py
 % established (bottom_mc runs a median 44.6 m shallow of the polarimetric
 % picks and ranks last): the per-trace median of the bottom_HH/VV/HV/VH
 % picks the file carries; then `bottom`; then `bottom_mc`; then a uniquely
-% bottom-named layer. A frame whose layers cannot be named, or with no
-% layer file at all, returns all NaN and says so in info - not masking is
-% recoverable, masking ice away is not.
+% bottom-named layer. A frame whose layers cannot be named, whose file is
+% in another layout, or with no layer file at all, returns all NaN and says
+% so in info - not masking is recoverable, masking ice away is not.
 %
 % WHY THE PIPELINE'S SURFACE AND NOT THE LAYER FILE'S. The bed has to land
 % on the axis the fabric is reported on, and that axis is zeroed at the
@@ -67,42 +72,25 @@ end
 info.file = fn;
 D = load(fn);
 
-if isfield(D, 'twtt') && isfield(D, 'lat')
-  % OPR layerdata format: rows of twtt, names in the segment catalogue
-  plat = double(D.lat(:).'); plon = double(D.lon(:).');
-  tw = double(D.twtt);
-  names = {};
-  cat_fn = fullfile(seg_dir, sprintf('layer_%s.mat', day_seg));
-  if exist(cat_fn, 'file') == 2
-    L = load(cat_fn);
-    if isfield(L, 'lyr_name'), names = cellstr(L.lyr_name(:).'); end
-  end
-  if isempty(names)
-    info.reason = sprintf('%s carries no layer names (no layer_%s.mat catalogue)', fn, day_seg);
-    return
-  end
-  if size(tw, 1) ~= numel(names) && size(tw, 2) == numel(names)
-    tw = tw.';
-  end
-  if size(tw, 1) ~= numel(names)
-    info.reason = sprintf('%d layer names for %d pick rows in %s', numel(names), size(tw, 1), fn);
-    return
-  end
-elseif isfield(D, 'layerData') && isfield(D, 'Latitude')
-  % legacy CReSIS format: a cell of layers, each carrying its own name and
-  % value{end}.data as the pick
-  plat = double(D.Latitude(:).'); plon = double(D.Longitude(:).');
-  names = {}; tw = [];
-  for i = 1:numel(D.layerData)
-    lay = D.layerData{i};
-    if ~isfield(lay, 'value') || isempty(lay.value), continue; end
-    v = lay.value{end};
-    if ~isfield(v, 'data'), continue; end
-    names{end+1} = H_name(lay); %#ok<AGROW>
-    tw(end+1, :) = double(v.data(:).'); %#ok<AGROW>
-  end
-else
-  info.reason = sprintf('%s has no recognised layer fields', fn);
+if ~(isfield(D, 'twtt') && isfield(D, 'lat') && isfield(D, 'lon'))
+  info.reason = sprintf('%s is not OPR layerdata (no twtt/lat/lon; fields: %s)', ...
+    fn, strjoin(fieldnames(D).', ', '));
+  return
+end
+plat = double(D.lat(:).'); plon = double(D.lon(:).');
+tw = double(D.twtt);
+names = {};
+cat_fn = fullfile(seg_dir, sprintf('layer_%s.mat', day_seg));
+if exist(cat_fn, 'file') == 2
+  L = load(cat_fn);
+  if isfield(L, 'lyr_name'), names = cellstr(L.lyr_name(:).'); end
+end
+if isempty(names)
+  info.reason = sprintf('%s carries no layer names (no layer_%s.mat catalogue)', fn, day_seg);
+  return
+end
+if size(tw, 1) ~= numel(names)
+  info.reason = sprintf('%d layer names for %d pick rows in %s', numel(names), size(tw, 1), fn);
   return
 end
 names = lower(strtrim(names));
@@ -158,14 +146,6 @@ for want = {'bottom', 'bottom_mc'}
 end
 i = find(contains(names, 'bottom'));
 if isscalar(i), tw = tw_all(i, :); src = names{i}; end
-end
-
-function s = H_name(lay)
-s = '';
-if isfield(lay, 'name')
-  if iscell(lay.name), s = lay.name{1}; else, s = lay.name; end
-end
-s = char(s);
 end
 
 function v = H_opt(o, f, d)
