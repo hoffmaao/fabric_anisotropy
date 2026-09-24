@@ -189,8 +189,14 @@ comparing HDF5 object references, which never match.
   locally, so it re-makes that measurement only where they are.
 - `scripts/compare_const_theta.py` - run on mem1 (h5py): differences
   every `_ct` (constant-orientation) product against its default twin
-  over the quotable 200-1500 m band, and states per site whether the
-  assumption holds. It compares the SEGMENT profiles the blocks inherit
+  and states per site whether the assumption holds. Sites are selected
+  by position through `quadpol_sites.in_site`, the rule the figure
+  scripts use, so there is no second site table to drift. The band runs
+  from the site's floor (`quadpol_sites` `z_band`: 60 m at the two
+  shelves, 200 m elsewhere) to the frame's bed less 20 m from
+  `bed_by_block.json`, falling back to 1500 m when there is no pick;
+  the header names the frames that fell back. It compares the SEGMENT
+  profiles the blocks inherit
   (`ls_theta_seg`) and the BLOCK fits (`sec_dlam_ls`, `sec_resid_ls`),
   not the frame-pooled pass, which constant mode never touches on a
   multi-segment frame - an earlier version read `ls_theta0_geo` and

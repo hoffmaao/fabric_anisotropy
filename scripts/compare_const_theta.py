@@ -40,8 +40,10 @@ their residuals, spreads and contrasts were mostly the sub-bed record, and
 the site verdicts said so ("FIT FAILS" at Eastwind was that). So each
 frame's band is cut at its own bed, the per-block picks in
 `bed_by_block.json` (scripts/make_bed_by_block.py), less BED_MARGIN_M; a
-frame with no pick keeps the full band and is counted in the header line so
-the reader knows which numbers still reach past the ice.
+frame with no pick keeps the full band and is named in the header line so
+the reader knows which numbers still reach past the ice. A frame whose pick
+lies below the record also keeps the full band, and the header counts it
+separately: its numbers never leave the ice.
 
 Runs where the products live, since they are HDF5: on mem1, or on the local
 mirror under $SCAR_DATA where the bed file also lives:
@@ -80,10 +82,9 @@ DEFAULT_STAGE = os.path.join(_WORK, "stages", "quadpol")
 # spoils the near-surface windows, 60 m at the two shelves whose ice ends
 # near 225-270 m) down to the record's z_max, cut at the frame's bed less a
 # margin where a pick exists. Frames at no known site take the deep-site
-# floor. The site's z_deep band gives the deep median.
+# floor.
 Z_MAX = 1500.0
 Z_LO_DEFAULT = 200.0
-Z_DEEP_DEFAULT = (1150.0, Z_MAX)
 BED_MARGIN_M = 20.0
 SCAR_DATA = os.path.expanduser(os.environ.get("SCAR_DATA", "~/data/opr/scar"))
 
@@ -182,20 +183,18 @@ def load_beds(stage):
 
 def band_top(tag, beds):
     """Bottom of the frame's band: z_max, or its bed less the margin."""
-    zb = beds.get(tag)
-    if zb is None or not np.isfinite(zb):
+    if tag not in beds:
         return Z_MAX
-    return min(Z_MAX, zb - BED_MARGIN_M)
+    return min(Z_MAX, beds[tag] - BED_MARGIN_M)
 
 
 def frame_band(cfg, z_top):
-    """(z_lo, z_hi, (deep_lo, deep_hi)) for a frame at site cfg."""
+    """(z_lo, z_hi) for a frame at site cfg."""
     z_lo = cfg["z_band"][0] if cfg else Z_LO_DEFAULT
-    d_lo, d_hi = cfg["z_deep"] if cfg else Z_DEEP_DEFAULT
-    return z_lo, z_top, (max(d_lo, z_lo), min(d_hi, z_top))
+    return z_lo, z_top
 
 
-def read(fn, z_lo, z_top, z_deep):
+def read(fn, z_lo, z_top):
     """One product's numbers over the quotable band, z_lo to z_top.
 
     Field names are not interchangeable: the LS block dlam is sec_dlam_ls (NOT
@@ -221,7 +220,6 @@ def read(fn, z_lo, z_top, z_deep):
             sec_dlam = sec_dlam.T
             sec_res = sec_res.T
         mz = (z >= z_lo) & (z < z_top)
-        deep = (z >= z_deep[0]) & (z < z_deep[1])
         # the axis the blocks inherit: contrast-weighted over segments and
         # the quotable band; its depth spread per segment says how much the
         # free profile wandered before anything was held
@@ -280,8 +278,6 @@ def read(fn, z_lo, z_top, z_deep):
             depth_sd=depth_sd,
             dlam=(np.nanmedian(sec_dlam[:, mz])
                   if sec_dlam.size > 1 else np.nan),
-            dlam_deep=(np.nanmedian(sec_dlam[:, deep])
-                       if sec_dlam.size > 1 else np.nan),
             resid=(np.nanmedian(sec_res[:, mz])
                    if sec_res.size > 1 else np.nan),
             finite=(np.isfinite(sec_dlam[:, mz]).mean()
@@ -333,7 +329,7 @@ def main():
         sys.exit("no _ct products in %s - has the batch run?" % stage)
 
     beds, bed_fn = load_beds(stage)
-    rows, orphans, no_bed = [], [], []
+    rows, orphans, no_bed, deep_bed = [], [], [], []
     for cf in ct_files:
         base = cf[:-len("_ct.mat")] + ".mat"
         tag = os.path.basename(cf)[len("quadpol_section_"):-len("_ct.mat")]
@@ -341,17 +337,19 @@ def main():
             orphans.append(tag)
             continue
         z_top = band_top(tag, beds)
-        if z_top >= Z_MAX:
-            no_bed.append(tag)
         try:
             site, cfg = site_for(tag, *frame_pos(base))
-            z_lo, z_hi, z_deep = frame_band(cfg, z_top)
-            a = read(base, z_lo, z_hi, z_deep)
-            b = read(cf, z_lo, z_hi, z_deep)
+            z_lo, z_hi = frame_band(cfg, z_top)
+            a = read(base, z_lo, z_hi)
+            b = read(cf, z_lo, z_hi)
         except (OSError, KeyError, ValueError) as e:
             orphans.append("%s (unreadable: %s)" % (tag, e))
             continue
         rows.append((site, tag, a, b))
+        if tag not in beds:
+            no_bed.append(tag)
+        elif z_top >= Z_MAX:
+            deep_bed.append(tag)
 
     if bed_fn is None:
         print("NO BED FILE FOUND: every band runs to %.0f m, below the ice "
@@ -360,10 +358,13 @@ def main():
               % Z_MAX)
     else:
         print("band: each site's floor (quadpol_sites z_band) to the "
-              "frame's bed less %.0f m (%s); %d of %d frames have no bed "
-              "pick and run to %.0f m%s"
-              % (BED_MARGIN_M, bed_fn, len(no_bed), len(rows), Z_MAX,
-                 (": " + " ".join(no_bed)) if no_bed else ""))
+              "frame's bed less %.0f m (%s); of %d frames compared, %d "
+              "have no bed pick and run to %.0f m%s; %d have their bed "
+              "below the record and also run to %.0f m%s"
+              % (BED_MARGIN_M, bed_fn, len(rows), len(no_bed), Z_MAX,
+                 (": " + " ".join(no_bed)) if no_bed else "",
+                 len(deep_bed), Z_MAX,
+                 (": " + " ".join(deep_bed)) if deep_bed else ""))
     print("th = contrast-weighted axis the blocks inherit; "
           "sd_z = depth spread of the FREE segment profiles; "
           "spread = per-window "
