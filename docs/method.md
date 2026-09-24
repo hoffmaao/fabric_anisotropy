@@ -151,7 +151,24 @@ units).
     it was pinned to - the sweep sense shared with `ptt.ershadiFabric`, the
     unconjugated model coherence, and `r_dB = 20*log10(Gamma_y/Gamma_x)`,
     the amplitude convention fixed by reproducing the paper's Fig. 4 from
-    their eq. (13).
+    their eq. (13). ITS WINDOWS ARE FORMED ON ITS OWN GRID, not the
+    caller's: the eq.-(7) window is a length in metres, and a data path
+    forms it at the record's native sampling before keeping one row per
+    window. The model used to build its window from however many caller
+    rows fell inside `win_m`, floored at three, so on rows 20 m apart a
+    20 m window became 60 m, and its power anomalies were point values
+    where the data's are window means; model and data then disagreed most
+    where the birefringent phase turns fastest (issue #29). It now
+    evaluates the stack on an internal grid no coarser than a twentieth
+    of the window (`dz_model` pins it to the data's native step), windows
+    there, and samples at the caller's rows; `win_power_m` windows the
+    powers behind `dP_hh`/`dP_hv` the way the data path does (default 0
+    keeps the paper's point amplitudes, which the Table-2 reproduction is
+    pinned to). A caller already on a fine grid is untouched.
+    `opr_fabric/test/test_fujita_window.m` pins it: on rows one window
+    apart the model reproduces a data path built on a 0.5 m grid to
+    roundoff, and the true column's chi-square against noise at the
+    assumed sigmas is 1.02.
   - `ptt.ershadiInverse` - the Sect.-3.5 step on top of that model: a
     constrained fit of piecewise-constant theta and reflection-ratio
     profiles to the observables `ptt.ershadiFabric` extracts, with `dlam`

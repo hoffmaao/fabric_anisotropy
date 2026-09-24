@@ -73,6 +73,10 @@ function out = fabricGLS(obs, z, opts)
 %        .sigma_*        optional explicit one-sigma for any observable
 %   z    [Nz x 1] depth (m)
 %   opts .fc (750e6), .win_m (30)
+%        .win_power_m (0), .dz_model ([])   how the observables' powers
+%                        were windowed and at what native sampling, passed
+%                        to ptt.fujitaModel so the model windows the same
+%                        way on a decimated grid (issue #29)
 %        .n_layer (16)   layers the profiles are parametrised on
 %        .n_looks (20)   INDEPENDENT looks behind each sample
 %        .n_indep_psi    independent azimuths behind the Np columns. Use 4
@@ -113,6 +117,11 @@ psi = obs.psi(:).';
 Np = numel(psi);
 fc = H_opt(opts, 'fc', 750e6);
 win_m = H_opt(opts, 'win_m', 30);
+% how the OBSERVABLES were formed, handed to the forward model so it forms
+% its own the same way (ptt.fujitaModel: win_power_m, dz_model)
+fwd_opts = struct('fc', fc, 'win_m', win_m, ...
+  'win_power_m', H_opt(opts, 'win_power_m', 0), ...
+  'dz_model', H_opt(opts, 'dz_model', []));
 nL = H_opt(opts, 'n_layer', 16);
 nlook = H_opt(opts, 'n_looks', 20);
 max_iter = H_opt(opts, 'max_iter', 25);
@@ -182,7 +191,7 @@ redund = sqrt(max(Np/max(n_ipsi,1), 1) * max(Nz/max(n_iz,1), 1));
 sd = sd * redund;
 Cdi = 1 ./ (sd.^2);                           % diagonal inverse covariance
 
-fwd = @(mm) H_pack_pred(H_forward(mm, ip, z_layer, z, psi, fc, win_m), use, idx, clip_db);
+fwd = @(mm) H_pack_pred(H_forward(mm, ip, z_layer, z, psi, fwd_opts), use, idx, clip_db);
 % RESIDUAL, not a plain difference. Two things make a subtraction wrong
 % here and both were measured, not anticipated:
 %   phi is an ANGLE. An unwrapped difference near +-pi returns ~2pi where
@@ -264,7 +273,7 @@ chi2_dof = sum(Cdi .* r_fin.^2) / dof;
 sig_raw = sig;
 sig = sig * sqrt(max(chi2_dof, 1));
 
-M = H_forward(m, ip, z_layer, z, psi, fc, win_m);
+M = H_forward(m, ip, z_layer, z, psi, fwd_opts);
 th_z = interp1(z_mid, m(ip.th), z, 'linear', 'extrap');
 dl_z = interp1(z_mid, m(ip.dl), z, 'linear', 'extrap');
 rd_z = interp1(z_mid, m(ip.rd), z, 'linear', 'extrap');
@@ -301,7 +310,7 @@ end
 L = L(1:min(it+1, numel(L)));
 end
 
-function M = H_forward(m, ip, z_layer, z, psi, fc, win_m)
+function M = H_forward(m, ip, z_layer, z, psi, fwd_opts)
 nL = numel(z_layer);
 lay = struct('top_m', num2cell(z_layer), ...
   'dlam', num2cell(max(m(ip.dl), 0)), ...
@@ -313,7 +322,7 @@ lay = struct('top_m', num2cell(z_layer), ...
 % carried here in the SAME sense as that model, so out.theta_z is directly
 % comparable with ptt.fujitaModel and with ptt.ershadiFabric, and is the
 % NEGATIVE of the synthesis-sense angle used by ptt.quadpolFabricLS.
-M = ptt.fujitaModel(lay, z, psi, struct('fc', fc, 'win_m', win_m));
+M = ptt.fujitaModel(lay, z, psi, fwd_opts);
 end
 
 function [d, sd, idx, is_ph] = H_pack(obs, use, nlook, Nz, Np, clip_db)

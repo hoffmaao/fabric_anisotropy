@@ -51,10 +51,49 @@ function out = fujitaModel(layers, z, psi, opts)
 %                      each layer boundary - it is not invariant there.
 %                      gx_db exists for the power PROFILE below, which is
 %                      where relative reflection strengths live.
-%   z       depth axis (m), column
+%   z       depth axis (m), column: the rows the OBSERVABLES are wanted
+%           on. It may be as coarse as the data - one row per window on a
+%           decimated ApRES profile - because the model is evaluated on a
+%           finer grid of its own and sampled back at these rows; see
+%           THE WINDOW IS FORMED ON THE MODEL'S OWN GRID below.
 %   psi     sweep azimuths (radians, row or column)
 %   opts    .fc (750e6), .eps_perp (3.15, the paper's value),
-%           .deps (0.034), .win_m (30, eq.-7 window, match the data path)
+%           .deps (0.034), .win_m (30, eq.-7 window, match the data path),
+%           .win_power_m (0): window, in metres, over which the POWERS
+%                behind dP_hh / dP_hv are averaged before the dB anomaly
+%                is taken, when the data's powers are multilooked in range
+%                (ptt.quadpolMoments with range looks, apres.observables).
+%                0 keeps the point-amplitude anomalies of the paper's
+%                eq. (12), which the Table-2 reproduction in
+%                test_ershadi_seven and the direct-chain tests are pinned
+%                to. Callers fitting real observables pass the window
+%                those observables were formed with, usually win_m.
+%           .dz_model ([]): the internal grid step in metres. Default a
+%                twentieth of the narrowest window (a 1 m caller grid at
+%                win_m 30 is left as it is). A caller that knows the
+%                data's native sampling passes it here, so the model's
+%                window is formed from the same number of samples as the
+%                data's and the two agree to roundoff rather than to the
+%                discretisation of the window. Never coarser than the
+%                caller's rows.
+%
+% THE WINDOW IS FORMED ON THE MODEL'S OWN GRID, NOT THE CALLER'S. The
+% eq.-(7) window is a length in metres, and a data path forms it at the
+% record's native sampling before decimating (one row per window keeps
+% the rows independent, which a diagonal data covariance assumes). The
+% model used to build its window from however many CALLER rows fell
+% inside win_m, with a floor of three, so on rows 20 m apart a 20 m
+% window became a 60 m one, and its dP were point values where the
+% data's were window means. Model and data then disagreed most where the
+% birefringent phase turns fastest - inside the layer whose contrast the
+% fit is trying to settle (issue #29, and the false bottoms of #28 sit on
+% top of it). The stack is therefore evaluated on an internal grid no
+% coarser than a twentieth of the window (an integer refinement of a
+% uniform caller grid, so every caller row is an internal row and the
+% values come back by index, bit for bit what a fine caller grid gets;
+% a non-uniform caller grid is interpolated), windowed there, and sampled
+% at the caller's rows. A caller already on a grid at least that fine is
+% untouched: the refinement factor is 1 and the code path is the old one.
 %           .bed OPTIONAL struct('z_m', depth, 'gx_db', amp, 'r_db', 0):
 %                a single strong interface terminating the domain - the
 %                ice-bed reflection, tens of dB above the internals
@@ -98,8 +137,12 @@ win_m = H_opt(opts, 'win_m', 30);
 % ptt.ershadiInverse locates its eq.-(13) anti-phase depths with the same
 % call, so the two cannot drift apart.
 gpd1 = ptt.birefringentPhaseRate(fc, eps_perp, deps);
+win_pow = H_opt(opts, 'win_power_m', 0);
+dz_model = H_opt(opts, 'dz_model', []);
 
-z = z(:);
+% the caller's rows, and the internal grid the model is evaluated on
+z_in = z(:);
+[z, k_ref, uniform] = H_refine(z_in, win_m, win_pow, dz_model);
 Nz = numel(z);
 psi = psi(:).';
 Np = numel(psi);
@@ -133,8 +176,17 @@ if ~isempty(bed)
     error('ptt:fujitaModel:bed', 'opts.bed needs z_m and gx_db');
   end
   if ~isfield(bed, 'r_db') || isempty(bed.r_db), bed.r_db = 0; end
-  bed_row = find(z >= bed.z_m, 1);
-  if isempty(bed_row), bed_row = 0; end   % bed below the axis: no effect
+  if uniform
+    % the CALLER'S row containing the bed keeps the bed's return and the
+    % rows below it none, exactly as on an unrefined grid: the bed row is
+    % the internal row that caller row sits on, not the first fine row
+    % past z_m, so refinement cannot push a caller row below the bed
+    i_in = find(z_in >= bed.z_m, 1);
+    if isempty(i_in), bed_row = 0; else, bed_row = 1 + k_ref * (i_in - 1); end
+  else
+    bed_row = find(z >= bed.z_m, 1);
+    if isempty(bed_row), bed_row = 0; end   % bed below the axis: no effect
+  end
 end
 
 % per-depth layer index and boundary products
@@ -175,7 +227,20 @@ end
 % sub-bed row would come back as exactly 0 dB - a legitimate-looking "no
 % azimuthal anomaly" where the model has abstained. Restore the abstention
 % explicitly, as P_hh_db does below.
-A_hh = abs(s_hh); A_hv = abs(s_hv);
+dz = median(abs(diff(z)));
+if bed_row > 0, iw = 1:bed_row; else, iw = 1:Nz; end
+if win_pow > 0
+  % the data's powers are range-multilooked before the anomaly is taken,
+  % so the model's are too: a boxcar over win_power_m of |s|^2, formed
+  % above the bed like the coherence window below, then the amplitude
+  nwp = max(3, 2*floor(win_pow / max(dz, eps) / 2) + 1);
+  kp = ones(nwp, 1) / nwp;
+  A_hh = nan(Nz, Np); A_hv = nan(Nz, Np);
+  A_hh(iw, :) = sqrt(max(conv2(abs(s_hh(iw, :)).^2, kp, 'same'), 0));
+  A_hv(iw, :) = sqrt(max(conv2(abs(s_hv(iw, :)).^2, kp, 'same'), 0));
+else
+  A_hh = abs(s_hh); A_hv = abs(s_hv);
+end
 out.dP_hh = 20*log10(max(A_hh, realmin) ./ max(mean(A_hh, 2), realmin));
 out.dP_hv = 20*log10(max(A_hv, realmin) ./ max(mean(A_hv, 2), realmin));
 out.dP_hh(~isfinite(A_hh)) = NaN;
@@ -194,10 +259,8 @@ out.dP_hv(~isfinite(A_hv)) = NaN;
 % test_ershadi_seven.m verdict 3c) and gives the rows next
 % to the bed the same zero-padded edge treatment the bottom of a bedless
 % depth axis already gets.
-dz = median(abs(diff(z)));
 nw = max(3, 2*floor(win_m / max(dz, eps) / 2) + 1);
 k = ones(nw, 1) / nw;
-if bed_row > 0, iw = 1:bed_row; else, iw = 1:Nz; end
 sh = s_hh(iw, :); sv = s_vv(iw, :);
 num = conv2(real(sh .* conj(sv)), k, 'same') + ...
   1i*conv2(imag(sh .* conj(sv)), k, 'same');
@@ -218,7 +281,67 @@ if bed_row > 0
   out.P_hh_db(bed_row+1:end) = NaN;
 end
 out.gpd1 = gpd1;
+out.dz_model = dz;             % the internal step the windows were formed on
 
+% --- back onto the caller's rows
+if k_ref > 1 || ~uniform
+  out = H_sample(out, z, z_in, k_ref, uniform);
+end
+
+end
+
+function [z, k, uniform] = H_refine(z_in, win_m, win_pow, dz_model)
+%H_REFINE The internal grid: the caller's, refined by an integer factor
+% until its step is no coarser than the target - dz_model when given,
+% else a twentieth of the narrowest window. A uniform caller grid refined
+% this way contains every caller row at index 1 + k*(i-1); a non-uniform
+% one gets a uniform grid at that step between its ends and is
+% interpolated back afterwards.
+Nin = numel(z_in);
+if Nin < 2
+  z = z_in; k = 1; uniform = true;
+  return
+end
+d = diff(z_in);
+dz_in = median(abs(d));
+uniform = all(d > 0) && max(abs(d - dz_in)) < 1e-6 * dz_in;
+if ~isempty(dz_model) && dz_model > 0
+  target = dz_model;
+else
+  target = win_m / 20;
+  if win_pow > 0, target = min(target, win_pow / 20); end
+end
+k = max(1, ceil(dz_in / max(target, eps) - 1e-9));
+if uniform
+  z = z_in(1) + (0:k*(Nin-1)).' * (dz_in / k);
+else
+  z = (z_in(1):dz_in/k:z_in(end)).';
+  if z(end) < z_in(end), z(end+1) = z_in(end); end
+end
+end
+
+function out = H_sample(out, z, z_in, k, uniform)
+% every per-depth field back onto the caller's rows
+Nz = numel(z);
+fld = {'s_hh', 's_vv', 's_hv', 'dP_hh', 'dP_hv', 'C', 'phi', 'Cmag', 'P_hh_db'};
+if uniform
+  idx = 1:k:Nz;
+  for f = fld
+    out.(f{1}) = out.(f{1})(idx, :);
+  end
+  return
+end
+for f = fld
+  v = out.(f{1});
+  if isreal(v)
+    w = interp1(z, v, z_in, 'linear');
+  else
+    w = interp1(z, real(v), z_in, 'linear') + 1i * interp1(z, imag(v), z_in, 'linear');
+  end
+  out.(f{1}) = w;
+end
+out.phi = angle(out.C);        % an angle interpolates through its phasor
+out.Cmag = abs(out.C);
 end
 
 function g = H_gx(L)
