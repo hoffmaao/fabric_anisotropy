@@ -804,10 +804,14 @@ end
 % sees NaN below each trace's own bed less the margin: ptt.quadpolMoments
 % averages traces with 'omitnan', so a moment at depth z is formed only
 % from the traces whose ice reaches z, and a depth no trace reaches is NaN
-% through every chain.
+% through every chain. The UNCOREGISTERED record S is masked the same way,
+% so the raw Ershadi chain below, the coreg-vs-raw console comparison and
+% the saved theta_raw / dlam_raw are formed on the same ice as the
+% coregistered chain rather than on the bed return it no longer sees.
 if any(isfinite(z_bed))
   n_before = nnz(isfinite(T.hh));
   T = ptt.maskBelowBed(T, z, z_bed, BED_MARGIN_M);
+  S = ptt.maskBelowBed(S, z, z_bed, BED_MARGIN_M);
   fprintf('bed mask: %.1f%% of the record blanked below the bed less %d m\n', ...
     100 * (1 - nnz(isfinite(T.hh)) / max(n_before, 1)), BED_MARGIN_M);
 end

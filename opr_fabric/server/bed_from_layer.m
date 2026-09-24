@@ -1,13 +1,13 @@
-function [z_bed, info] = bed_from_layer(site_root, day_seg, frm, la, lo, surf_t, opts)
+function [z_bed, info] = bed_from_layer(site_root, day_seg, frm, la, lo, surf_t)
 %BED_FROM_LAYER Per-trace bed depth of a frame from the season's CSARP_layer picks.
 %
-% [z_bed, info] = bed_from_layer(site_root, day_seg, frm, la, lo, surf_t, opts)
+% [z_bed, info] = bed_from_layer(site_root, day_seg, frm, la, lo, surf_t)
 %
 % z_bed is [1 x Nx] metres on the PIPELINE'S depth axis - the bed pick's
 % two-way time less the frame surface time surf_t the pipeline zeroes its
 % depth at, at solid-ice velocity (eps 3.171, the same ice model as the
 % depth axis and as scripts/make_bed_by_block.py) - and NaN for a trace
-% with no pick within opts.max_match_m of it. Traces are matched to picks
+% with no pick within MAX_MATCH_M (62.5 m) of it. Traces are matched to picks
 % by POSITION, nearest pick wins, because the layer product is on its own
 % trace axis (a few hundred picks along a frame of thousands of traces).
 %
@@ -42,18 +42,16 @@ function [z_bed, info] = bed_from_layer(site_root, day_seg, frm, la, lo, surf_t,
 %   la, lo     [Nx] per-trace position of the frame being inverted, after
 %              any cull (the axis z_bed comes back on)
 %   surf_t     the pipeline's surface two-way time [s]
-%   opts       max_match_m (62.5, as make_bed_by_block.py), eps_ice (3.171)
 %
 % Output info: source ('' when no bed, including when no trace lies within
-%   max_match_m of any pick), file, n_picks, n_matched, n_bad (non-positive
+%   MAX_MATCH_M of any pick), file, n_picks, n_matched, n_bad (non-positive
 %   picks dropped), reason (why there is no bed; '' when there is one)
 %
 % See also ptt.maskBelowBed, ptt.quadpolFrameTheta.
 
-if nargin < 7, opts = struct(); end
-max_match = H_opt(opts, 'max_match_m', 62.5);
-eps_ice = H_opt(opts, 'eps_ice', 3.171);
-C_ICE = 299792458 / sqrt(eps_ice);
+MAX_MATCH_M = 62.5;      % the bed producer's radius, scripts/make_bed_by_block.py
+EPS_ICE = 3.171;         % the pipeline's depth axis, ptt.constants eps_bar
+C_ICE = 299792458 / sqrt(EPS_ICE);
 la = la(:).'; lo = lo(:).';
 Nx = numel(la);
 z_bed = nan(1, Nx);
@@ -115,7 +113,7 @@ if ~any(ok)
 end
 plat = plat(ok); plon = plon(ok); bed = bed(ok);
 
-% nearest pick per trace, haversine, within max_match
+% nearest pick per trace, haversine, within MAX_MATCH_M
 R_E = 6371000;
 tl = deg2rad(la); to = deg2rad(lo);
 pl = deg2rad(plat); po = deg2rad(plon);
@@ -126,11 +124,11 @@ for i = 1:numel(pl)
   hit = d < best;
   best(hit) = d(hit); ibest(hit) = i;
 end
-m = isfinite(best) & best <= max_match & ibest > 0;
+m = isfinite(best) & best <= MAX_MATCH_M & ibest > 0;
 z_bed(m) = bed(ibest(m));
 info.n_matched = nnz(m);
 if info.n_matched == 0
-  info.reason = sprintf('%d %s picks, none within %.0f m of a trace', info.n_picks, src, max_match);
+  info.reason = sprintf('%d %s picks, none within %.0f m of a trace', info.n_picks, src, MAX_MATCH_M);
   info.source = '';
 end
 end
@@ -151,8 +149,4 @@ for want = {'bottom', 'bottom_mc'}
 end
 i = find(contains(names, 'bottom'));
 if isscalar(i), tw = tw_all(i, :); src = names{i}; end
-end
-
-function v = H_opt(o, f, d)
-if isstruct(o) && isfield(o, f) && ~isempty(o.(f)), v = o.(f); else, v = d; end
 end
