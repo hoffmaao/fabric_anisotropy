@@ -27,12 +27,22 @@
 %      0.85-1.15 of one. That is the exit criterion of #29 read at the
 %      solution rather than through a solver that may not reach it (#28).
 %   3. FINE GRIDS ARE UNTOUCHED. On the 0.5 m grid the refinement factor
-%      is 1 and every output field is bit-identical to the same call
-%      before this change was made (the same code path runs), checked by
-%      evaluating the caller's grid twice through the public interface:
-%      once as is, once as an explicit 1:1 refinement of itself.
+%      is 1: out.dz_model is the caller's step, passing that step as
+%      dz_model explicitly changes nothing bit for bit, and C and dP_hh
+%      equal the pre-change formula - the eq.-(7) window formed by conv2
+%      over the CALLER's rows, the anomalies from point amplitudes - to
+%      roundoff, computed from a separate evaluation of the stack. The
+%      scattering amplitudes of every call are bit-identical to that
+%      evaluation's at the same rows, refined or not (verdict 1's
+%      41-fold refinement, a 0.1 m grid refined twice), because the
+%      internal grid holds the caller's rows as the same doubles; 0.1 is
+%      not a binary fraction, so a row rebuilt from a step would not
+%      have landed on itself.
 %   4. NON-UNIFORM ROWS are interpolated, within the same tolerances as
-%      verdict 1.
+%      verdict 1, and a bed among them lands on the caller's row that
+%      contains it: that row carries the bed's return, every row below
+%      it is NaN in every field, and the rows clear of the bed's window
+%      are unchanged from the bedless call.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_fujita_window.m')"
 clear;
@@ -102,19 +112,17 @@ fails = fails + ~ok2;
 
 % ---- 3. a fine caller grid takes the old code path unchanged
 a = ptt.fujitaModel(lay, zf, psi, struct('fc', fc, 'win_m', W));
-b = ptt.fujitaModel(lay, zf(1:2:end), psi, struct('fc', fc, 'win_m', W));
-% b's grid is 1 m; a's is 0.5 m. Both are finer than W/20 = 1 m, so
-% neither is refined, and a's odd rows must equal b's rows to roundoff of
-% the window (their windows span the same metres but different sample
-% counts, so exact equality is not expected between them) - what IS
-% exact is that a call on a grid is identical to itself, which pins the
-% refinement factor at 1: compare a against the same grid passed with an
-% offset that keeps it uniform.
-a2 = ptt.fujitaModel(lay, zf + 0, psi, struct('fc', fc, 'win_m', W));
-ok3 = isequaln(a.C, a2.C) && isequaln(a.dP_hh, a2.dP_hh) ...
-  && max(abs(a.Cmag(1:2:end, :) - b.Cmag), [], 'all') < 0.02;
-fprintf('3. fine grids unrefined: repeat call bit-identical, 0.5 m vs 1 m grids agree to %.3f in |C|: %s\n', ...
-  max(abs(a.Cmag(1:2:end, :) - b.Cmag), [], 'all'), H_tick(ok3));
+a_dz = ptt.fujitaModel(lay, zf, psi, struct('fc', fc, 'win_m', W, 'dz_model', dzf));
+[e_c3, e_p3] = H_old_path(a, fm, W, dzf);
+z1 = (0:0.1:1200).';
+a1 = ptt.fujitaModel(lay, z1, psi, struct('fc', fc, 'win_m', W));   % factor 1
+f1 = ptt.fujitaModel(lay, z1, psi, opt_fine);                        % factor 2
+[e_c1, e_p1] = H_old_path(a1, f1, W, median(diff(z1)));   % the step the old code measured
+same_s = H_same_s(a, fm) && H_same_s(a1, f1) && H_same_s(mo, H_rows(fm, keep));
+ok3 = a.dz_model == dzf && isequaln(a, a_dz) && same_s ...
+  && max([e_c3, e_p3, e_c1, e_p1]) < 1e-9;
+fprintf('3. fine grids unrefined: dz_model %.2f, explicit step bit-identical %d, amplitudes bit-identical %d, pre-change formula within %.1e (|C|) %.1e dB: %s\n', ...
+  a.dz_model, isequaln(a, a_dz), same_s, max(e_c3, e_c1), max(e_p3, e_p1), H_tick(ok3));
 fails = fails + ~ok3;
 
 % ---- 4. non-uniform rows
@@ -124,8 +132,22 @@ Cn = interp1(zf, real(Chv ./ sqrt(Phh .* Pvv)), zn, 'linear') ...
    + 1i * interp1(zf, imag(Chv ./ sqrt(Phh .* Pvv)), zn, 'linear');
 inn = zn > 100 & zn < 1100;
 e_phi4 = max(abs(angle(exp(1i * (mn.phi(inn, :) - angle(Cn(inn, :)))))), [], 'all');
-ok4 = e_phi4 < 0.02;
-fprintf('4. non-uniform rows interpolated: phi within %.4f rad: %s\n', e_phi4, H_tick(ok4));
+ZB = 1000.3;
+mb = ptt.fujitaModel(lay, zn, psi, struct('fc', fc, 'win_m', W, 'win_power_m', W, 'dz_model', dzf, ...
+  'bed', struct('z_m', ZB, 'gx_db', 30, 'r_db', 0)));
+ib = find(zn >= ZB, 1);
+fld = {'s_hh', 's_vv', 's_hv', 'dP_hh', 'dP_hv', 'C', 'phi', 'Cmag', 'P_hh_db'};
+fin_above = true; nan_below = true; e_clear = 0;
+for f = fld
+  fin_above = fin_above && all(isfinite(mb.(f{1})(1:ib, :)), 'all');
+  nan_below = nan_below && all(isnan(mb.(f{1})(ib+1:end, :)), 'all');
+  e_clear = max(e_clear, max(abs(mb.(f{1})(1:ib-2, :) - mn.(f{1})(1:ib-2, :)), [], 'all'));
+end
+bed_db = mb.P_hh_db(ib) - max(mb.P_hh_db(1:ib-1));
+okb = fin_above && nan_below && bed_db > 20 && e_clear < 1e-9;
+ok4 = e_phi4 < 0.02 && okb;
+fprintf('4. non-uniform rows interpolated: phi within %.4f rad; bed row %d at %.1f m: finite to it %d, NaN below %d, +%.1f dB, rows clear of it within %.1e: %s\n', ...
+  e_phi4, ib, zn(ib), fin_above, nan_below, bed_db, e_clear, H_tick(ok4));
 fails = fails + ~ok4;
 
 fprintf('\n%s (%.1f s)\n', H_tick(fails == 0), toc(t0));
@@ -135,6 +157,30 @@ end
 
 function y = psi_trigamma(n)
 y = psi(1, n);
+end
+
+function [e_c, e_p] = H_old_path(m, pt, W, dz)
+% the formula before this change, on the caller's rows: the eq.-(7)
+% window from however many caller rows fall in W, the anomalies from
+% point amplitudes, both from pt's scattering amplitudes at those rows
+nw = max(3, 2*floor(W / dz / 2) + 1); kk = ones(nw, 1) / nw;
+num = conv2(real(pt.s_hh .* conj(pt.s_vv)), kk, 'same') ...
+    + 1i * conv2(imag(pt.s_hh .* conj(pt.s_vv)), kk, 'same');
+den = sqrt(conv2(abs(pt.s_hh).^2, kk, 'same') .* conv2(abs(pt.s_vv).^2, kk, 'same'));
+C_old = num ./ den;
+A = abs(pt.s_hh);
+dP_old = 20*log10(A ./ mean(A, 2));
+e_c = max(abs(m.C - C_old), [], 'all');
+g = dP_old > -25;                       % clear of the nulls' dB amplification
+e_p = max(abs(m.dP_hh(g) - dP_old(g)));
+end
+
+function ok = H_same_s(a, b)
+ok = isequal(a.s_hh, b.s_hh) && isequal(a.s_vv, b.s_vv) && isequal(a.s_hv, b.s_hv);
+end
+
+function b = H_rows(a, idx)
+b = struct('s_hh', a.s_hh(idx, :), 's_vv', a.s_vv(idx, :), 's_hv', a.s_hv(idx, :));
 end
 
 function s = H_tick(ok)

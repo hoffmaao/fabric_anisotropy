@@ -88,12 +88,14 @@ function out = fujitaModel(layers, z, psi, opts)
 % birefringent phase turns fastest - inside the layer whose contrast the
 % fit is trying to settle (issue #29, and the false bottoms of #28 sit on
 % top of it). The stack is therefore evaluated on an internal grid no
-% coarser than a twentieth of the window (an integer refinement of a
-% uniform caller grid, so every caller row is an internal row and the
-% values come back by index, bit for bit what a fine caller grid gets;
-% a non-uniform caller grid is interpolated), windowed there, and sampled
-% at the caller's rows. A caller already on a grid at least that fine is
-% untouched: the refinement factor is 1 and the code path is the old one.
+% coarser than a twentieth of the window (a uniform caller grid is
+% subdivided interval by interval, so every caller row is an internal
+% row - the same double, not one rebuilt from a step - and the values
+% come back by index; a non-uniform caller grid is interpolated),
+% windowed there, and sampled at the caller's rows. A caller already on
+% a grid at least that fine is untouched: the refinement factor is 1,
+% the internal grid IS the caller's array, and every output is
+% bit-identical to the code path before this change.
 %           .bed OPTIONAL struct('z_m', depth, 'gx_db', amp, 'r_db', 0):
 %                a single strong interface terminating the domain - the
 %                ice-bed reflection, tens of dB above the internals
@@ -170,22 +172,25 @@ s_hv = complex(zeros(Nz, Np));
 % optional bed: a single strong interface; the row containing it takes the
 % bed's Gamma, rows below it have no return at all
 bed = H_opt(opts, 'bed', []);
-bed_row = 0;
+bed_row = 0; bed_in = 0;
 if ~isempty(bed)
   if ~isfield(bed, 'z_m') || ~isfield(bed, 'gx_db')
     error('ptt:fujitaModel:bed', 'opts.bed needs z_m and gx_db');
   end
   if ~isfield(bed, 'r_db') || isempty(bed.r_db), bed.r_db = 0; end
-  if uniform
-    % the CALLER'S row containing the bed keeps the bed's return and the
-    % rows below it none, exactly as on an unrefined grid: the bed row is
-    % the internal row that caller row sits on, not the first fine row
-    % past z_m, so refinement cannot push a caller row below the bed
-    i_in = find(z_in >= bed.z_m, 1);
-    if isempty(i_in), bed_row = 0; else, bed_row = 1 + k_ref * (i_in - 1); end
+  % the CALLER'S row containing the bed keeps the bed's return and the
+  % rows below it none, exactly as on an unrefined grid. On a refined
+  % uniform grid the bed row is the internal row that caller row sits on,
+  % not the first fine row past z_m, so refinement cannot push a caller
+  % row below the bed; on a non-uniform grid it is the first internal row
+  % past z_m and H_sample hands its values to the caller's row directly.
+  bed_in = find(z_in >= bed.z_m, 1);
+  if isempty(bed_in)
+    bed_in = 0;                            % bed below the axis: no effect
+  elseif uniform
+    bed_row = 1 + k_ref * (bed_in - 1);
   else
     bed_row = find(z >= bed.z_m, 1);
-    if isempty(bed_row), bed_row = 0; end   % bed below the axis: no effect
   end
 end
 
@@ -285,7 +290,7 @@ out.dz_model = dz;             % the internal step the windows were formed on
 
 % --- back onto the caller's rows
 if k_ref > 1 || ~uniform
-  out = H_sample(out, z, z_in, k_ref, uniform);
+  out = H_sample(out, z, z_in, k_ref, uniform, bed_row, bed_in);
 end
 
 end
@@ -293,10 +298,11 @@ end
 function [z, k, uniform] = H_refine(z_in, win_m, win_pow, dz_model)
 %H_REFINE The internal grid: the caller's, refined by an integer factor
 % until its step is no coarser than the target - dz_model when given,
-% else a twentieth of the narrowest window. A uniform caller grid refined
-% this way contains every caller row at index 1 + k*(i-1); a non-uniform
-% one gets a uniform grid at that step between its ends and is
-% interpolated back afterwards.
+% else a twentieth of the narrowest window. A uniform caller grid is
+% subdivided interval by interval, so every caller row is an internal
+% row, the same double, at index 1 + k*(i-1), and a factor of 1 returns
+% z_in itself; a non-uniform one gets a uniform grid at that step
+% between its ends and is interpolated back afterwards.
 Nin = numel(z_in);
 if Nin < 2
   z = z_in; k = 1; uniform = true;
@@ -312,16 +318,22 @@ else
   if win_pow > 0, target = min(target, win_pow / 20); end
 end
 k = max(1, ceil(dz_in / max(target, eps) - 1e-9));
-if uniform
-  z = z_in(1) + (0:k*(Nin-1)).' * (dz_in / k);
+if uniform && k == 1
+  z = z_in;
+elseif uniform
+  z = z_in(1:end-1) + d * (0:k-1) / k;   % Nin-1 x k, row i is caller interval i
+  z = [reshape(z.', [], 1); z_in(end)];
 else
   z = (z_in(1):dz_in/k:z_in(end)).';
   if z(end) < z_in(end), z(end+1) = z_in(end); end
 end
 end
 
-function out = H_sample(out, z, z_in, k, uniform)
-% every per-depth field back onto the caller's rows
+function out = H_sample(out, z, z_in, k, uniform, bed_row, bed_in)
+% every per-depth field back onto the caller's rows; with a bed, the
+% caller's row containing it takes the internal bed row's values rather
+% than an interpolation toward the NaN band below, and the rows under it
+% are NaN
 Nz = numel(z);
 fld = {'s_hh', 's_vv', 's_hv', 'dP_hh', 'dP_hv', 'C', 'phi', 'Cmag', 'P_hh_db'};
 if uniform
@@ -337,6 +349,10 @@ for f = fld
     w = interp1(z, v, z_in, 'linear');
   else
     w = interp1(z, real(v), z_in, 'linear') + 1i * interp1(z, imag(v), z_in, 'linear');
+  end
+  if bed_row > 0
+    w(bed_in, :) = v(bed_row, :);
+    w(bed_in+1:end, :) = NaN;
   end
   out.(f{1}) = w;
 end
