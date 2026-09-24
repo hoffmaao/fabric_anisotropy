@@ -187,17 +187,19 @@ comparing HDF5 object references, which never match.
   or lost a usable deep contrast. This is what measured the
   heading-wrap resweep above; it needs both product generations staged
   locally, so it re-makes that measurement only where they are.
-- `scripts/compare_const_theta.py` - run on mem1 (h5py): differences
-  every `_ct` (constant-orientation) product against its default twin
-  and states per site whether the assumption holds. Sites are selected
-  by position through `quadpol_sites.in_site`, the rule the figure
-  scripts use, so there is no second site table to drift. The band runs
-  from the site's floor (`quadpol_sites` `z_band`: 60 m at the two
-  shelves, 200 m elsewhere) to the frame's bed less 20 m from
-  `bed_by_block.json`, falling back to 1500 m when there is no pick;
-  the header names the frames that fell back. It compares the SEGMENT
-  profiles the blocks inherit
-  (`ls_theta_seg`) and the BLOCK fits (`sec_dlam_ls`, `sec_resid_ls`),
+- `scripts/compare_const_theta.py` - run on mem1 (h5py) or on the
+  local mirror under `$SCAR_DATA`: differences every `_ct`
+  (constant-orientation) product against its default twin and states
+  per site whether the assumption holds. Sites are selected by position
+  through `quadpol_sites.in_site`, the rule the figure scripts use, so
+  there is no second site table to drift. The band runs from the site's
+  floor (`quadpol_sites` `z_band`: 60 m at the two shelves, 200 m
+  elsewhere) to the frame's bed less 20 m from `bed_by_block.json`
+  (looked up in the stage dir, then `$SCAR_DATA`), falling back to
+  1500 m when there is no pick; the header names the frames that fell
+  back and, separately, those whose pick lies below the record. It
+  compares the SEGMENT profiles the blocks inherit (`ls_theta_seg`) and
+  the BLOCK fits (`sec_dlam_ls`, `sec_resid_ls`),
   not the frame-pooled pass, which constant mode never touches on a
   multi-segment frame - an earlier version read `ls_theta0_geo` and
   reported two products identical while the block residual had moved by
@@ -492,7 +494,10 @@ comparing HDF5 object references, which never match.
     color scale; older .mat files without them still draw the two-row
     layout.
   - `quadpol_sites.py` - the one shared definition of survey identity and
-    drawing parameters for the multi-site quad-pol maps and depth movies.
+    drawing parameters for the multi-site quad-pol maps and depth movies,
+    and the site rule `scripts/compare_const_theta.py` reads on mem1 - so
+    it imports pyproj on first use, not at module load (see the comment
+    in the file).
     Sites are selected by POSITION, not tag prefix - the 2024 tags alone
     span Thwaites, WAIS Divide and McMurdo, so a prefix map would draw
     three sites on one axis - with Eastwind and McMurdo, which overlap
