@@ -22,10 +22,20 @@
 %      documented as such rather than quietly widened by a fudge factor.
 %   5. CORRELATED AZIMUTHS. Verdicts 1-4 give the solver independent noise,
 %      which real synthesized azimuths never have. Under noise confined to
-%      a rank-4 azimuthal subspace the diagonal posterior turns out to
-%      stay slightly CONSERVATIVE, not optimistic - the opposite of what
-%      motivated opts.n_indep_psi - so that option stays off by default
-%      and this verdict is what keeps it off.
+%      a rank-4 azimuthal subspace the diagonal posterior is NOT optimistic
+%      for dlam: the reported sigma over the ROBUST empirical scatter
+%      (1.4826 * MAD) is about 1.00, and opts.n_indep_psi = 4, which
+%      multiplies every sigma by sqrt(18/4) = 2.1, overshoots to about
+%      1.59. The verdict asserts that naive calibration and the overshoot,
+%      so the option stays off for channel-synthesised azimuths. The scatter
+%      is robust because the solver occasionally stops in a nearby local
+%      minimum (issue #28), which a converged solver does not produce: an
+%      earlier revision of this branch read a plain std over the 16
+%      realisations, where two unconverged ones (5 and 15, 7 and 5 robust
+%      sigmas off the cluster) made the naive posterior look 2.6x
+%      optimistic (0.38). That reading was wrong; correcting the forward
+%      (issue #29) did not change the conclusion. The std-based ratios and
+%      the count of such outliers are printed beside the robust ones.
 %
 %   4. THE ORIENTATION PRIOR IS A PRIOR, NOT A CONSTRAINT. Given a column
 %      whose axis really does rotate with depth, a long theta correlation
@@ -164,21 +174,29 @@ for k = 1:R5
   d_naive(k) = a.dlam_z(round(end/2)); s_naive(k) = a.sigma_dlam_z(round(end/2));
   d_corr(k)  = b.dlam_z(round(end/2)); s_corr(k)  = b.sigma_dlam_z(round(end/2));
 end
-rn = median(s_naive) / max(std(d_naive), eps);
-rc = median(s_corr)  / max(std(d_corr),  eps);
+% robust scatter: realisations the solver leaves in a nearby local
+% minimum (issue #28) are not posterior scatter, and a plain std counts
+% them as if they were
+rsd = @(d) 1.4826 * median(abs(d - median(d)));
+n_out = @(d) sum(abs(d - median(d)) > 5 * rsd(d));
+rn = median(s_naive) / max(rsd(d_naive), eps);
+rc = median(s_corr)  / max(rsd(d_corr),  eps);
 fprintf('\n5. azimuth noise with only 4 independent modes, dlam at mid-column:\n');
-fprintf('   assuming independence: reported/empirical %.2f\n', rn);
-fprintf('   with n_indep_psi = 4:  reported/empirical %.2f\n', rc);
-% MEASURED, and not what was expected. Confining the noise to four
-% azimuthal modes does NOT make the diagonal posterior optimistic: the
-% naive ratio comes out near 1.15, slightly conservative, while applying
-% n_indep_psi = 4 multiplies it by sqrt(Np/4) = 2.1 and overshoots to
-% about 2.4. So azimuth redundancy is not the thing that threatens these
-% error bars, and n_indep_psi must stay OFF by default. It is kept as a
-% documented option for data that really does repeat samples, and this
-% verdict is what stops anyone turning it on by reflex.
-ok5 = rn > 0.5 && rn < 3;
-fprintf('   a diagonal C_d stays safe under azimuth correlation:   %s\n', H_tick(ok5));
+fprintf('   assuming independence: reported/empirical %.2f (std-based %.2f, %d solver outlier(s) beyond 5 robust sigmas)\n', ...
+  rn, median(s_naive) / max(std(d_naive), eps), n_out(d_naive));
+fprintf('   with n_indep_psi = 4:  reported/empirical %.2f (std-based %.2f, %d solver outlier(s) beyond 5 robust sigmas)\n', ...
+  rc, median(s_corr) / max(std(d_corr), eps), n_out(d_corr));
+% MEASURED on the corrected forward model: confining the noise to four
+% azimuthal modes leaves the diagonal posterior calibrated for dlam (naive
+% robust ratio about 1.00), and n_indep_psi = 4 multiplies every sigma by
+% sqrt(Np/4) = 2.1 and overshoots (about 1.59). An earlier revision of
+% this branch read std over the 16 realisations, where two unconverged
+% realisations (5 and 15) made the naive posterior look 2.6x optimistic
+% (0.38); that reading was wrong, and correcting the forward (issue #29)
+% did not change the conclusion. The option stays off for synthesised
+% azimuths.
+ok5 = rn > 0.5 && rn < 2 && rc > 1.4 * rn;
+fprintf('   naive posterior calibrated, n_indep_psi = 4 overshoots: %s\n', H_tick(ok5));
 
 fails = ~ok1 + ~ok2 + ~ok3 + ~ok4 + ~ok5;
 fprintf('\n%s (%.1f min)\n', H_tick(fails == 0), toc(t0)/60);

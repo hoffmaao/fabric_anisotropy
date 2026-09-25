@@ -73,11 +73,16 @@ function out = fabricGLS(obs, z, opts)
 %        .sigma_*        optional explicit one-sigma for any observable
 %   z    [Nz x 1] depth (m)
 %   opts .fc (750e6), .win_m (30)
+%        .win_power_m (0), .dz_model ([])   how the observables' powers
+%                        were windowed and at what native sampling, passed
+%                        to ptt.fujitaModel so the model windows the same
+%                        way on a decimated grid (issue #29)
 %        .n_layer (16)   layers the profiles are parametrised on
 %        .n_looks (20)   INDEPENDENT looks behind each sample
-%        .n_indep_psi    independent azimuths behind the Np columns. Use 4
-%                        for channel-synthesized azimuths, Np (default)
-%                        for physically rotated antennas. See REDUNDANCY.
+%        .n_indep_psi    independent azimuths behind the Np columns,
+%                        default Np. Leave it at the default for
+%                        channel-synthesised azimuths (see REDUNDANCY) and
+%                        set it only for data that repeats samples.
 %        .n_indep_z      independent depth samples behind the Nz rows,
 %                        default Nz. Roughly range-window / sample-spacing.
 %        .use            cellstr of observables (default: all supplied)
@@ -113,6 +118,11 @@ psi = obs.psi(:).';
 Np = numel(psi);
 fc = H_opt(opts, 'fc', 750e6);
 win_m = H_opt(opts, 'win_m', 30);
+% how the OBSERVABLES were formed, handed to the forward model so it forms
+% its own the same way (ptt.fujitaModel: win_power_m, dz_model)
+fwd_opts = struct('fc', fc, 'win_m', win_m, ...
+  'win_power_m', H_opt(opts, 'win_power_m', 0), ...
+  'dz_model', H_opt(opts, 'dz_model', []));
 nL = H_opt(opts, 'n_layer', 16);
 nlook = H_opt(opts, 'n_looks', 20);
 max_iter = H_opt(opts, 'max_iter', 25);
@@ -135,7 +145,6 @@ z_mid = z_layer + [diff(z_layer); max(z)-z_layer(end)]/2;
 
 % --- parameter vector and its prior
 ip = struct('th', 1:nL, 'dl', nL+(1:nL), 'rd', 2*nL+(1:nL));
-np = 3*nL;
 m_p = [th_pr(1)*ones(nL,1); dl_pr(1)*ones(nL,1); rd_pr(1)*ones(nL,1)];
 Cm = blkdiag(H_gp(z_mid, th_pr(2), th_pr(3)), ...
              H_gp(z_mid, dl_pr(2), dl_pr(3)), ...
@@ -155,13 +164,17 @@ hstep = max(hstep, 1e-9);
 %
 % VERDICT 5 OF test_fabric_gls MEASURED THE OPPOSITE, and the option
 % therefore stays OFF. Under noise confined to a rank-4 azimuthal subspace
-% the diagonal posterior is not optimistic at all - the reported/empirical
-% ratio comes out near 1.15, i.e. mildly CONSERVATIVE - while n_indep_psi =
-% 4 multiplies every sigma by sqrt(Np/4) (2.1x at the default 18 azimuths)
-% and overshoots to about 2.4. Azimuth redundancy is simply not what
-% threatens these error bars. Do not turn n_indep_psi on for
-% channel-synthesized azimuths; verdict 5 exists to record the measurement
-% that stops exactly that reflex, and it prints both ratios every run.
+% the diagonal posterior is calibrated for dlam - the robust
+% reported/empirical ratio comes out near 1.0 on the corrected forward
+% model (issue #29) - while n_indep_psi = 4 multiplies every sigma by
+% sqrt(Np/4) (2.1x at the default 18 azimuths) and overshoots to about
+% 1.6. Azimuth redundancy is simply not what threatens these error bars.
+% Do not turn n_indep_psi on for channel-synthesised azimuths; verdict 5
+% exists to record the measurement that stops exactly that reflex, and it
+% prints both ratios every run. An earlier revision read that verdict
+% with a plain std over 16 realisations, where two realisations the
+% solver left unconverged made the naive posterior look 2.6x optimistic
+% (0.38); that reading was wrong.
 %
 % The option is kept, and documented, for data that genuinely does repeat
 % samples. Rather than build a dense C_d for a matrix this large, the
@@ -182,7 +195,7 @@ redund = sqrt(max(Np/max(n_ipsi,1), 1) * max(Nz/max(n_iz,1), 1));
 sd = sd * redund;
 Cdi = 1 ./ (sd.^2);                           % diagonal inverse covariance
 
-fwd = @(mm) H_pack_pred(H_forward(mm, ip, z_layer, z, psi, fc, win_m), use, idx, clip_db);
+fwd = @(mm) H_pack_pred(H_forward(mm, ip, z_layer, z, psi, fwd_opts), use, idx, clip_db);
 % RESIDUAL, not a plain difference. Two things make a subtraction wrong
 % here and both were measured, not anticipated:
 %   phi is an ANGLE. An unwrapped difference near +-pi returns ~2pi where
@@ -264,7 +277,7 @@ chi2_dof = sum(Cdi .* r_fin.^2) / dof;
 sig_raw = sig;
 sig = sig * sqrt(max(chi2_dof, 1));
 
-M = H_forward(m, ip, z_layer, z, psi, fc, win_m);
+M = H_forward(m, ip, z_layer, z, psi, fwd_opts);
 th_z = interp1(z_mid, m(ip.th), z, 'linear', 'extrap');
 dl_z = interp1(z_mid, m(ip.dl), z, 'linear', 'extrap');
 rd_z = interp1(z_mid, m(ip.rd), z, 'linear', 'extrap');
@@ -301,7 +314,7 @@ end
 L = L(1:min(it+1, numel(L)));
 end
 
-function M = H_forward(m, ip, z_layer, z, psi, fc, win_m)
+function M = H_forward(m, ip, z_layer, z, psi, fwd_opts)
 nL = numel(z_layer);
 lay = struct('top_m', num2cell(z_layer), ...
   'dlam', num2cell(max(m(ip.dl), 0)), ...
@@ -313,10 +326,10 @@ lay = struct('top_m', num2cell(z_layer), ...
 % carried here in the SAME sense as that model, so out.theta_z is directly
 % comparable with ptt.fujitaModel and with ptt.ershadiFabric, and is the
 % NEGATIVE of the synthesis-sense angle used by ptt.quadpolFabricLS.
-M = ptt.fujitaModel(lay, z, psi, struct('fc', fc, 'win_m', win_m));
+M = ptt.fujitaModel(lay, z, psi, fwd_opts);
 end
 
-function [d, sd, idx, is_ph] = H_pack(obs, use, nlook, Nz, Np, clip_db)
+function [d, sd, idx, is_ph] = H_pack(obs, use, nlook, ~, ~, clip_db)
 d = []; sd = []; idx = struct(); is_ph = [];
 % dB variance of a log-power from N independent looks: the log of a
 % Gamma(N) variable has variance psi'(N), and 10/ln10 converts to dB.
