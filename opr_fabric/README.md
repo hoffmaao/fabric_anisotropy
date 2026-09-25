@@ -474,13 +474,13 @@ the end. `test/run_all_tests.sh` is the same from a shell: it finds
 MATLAB, and exits non-zero if any test failed.
 
 ```sh
-bash opr_fabric/test/run_all_tests.sh quick   # the 14 fast tests, 2-4 min
-bash opr_fabric/test/run_all_tests.sh         # all 22, ~3 h on mem1 at 8 threads
+bash opr_fabric/test/run_all_tests.sh quick   # the fast tier, 2-4 min
+bash opr_fabric/test/run_all_tests.sh         # every test, ~3 h on mem1 at 8 threads
 bash opr_fabric/test/run_all_tests.sh test_fabric_task test_quadpol
 ```
 
-`quick` leaves out the eight synthetics that take minutes each (the
-quad-pol and EastGRIP ones; the list is in `run_all_tests.m`). It is the
+`quick` leaves out the synthetics that take minutes each, listed as
+`slow` in `run_all_tests.m` (the one place they are named). It is the
 gate's test command in `.no-mistakes.yaml`. Run the full suite by hand
 before merging a change to that code. On a shared CReSIS node, prefix
 `MATLAB_THREADS=8 nice`: uncapped, one test took ~65 of mem1's 112 cores.
