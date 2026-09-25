@@ -106,7 +106,12 @@ function out = ershadiInverse(fr, z, opts)
 %              These constants are already burned into the accepted dlam,
 %              so restating one differently in opts is an error, not an
 %              override: it would rescale every modelled phase with nothing
-%              in the cost to reveal it.
+%              in the cost to reveal it. The model's powers stay point
+%              amplitudes (win_power_m 0) because ptt.ershadiFabric's are:
+%              its moments average traces only, one look in range, so a
+%              range-windowed model power would be the mismatch (issue
+%              #33). Its coherence window is formed on the data's own
+%              native step (dz_model), whatever rows the cost decimates to.
 %         .r13_cos_max (-0.85) anti-phase gate for the eq.-(13) estimate
 %         .r13_coax_deg (15)  co-axial gate for the eq.-(13) estimate: how
 %              far, modulo 90 deg, two interval axes above the row may lie
@@ -205,6 +210,11 @@ fwd = struct('fc', H_const(opts, fr, 'fc', 750e6), ...
 gpd1 = ptt.birefringentPhaseRate(fwd.fc, fwd.eps_perp, fwd.deps);
 
 z = z(:);
+% the forward's grid and power convention (see .fc ... above): the data's
+% coherence was windowed over win_m at the native step of these rows, and
+% their powers are single-look in range
+fwd.dz_model = median(abs(diff(z)));
+fwd.win_power_m = 0;
 band = z >= zfit(1) & z <= zfit(2);
 if ~any(band)
   error('ptt:ershadiInverse:band', 'z_fit selects no rows');
