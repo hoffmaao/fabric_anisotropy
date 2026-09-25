@@ -7,9 +7,22 @@ function [z_bed, info] = bed_from_layer(site_root, day_seg, frm, la, lo, surf_t)
 % two-way time less the frame surface time surf_t the pipeline zeroes its
 % depth at, at solid-ice velocity (eps 3.171, the same ice model as the
 % depth axis and as scripts/make_bed_by_block.py) - and NaN for a trace
-% with no pick within MAX_MATCH_M (62.5 m) of it. Traces are matched to picks
-% by POSITION, nearest pick wins, because the layer product is on its own
-% trace axis (a few hundred picks along a frame of thousands of traces).
+% with no pick within MAX_MATCH_M (62.5 m) of it, unless it lies in a gap of
+% at most MAX_GAP_M (1000 m) along track between matched traces. Traces are
+% matched to picks by POSITION, nearest pick wins, because the layer product
+% is on its own trace axis (a few hundred picks along a frame of thousands
+% of traces).
+%
+% A BED IS CONTINUOUS; A PICKER'S GAP IS NOT A HOLE IN IT. A run of
+% unmatched traces between two matched ones takes the bed interpolated
+% linearly in along-track distance from them, when the gap spans at most
+% MAX_GAP_M. Left NaN, those traces stay unmasked, and where they are more
+% than half a pass the pass's median bed is infinite (ptt.quadpolFrameTheta
+% counts an unpicked trace as ice), so a frame whose picks stop for a
+% stretch would let that stretch's coherent sub-bed return vote on the
+% held axis again. The cap bounds how far a straight line is trusted
+% across unseen bed: longer gaps, and the ends of the frame, stay NaN, and
+% info.n_filled counts what was filled.
 %
 % THE READER TAKES THE OPR LAYERDATA FORMAT ONLY - the frame file's twtt
 % rows, named by the segment's layer_<seg>.mat - which every season in use
@@ -45,19 +58,21 @@ function [z_bed, info] = bed_from_layer(site_root, day_seg, frm, la, lo, surf_t)
 %   surf_t     the pipeline's surface two-way time [s]
 %
 % Output info: source ('' when no bed, including when no trace lies within
-%   MAX_MATCH_M of any pick), file, n_picks, n_matched, n_bad (non-positive
-%   picks dropped), reason (why there is no bed; '' when there is one)
+%   MAX_MATCH_M of any pick), file, n_picks, n_matched, n_filled (traces
+%   given an interpolated bed across a gap), n_bad (non-positive picks
+%   dropped), reason (why there is no bed; '' when there is one)
 %
 % See also ptt.maskBelowBed, ptt.quadpolFrameTheta.
 
 MAX_MATCH_M = 62.5;      % the bed producer's radius, scripts/make_bed_by_block.py
+MAX_GAP_M = 1000;        % longest gap along track bridged by interpolation
 EPS_ICE = 3.171;         % the pipeline's depth axis, ptt.constants eps_bar
 C_ICE = 299792458 / sqrt(EPS_ICE);
 la = la(:).'; lo = lo(:).';
 Nx = numel(la);
 z_bed = nan(1, Nx);
 info = struct('source', '', 'file', '', 'n_picks', 0, 'n_matched', 0, ...
-  'n_bad', 0, 'reason', '');
+  'n_filled', 0, 'n_bad', 0, 'reason', '');
 
 seg_dir = fullfile(site_root, 'CSARP_layer', day_seg);
 fn = '';
@@ -75,6 +90,11 @@ D = load(fn);
 if ~(isfield(D, 'twtt') && isfield(D, 'lat') && isfield(D, 'lon'))
   info.reason = sprintf('%s is not OPR layerdata (no twtt/lat/lon; fields: %s)', ...
     fn, strjoin(fieldnames(D).', ', '));
+  return
+end
+if ~(isnumeric(D.twtt) && isnumeric(D.lat) && isnumeric(D.lon))
+  info.reason = sprintf('%s is not OPR layerdata (twtt/lat/lon are %s/%s/%s, not numeric)', ...
+    fn, class(D.twtt), class(D.lat), class(D.lon));
   return
 end
 plat = double(D.lat(:).'); plon = double(D.lon(:).');
@@ -129,8 +149,24 @@ m = isfinite(best) & best <= MAX_MATCH_M & ibest > 0;
 z_bed(m) = bed(ibest(m));
 info.n_matched = nnz(m);
 if info.n_matched == 0
-  info.reason = sprintf('%d %s picks, none within %.0f m of a trace', info.n_picks, src, MAX_MATCH_M);
+  info.reason = sprintf('%d %s picks, none within %.1f m of a trace', info.n_picks, src, MAX_MATCH_M);
   info.source = '';
+  return
+end
+
+% gaps between matched traces, bridged linearly in along-track distance
+% (see A BED IS CONTINUOUS); a gap through an unpositioned trace has no
+% length and is left alone
+a = sin(diff(tl)/2).^2 + cos(tl(1:end-1)) .* cos(tl(2:end)) .* sin(diff(to)/2).^2;
+step = 2 * R_E * asin(min(1, sqrt(a)));
+im = find(m);
+for q = 1:numel(im) - 1
+  i0 = im(q); i1 = im(q+1);
+  if i1 - i0 < 2, continue; end
+  sg = [0, cumsum(step(i0:i1-1))];
+  if ~(sg(end) > 0 && sg(end) <= MAX_GAP_M), continue; end
+  z_bed(i0+1:i1-1) = z_bed(i0) + (z_bed(i1) - z_bed(i0)) * sg(2:end-1) / sg(end);
+  info.n_filled = info.n_filled + (i1 - i0 - 1);
 end
 end
 

@@ -258,7 +258,10 @@ units).
     Eastwind line - where a single depth cut cannot (a 5th-percentile
     cut, tried first, left an Eastwind frame no window at all). The
     pipeline reads the bed from the season's `CSARP_layer` picks
-    (`opr_fabric/server/bed_from_layer.m`, bound by name), masks the
+    (`opr_fabric/server/bed_from_layer.m`, bound by name; a gap of up to
+    1 km along track between picked traces is bridged linearly, since a
+    picker's gap is not a hole in the bed and an unmasked stretch of more
+    than half a pass would let its sub-bed return vote again), masks the
     record before any estimator sees it, and saves each block's bed as
     `sec_bed`. The record runs past the bed at the thin-ice
     sites, and what is there is not noise but coherent, polarised bed
@@ -359,6 +362,12 @@ units).
     the segment profiles interpolated at a block's along-track position
     on the doubled-angle phasor, with robust q-weighted end rows because
     the estimator clamps out-of-range depth windows to the terminal row.
+    Below a segment's median bed the saved profile is empty; a HELD
+    segment is still handed off there with its one axis and weight, so a
+    block between two held segments never switches axis at the shallower
+    one's bed, while a free segment's dead rows are bridged from its live
+    neighbours and the block's own per-trace mask keeps its sub-bed
+    windows out.
   - `ptt.coregisterChannels` - aligns every channel onto the reference by
     CALLING the OPR toolbox `coregistration`, deliberately with no
     implementation of its own (it errors if the toolbox is absent), so the

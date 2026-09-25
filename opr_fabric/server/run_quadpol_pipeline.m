@@ -634,9 +634,9 @@ la = P.Latitude(:); lo = P.Longitude(:);
 BED_MARGIN_M = 20;
 [z_bed, bed_info] = bed_from_layer(site_root, day_seg, frm, la, lo, st);
 if any(isfinite(z_bed))
-  fprintf('bed: %s from %s; %d of %d traces matched a pick (%d picks); depth %.0f-%.0f m, median %.0f\n', ...
+  fprintf('bed: %s from %s; %d of %d traces matched a pick (%d picks), %d more across gaps; depth %.0f-%.0f m, median %.0f\n', ...
     bed_info.source, bed_info.file, bed_info.n_matched, Nx, bed_info.n_picks, ...
-    min(z_bed), max(z_bed), median(z_bed, 'omitnan'));
+    bed_info.n_filled, min(z_bed), max(z_bed), median(z_bed, 'omitnan'));
 else
   fprintf('bed: none - %s; the record runs whole to %.0f m\n', bed_info.reason, Z_MAX);
 end

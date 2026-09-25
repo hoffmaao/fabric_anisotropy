@@ -30,6 +30,14 @@
 %      only bottom-named layer is a DEM (surface_dem / bottom_dem) is
 %      refused too: a DEM is a model, not a radar pick, as the bed
 %      producer's NOT_A_PICK rules.
+%   7. ANOTHER LAYOUT: a file whose twtt is a cell (one entry per layer,
+%      as some v7 layer files store it) returns all-NaN with the reason,
+%      never an error that would stop the frame.
+%   8. GAPS. With the picks of a 400 m stretch removed, the traces more
+%      than 62.5 m from any pick (a 300 m run) take the bed on the straight
+%      line between the matched traces either side, and are counted in
+%      n_filled; with 1200 m removed the 1100 m run stays NaN - a straight
+%      line is not trusted that far across unseen bed.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_bed_from_layer.m')"
 clear;
@@ -58,9 +66,9 @@ tw_bot(50) = surf_t - 1e-9;                      % one malformed (negative-depth
 fails = 0;
 
 % --- the frame file and its segment catalogue, bottom in the LAST row
-twtt = [tw_dem; tw_mc; tw_bot]; lat = plat; lon = plon; gps_time = 1:Np; %#ok<NASGU>
+twtt = [tw_dem; tw_mc; tw_bot]; lat = plat; lon = plon; gps_time = 1:Np;
 save(fullfile(segdir, sprintf('Data_%s_001.mat', seg)), 'twtt', 'lat', 'lon', 'gps_time');
-lyr_name = {'surface_dem', 'bottom_mc', 'bottom'}; lyr_id = 1:3; %#ok<NASGU>
+lyr_name = {'surface_dem', 'bottom_mc', 'bottom'}; lyr_id = 1:3;
 save(fullfile(segdir, sprintf('layer_%s.mat', seg)), 'lyr_name', 'lyr_id');
 
 % traces: 4 per pick spacing on the line, offset 1 m so no trace sits
@@ -101,9 +109,9 @@ fprintf('4. the malformed pick is dropped (n_bad %d) and its traces take a neigh
 fails = fails + ~ok4;
 
 % --- the polarimetric tier: bottom_HH and bottom_VV, no plain bottom
-twtt = [tw_dem; tw_bot + 2 * 2 / C_ICE; tw_bot - 2 * 2 / C_ICE]; %#ok<NASGU>
+twtt = [tw_dem; tw_bot + 2 * 2 / C_ICE; tw_bot - 2 * 2 / C_ICE];
 save(fullfile(segdir, sprintf('Data_%s_002.mat', seg)), 'twtt', 'lat', 'lon', 'gps_time');
-lyr_name = {'surface_dem', 'bottom_HH', 'bottom_VV'}; %#ok<NASGU>
+lyr_name = {'surface_dem', 'bottom_HH', 'bottom_VV'};
 save(fullfile(segdir, sprintf('layer_%s.mat', seg)), 'lyr_name', 'lyr_id');
 [zb5, info5] = bed_from_layer(root, seg, 2, tlat, tlon, surf_t);
 ok5 = strcmp(info5.source, 'median(bottom_hh,bottom_vv)') && abs(zb5(1) - 500) < 1.0;
@@ -111,14 +119,14 @@ fprintf('5. polarimetric picks: source "%s", first %.1f m: %s\n', info5.source, 
 fails = fails + ~ok5;
 
 % --- refusals
-twtt = twtt.'; %#ok<NASGU>                       % [Np x 3]: rows are no longer layers
+twtt = twtt.';                       % [Np x 3]: rows are no longer layers
 save(fullfile(segdir, sprintf('Data_%s_003.mat', seg)), 'twtt', 'lat', 'lon', 'gps_time');
 [zb6, info6] = bed_from_layer(root, seg, 3, tlat, tlon, surf_t);
 [zb7, info7] = bed_from_layer(root, seg, 4, tlat, tlon, surf_t);
 [zb9, info9] = bed_from_layer(root, seg, 2, tlat_off, tlon, surf_t);
-twtt = [tw_dem; tw_bot]; %#ok<NASGU>             % a DEM under a DEM name, no pick
+twtt = [tw_dem; tw_bot];             % a DEM under a DEM name, no pick
 save(fullfile(segdir, sprintf('Data_%s_005.mat', seg)), 'twtt', 'lat', 'lon', 'gps_time');
-lyr_name = {'surface_dem', 'bottom_dem'}; lyr_id = 1:2; %#ok<NASGU>
+lyr_name = {'surface_dem', 'bottom_dem'}; lyr_id = 1:2;
 save(fullfile(segdir, sprintf('layer_%s.mat', seg)), 'lyr_name', 'lyr_id');
 [zb10, info10] = bed_from_layer(root, seg, 5, tlat, tlon, surf_t);
 delete(fullfile(segdir, sprintf('layer_%s.mat', seg)));
@@ -133,6 +141,38 @@ fprintf(['6. transposed twtt -> "%s";\n   no layer file -> "%s";\n' ...
   info6.reason, info7.reason, info8.reason, info9.reason, info9.source, ...
   info10.reason, info10.source, H_tick(ok6));
 fails = fails + ~ok6;
+
+% --- another layout: twtt as a cell
+lyr_name = {'bottom'}; lyr_id = 1;
+save(fullfile(segdir, sprintf('layer_%s.mat', seg)), 'lyr_name', 'lyr_id');
+twtt = {tw_bot};
+save(fullfile(segdir, sprintf('Data_%s_008.mat', seg)), 'twtt', 'lat', 'lon', 'gps_time');
+[zb11, info11] = bed_from_layer(root, seg, 8, tlat, tlon, surf_t);
+ok7 = all(isnan(zb11)) && isempty(info11.source) && ~isempty(info11.reason);
+fprintf('7. twtt as a cell -> "%s": %s\n', info11.reason, H_tick(ok7));
+fails = fails + ~ok7;
+
+% --- gaps: picks 41-60 removed (400 m), then picks 21-80 (1200 m)
+tw_good = surf_t + 2 * bed_true / C_ICE;
+gaps = {41:60, 21:80}; zg = cell(1, 2); ig = cell(1, 2);
+for gi = 1:2
+  twtt = tw_good; twtt(gaps{gi}) = NaN;
+  save(fullfile(segdir, sprintf('Data_%s_%03d.mat', seg, 8 + gi)), 'twtt', 'lat', 'lon', 'gps_time');
+  [zg{gi}, ig{gi}] = bed_from_layer(root, seg, 8 + gi, tlat, tlon, surf_t);
+end
+far = @(g) tx > (g(1) - 2) * 20 + 62.5 & tx < g(end) * 20 - 62.5;   % beyond 62.5 m of every pick
+f1 = far(gaps{1}); i0 = find(f1, 1) - 1; i1 = find(f1, 1, 'last') + 1;
+line1 = zg{1}(i0) + (zg{1}(i1) - zg{1}(i0)) * (tx(f1) - tx(i0)) / (tx(i1) - tx(i0));
+e_line = max(abs(zg{1}(f1) - line1));
+e_true = max(abs(zg{1}(f1) - (500 + tx(f1) / 10)));
+f2 = far(gaps{2});
+ok8 = ig{1}.n_filled == nnz(f1) && e_line < 0.05 && e_true < 7 ...
+  && all(isnan(zg{2}(f2))) && ig{2}.n_filled == 0 && all(isfinite(zg{2}(~f2)));
+fprintf(['8. a %.0f m run beyond every pick filled (%d traces, n_filled %d) on the line to %.3f m, ' ...
+  'within %.1f m of the bed; a %.0f m run left NaN (n_filled %d): %s\n'], ...
+  tx(i1) - tx(i0), nnz(f1), ig{1}.n_filled, e_line, e_true, ...
+  tx(find(f2, 1, 'last') + 1) - tx(find(f2, 1) - 1), ig{2}.n_filled, H_tick(ok8));
+fails = fails + ~ok8;
 
 fprintf('\n%s (%.1f s)\n', H_tick(fails == 0), toc(t0));
 if fails > 0

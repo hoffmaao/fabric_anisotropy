@@ -34,6 +34,11 @@
 %      (above it, the traces already past their own bed are blanked,
 %      ptt.maskBelowBed).
 %   3. SUPERSET: an empty bed changes nothing, bit for bit.
+%   4. THE HANDOFF: ptt.thetaProfileAt midway between the two held
+%      segments, whose beds differ, is ONE axis at every depth, including
+%      the depths below the shallower segment's bed - a block there
+%      interpolates two constants and does not switch to the deeper
+%      segment's axis alone at the shallower one's bed.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_quadpol_bed_vote.m')"
 clear;
@@ -122,6 +127,14 @@ ok3 = isequaln(fp2.th_seg, fp0.th_seg) && isequaln(fp2.dlam_seg, fp0.dlam_seg) .
   && isequaln(fp2.ped_ant, fp0.ped_ant);
 fails = fails + ~ok3;
 fprintf('  3. empty bed is bit-identical to no bed: %s\n', H_tick(ok3));
+
+% 4. the handoff between the two held segments
+pg = ptt.thetaProfileAt(fp1, 2000);
+dev = max(abs(angle(exp(2i * (pg.theta - pg.theta(1)))))) / 2;
+ok4 = max(pg.z) > BED(1) && dev < 1e-9;
+fails = fails + ~ok4;
+fprintf('  4. handoff midway: one axis to %.0f m (the shallower bed %.0f m), spread %.1e rad: %s\n', ...
+  max(pg.z), BED(1), dev, H_tick(ok4));
 
 fprintf('\n%s (%.1f s)\n', H_tick(fails == 0), toc(t0));
 if fails > 0

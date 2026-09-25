@@ -279,7 +279,8 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     THE RECORD ENDS AT THE BED, per trace. The bed is read from the
     season's `CSARP_layer` picks (`bed_from_layer.m`, binding the layer by
     NAME under the preference `make_bed_by_block.py` established) onto the
-    run's own depth axis, and everything below each trace's bed less 20 m
+    run's own depth axis, bridging gaps of up to 1 km between picked
+    traces, and everything below each trace's bed less 20 m
     is blanked (`ptt.maskBelowBed`) after the coreg cache is written and
     the before/after coherences are measured, so no estimator - the
     segment fits, the constant-axis vote, the pedestal median, the
@@ -492,13 +493,13 @@ the end. `test/run_all_tests.sh` is the same from a shell: it finds
 MATLAB, and exits non-zero if any test failed.
 
 ```sh
-bash opr_fabric/test/run_all_tests.sh quick   # the 14 fast tests, 2-4 min
-bash opr_fabric/test/run_all_tests.sh         # all 22, ~3 h on mem1 at 8 threads
+bash opr_fabric/test/run_all_tests.sh quick   # the fast tier, 2-4 min
+bash opr_fabric/test/run_all_tests.sh         # every test, ~3 h on mem1 at 8 threads
 bash opr_fabric/test/run_all_tests.sh test_fabric_task test_quadpol
 ```
 
-`quick` leaves out the eight synthetics that take minutes each (the
-quad-pol and EastGRIP ones; the list is in `run_all_tests.m`). It is the
+`quick` leaves out the synthetics that take minutes each, listed as
+`slow` in `run_all_tests.m` (the one place they are named). It is the
 gate's test command in `.no-mistakes.yaml`. Run the full suite by hand
 before merging a change to that code. On a shared CReSIS node, prefix
 `MATLAB_THREADS=8 nice`: uncapped, one test took ~65 of mem1's 112 cores.
