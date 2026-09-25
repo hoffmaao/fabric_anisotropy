@@ -79,10 +79,10 @@
 %
 % CONVENTION, for every verdict: point-amplitude powers (win_power_m 0),
 % the paper's eq. (12) and ptt.ershadiFabric's single-look-in-range
-% observables alike; ptt.ershadiInverse (2a-2c) forms its coherence window
-% at the data's native step (dz_model), here the paper's 1 m, which the
-% model already uses, so the Table-2 reproduction is unchanged (issue
-% #33).
+% observables alike (issue #33). The direct Table-2 reproduction runs on
+% the paper's 1 m grid, and the 2a-2c ptt.ershadiInverse fits run the
+% model on the 8 m cost rows (fit_decim 8) refined to 1.33 m (win_m/20),
+% both unchanged by #33.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_ershadi_seven.m')"
 clear;

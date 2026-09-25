@@ -47,9 +47,9 @@
 % CONVENTION, for every verdict: the observables come from
 % ptt.ershadiFabric, whose powers are single-look in range (its moments
 % average traces only), and ptt.ershadiInverse models them the same way -
-% point-amplitude powers (win_power_m 0) with the coherence window formed
-% at the data's native step (dz_model) - so the fit compares like with
-% like (issue #33).
+% point-amplitude powers (win_power_m 0) - with the coherence window formed
+% on the model's own grid (at least 20 samples per window), so the fit
+% compares like with like (issue #33).
 %
 % Run: matlab -batch "run('opr_fabric/test/test_ershadi_r.m')"
 clear;

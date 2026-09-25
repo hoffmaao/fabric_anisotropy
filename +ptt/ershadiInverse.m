@@ -110,8 +110,13 @@ function out = ershadiInverse(fr, z, opts)
 %              amplitudes (win_power_m 0) because ptt.ershadiFabric's are:
 %              its moments average traces only, one look in range, so a
 %              range-windowed model power would be the mismatch (issue
-%              #33). Its coherence window is formed on the data's own
-%              native step (dz_model), whatever rows the cost decimates to.
+%              #33). Its win_m coherence window is formed on the model's
+%              own grid, never coarser than win_m/20 (#29), so it is always
+%              built from at least 20 samples; passing the data's native
+%              step as dz_model would multiply the model's rows by
+%              fit_decim inside every theta and r search for a window
+%              length change of about 1% on CReSIS sampling (29.7 vs
+%              30.1 m at a 0.14 m step), so the default grid is kept.
 %         .r13_cos_max (-0.85) anti-phase gate for the eq.-(13) estimate
 %         .r13_coax_deg (15)  co-axial gate for the eq.-(13) estimate: how
 %              far, modulo 90 deg, two interval axes above the row may lie
@@ -210,10 +215,9 @@ fwd = struct('fc', H_const(opts, fr, 'fc', 750e6), ...
 gpd1 = ptt.birefringentPhaseRate(fwd.fc, fwd.eps_perp, fwd.deps);
 
 z = z(:);
-% the forward's grid and power convention (see .fc ... above): the data's
-% coherence was windowed over win_m at the native step of these rows, and
-% their powers are single-look in range
-fwd.dz_model = median(abs(diff(z)));
+% the forward's power convention (see .fc ... above): the data's powers
+% are single-look in range; the coherence window stays on the model's own
+% grid
 fwd.win_power_m = 0;
 band = z >= zfit(1) & z <= zfit(2);
 if ~any(band)
