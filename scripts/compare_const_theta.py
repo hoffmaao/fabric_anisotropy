@@ -33,12 +33,28 @@ Three numbers decide it, and they are not interchangeable:
                     meaningless - a pedestal-driven minimum is perfectly
                     repeatable. Read it with dlam and the residual.
 
-Runs where the products live (mem1), since the products are HDF5 and stay
-server-side:
+THE BAND STOPS AT THE BED. Every product runs to the pipeline's fixed z_max
+of 1500 m, and at the thin-ice sites most of that is below the ice: Eastwind
+and McMurdo end near 225 and 268 m, Taylor Dome near 837 m. Read to 1500 m,
+their residuals, spreads and contrasts were mostly the sub-bed record, and
+the site verdicts said so ("FIT FAILS" at Eastwind was that). So each
+frame's band is cut at its own bed, the per-block picks in
+`bed_by_block.json` (scripts/make_bed_by_block.py), less BED_MARGIN_M; a
+frame with no pick keeps the full band and is named in the header line so
+the reader knows which numbers still reach past the ice. A frame whose pick
+lies below the record also keeps the full band, and the header counts it
+separately: its numbers never leave the ice.
+
+Runs where the products live, since they are HDF5: on mem1, or on the local
+mirror under $SCAR_DATA where the bed file also lives:
 
   python3 scripts/compare_const_theta.py [stage_dir]
       # default <work>/stages/quadpol
+
+bed_by_block.json is looked for in the stage dir, then under $SCAR_DATA
+(default ~/data/opr/scar).
 """
+import json
 import os
 import sys
 import glob
@@ -49,13 +65,28 @@ try:
 except ImportError:
     sys.exit("needs h5py; run this where the products live (mem1)")
 
+# the ONE site table - positions, membership rule, per-site depth bands -
+# shared with every figure script; it imports pyproj lazily so it loads on
+# the servers too
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "figures"))
+import quadpol_sites  # noqa: E402
+
 # The work root the server scripts use (opr_fabric/server/fabric_paths.m):
 # FABRIC_ROOT if set, else the parent of the checkout this file sits in.
 _WORK = os.environ.get("FABRIC_ROOT") or os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_STAGE = os.path.join(_WORK, "stages", "quadpol")
-# quotable fabric starts ~200 m (co-pol reference offset)
-Z_BAND = (200.0, 1500.0)
+# The band a frame is read over: from its SITE's floor (quadpol_sites
+# z_band[0] - 200 m at the deep sites, where the co-pol reference offset
+# spoils the near-surface windows, 60 m at the two shelves whose ice ends
+# near 225-270 m) down to the record's z_max, cut at the frame's bed less a
+# margin where a pick exists. Frames at no known site take the deep-site
+# floor.
+Z_MAX = 1500.0
+Z_LO_DEFAULT = 200.0
+BED_MARGIN_M = 20.0
+SCAR_DATA = os.path.expanduser(os.environ.get("SCAR_DATA", "~/data/opr/scar"))
 
 # Verdict thresholds on the contrast-weighted per-window spread. PROVISIONAL:
 # the synthetic in test_quadpol_const_theta gives 2 deg constant vs 25 deg
@@ -66,29 +97,28 @@ SPREAD_HOLDS = 8.0
 SPREAD_ROTATES = 20.0
 RESID_COST_OK = 0.03
 
-# Season tag -> site. The season NUMBER never matches the tag year, and the
-# 2024 tags split three ways, so this cannot be a prefix-to-season shortcut.
-SITES = [
-    ("20221206", "Taylor Dome"), ("20221207", "Taylor Dome"),
-    ("20221209", "Taylor Dome"), ("20221210", "Taylor Dome"),
-    ("20221211", "Taylor Dome"),
-    ("20240120", "WAIS Divide"),
-    ("20240202", "McMurdo"), ("20240203", "McMurdo"),
-    ("202401", "Thwaites"),
-    ("20250107", "Ridge A"), ("20250108", "Ridge A"), ("20250111", "Ridge A"),
-    ("20250112", "Ridge A"), ("20250113", "Ridge A"), ("20250115", "Ridge A"),
-    ("20250117", "Ridge A"),
-    ("20260106", "Eastwind"), ("20260107", "Eastwind"),
-    ("20260109", "Eastwind"), ("20260119", "Eastwind"),
-    ("20260121", "Eastwind"),
-]
+
+# SITES ARE SELECTED BY POSITION, through quadpol_sites.in_site, exactly as
+# the figures select them. This script used to carry its own tag-prefix
+# table, and that table had Taylor Dome and Eastwind swapped for the whole
+# life of the constant-axis batch: every verdict it printed for either site
+# belonged to the other one. A second table can drift; the shared one
+# cannot, so the prefix table is gone rather than corrected.
+def site_for(tag, la, lo):
+    """(site key, site cfg) for a frame, or ('unknown', None)."""
+    for key, cfg in quadpol_sites.SITES.items():
+        if np.isfinite(la) and np.isfinite(lo) \
+                and quadpol_sites.in_site(cfg, la, lo, tag):
+            return key, cfg
+    return "unknown", None
 
 
-def site_of(tag):
-    for pre, name in SITES:
-        if tag.startswith(pre):
-            return name
-    return "unknown"
+def frame_pos(fn):
+    """The frame-centre latitude and longitude a section product carries."""
+    with h5py.File(fn, "r") as f:
+        r = f["res"]
+        return (float(get(r, "lat").ravel()[0]),
+                float(get(r, "lon").ravel()[0]))
 
 
 def circ_mean_deg(th, w=None):
@@ -128,8 +158,38 @@ def get(res, key, default=np.nan):
     return np.array(res[key]).astype(float)
 
 
-def read(fn):
-    """One product's numbers over the quotable band.
+def load_beds(stage):
+    """Per-frame bed depth [m] from bed_by_block.json, or {} if none is found.
+
+    The file holds a list of per-block picks per frame (NaN where unpicked)
+    plus a `_layers` provenance entry; the frame's bed is the median of its
+    finite picks.
+    """
+    for d in (stage, SCAR_DATA):
+        fn = os.path.join(d, "bed_by_block.json")
+        if os.path.exists(fn):
+            with open(fn) as fh:
+                raw = json.load(fh)
+            beds = {}
+            for tag, picks in raw.items():
+                if tag.startswith("_") or not isinstance(picks, list):
+                    continue
+                v = np.array(picks, float)
+                if np.isfinite(v).any():
+                    beds[tag] = float(np.nanmedian(v))
+            return beds, fn
+    return {}, None
+
+
+def band_top(tag, beds):
+    """Bottom of the frame's band: z_max, or its bed less the margin."""
+    if tag not in beds:
+        return Z_MAX
+    return min(Z_MAX, beds[tag] - BED_MARGIN_M)
+
+
+def read(fn, z_lo, z_top):
+    """One product's numbers over the quotable band, z_lo to z_top.
 
     Field names are not interchangeable: the LS block dlam is sec_dlam_ls (NOT
     ls_dlam, which is the frame pass, and NOT dlam_ls, which is a scalar). The
@@ -147,14 +207,13 @@ def read(fn):
         q_seg = np.atleast_2d(get(r, "ls_q_seg"))
         if q_seg.shape[-1] != zw.size:
             q_seg = q_seg.T
-        mw = (zw >= Z_BAND[0]) & (zw < Z_BAND[1])
+        mw = (zw >= z_lo) & (zw < z_top)
         sec_dlam = np.atleast_2d(get(r, "sec_dlam_ls"))
         sec_res = np.atleast_2d(get(r, "sec_resid_ls"))
         if sec_dlam.shape[-1] != z.size:
             sec_dlam = sec_dlam.T
             sec_res = sec_res.T
-        mz = (z >= Z_BAND[0]) & (z < Z_BAND[1])
-        deep = (z >= 1150) & (z < Z_BAND[1])
+        mz = (z >= z_lo) & (z < z_top)
         # the axis the blocks inherit: contrast-weighted over segments and
         # the quotable band; its depth spread per segment says how much the
         # free profile wandered before anything was held
@@ -213,8 +272,6 @@ def read(fn):
             depth_sd=depth_sd,
             dlam=(np.nanmedian(sec_dlam[:, mz])
                   if sec_dlam.size > 1 else np.nan),
-            dlam_deep=(np.nanmedian(sec_dlam[:, deep])
-                       if sec_dlam.size > 1 else np.nan),
             resid=(np.nanmedian(sec_res[:, mz])
                    if sec_res.size > 1 else np.nan),
             finite=(np.isfinite(sec_dlam[:, mz]).mean()
@@ -265,25 +322,47 @@ def main():
     if not ct_files:
         sys.exit("no _ct products in %s - has the batch run?" % stage)
 
-    rows, orphans = [], []
+    beds, bed_fn = load_beds(stage)
+    rows, orphans, no_bed, deep_bed = [], [], [], []
     for cf in ct_files:
         base = cf[:-len("_ct.mat")] + ".mat"
         tag = os.path.basename(cf)[len("quadpol_section_"):-len("_ct.mat")]
         if not os.path.exists(base):
             orphans.append(tag)
             continue
+        z_top = band_top(tag, beds)
         try:
-            a, b = read(base), read(cf)
+            site, cfg = site_for(tag, *frame_pos(base))
+            z_lo = cfg["z_band"][0] if cfg else Z_LO_DEFAULT
+            a = read(base, z_lo, z_top)
+            b = read(cf, z_lo, z_top)
         except (OSError, KeyError, ValueError) as e:
             orphans.append("%s (unreadable: %s)" % (tag, e))
             continue
-        rows.append((site_of(tag), tag, a, b))
+        rows.append((site, tag, a, b))
+        if tag not in beds:
+            no_bed.append(tag)
+        elif z_top >= Z_MAX:
+            deep_bed.append(tag)
 
-    print("band %.0f-%.0f m; th = contrast-weighted axis the blocks inherit; "
+    if bed_fn is None:
+        print("NO BED FILE FOUND: every band runs to %.0f m, below the ice "
+              "at the thin sites (Eastwind ~225 m, McMurdo ~268 m, Taylor "
+              "Dome ~837 m) - the numbers there are the sub-bed record"
+              % Z_MAX)
+    else:
+        print("band: each site's floor (quadpol_sites z_band) to the "
+              "frame's bed less %.0f m (%s); of %d frames compared, %d "
+              "have no bed pick and run to %.0f m%s; %d have their bed "
+              "below the record and also run to %.0f m%s"
+              % (BED_MARGIN_M, bed_fn, len(rows), len(no_bed), Z_MAX,
+                 (": " + " ".join(no_bed)) if no_bed else "",
+                 len(deep_bed), Z_MAX,
+                 (": " + " ".join(deep_bed)) if deep_bed else ""))
+    print("th = contrast-weighted axis the blocks inherit; "
           "sd_z = depth spread of the FREE segment profiles; "
           "spread = per-window "
-          "minima spread before holding (_ct); resid/dlam/finite = block fits"
-          % Z_BAND)
+          "minima spread before holding (_ct); resid/dlam/finite = block fits")
     print("%-11s %-16s %4s %4s  %6s %6s %6s %5s  %6s  "
           "%6s %6s %+7s  %6s %6s  %5s %5s"
           % ("site", "frame", "nseg", "held", "th_def", "th_ct", "dth",

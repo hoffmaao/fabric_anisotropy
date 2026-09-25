@@ -26,9 +26,27 @@ McMurdo frames, and the Thwaites median here (0.004) disagrees with the
 0.13-0.19 margin contrasts recorded from the earlier margin work.
 """
 import numpy as np
-from pyproj import Transformer
 
-T3031 = Transformer.from_crs('EPSG:4326', 'EPSG:3031', always_xy=True)
+
+# pyproj is imported where it is used, not here: the site table and
+# `in_site` are also read by scripts/compare_const_theta.py, which runs on
+# the CReSIS servers where the products live and pyproj does not (mem1 has
+# h5py and nothing else). A module-level import would make the one place
+# the sites are defined unreadable exactly where the site verdicts are
+# computed, which is how that script came to carry its own prefix table
+# and swap two sites.
+def _transformer(epsg):
+    from pyproj import Transformer
+    return Transformer.from_crs('EPSG:4326', 'EPSG:%d' % epsg,
+                                always_xy=True)
+
+
+def __getattr__(name):
+    # `quadpol_sites.T3031` stays available to importers, built on first use
+    if name == 'T3031':
+        return _transformer(3031)
+    raise AttributeError(name)
+
 
 # MOVIE DEPTH RANGES follow the Ridge A protocol: stop where the data stops
 # behaving, not where the record ends. At Ridge A that cut was 1050 m,
@@ -214,8 +232,7 @@ def site_epsg(cfg):
 
 def site_transformer(cfg):
     """Lon/lat to the site's projected metres."""
-    return Transformer.from_crs('EPSG:4326', 'EPSG:%d' % site_epsg(cfg),
-                                always_xy=True)
+    return _transformer(site_epsg(cfg))
 
 
 def site_proj(cfg):
@@ -267,7 +284,7 @@ def grid_north_az(lat, lon, step=0.02, cfg=None):
     """
     lat = np.atleast_1d(np.asarray(lat, float))
     lon = np.atleast_1d(np.asarray(lon, float))
-    tf = T3031 if cfg is None else site_transformer(cfg)
+    tf = _transformer(3031) if cfg is None else site_transformer(cfg)
     x0, y0 = tf.transform(lon, lat)
     x1, y1 = tf.transform(lon, lat + step)
     return (-np.degrees(np.arctan2(x1 - x0, y1 - y0))) % 360.0
