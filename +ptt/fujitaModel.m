@@ -55,7 +55,11 @@ function out = fujitaModel(layers, z, psi, opts)
 %           on. It may be as coarse as the data - one row per window on a
 %           decimated ApRES profile - because the model is evaluated on a
 %           finer grid of its own and sampled back at these rows; see
-%           THE WINDOW IS FORMED ON THE MODEL'S OWN GRID below.
+%           THE WINDOW IS FORMED ON THE MODEL'S OWN GRID below. Any row
+%           order: the rows are evaluated sorted ascending and every
+%           per-depth field comes back in the caller's order, so a
+%           descending axis gets the ascending call's rows reversed and
+%           a bed still ends the domain below itself.
 %   psi     sweep azimuths (radians, row or column)
 %   opts    .fc (750e6), .eps_perp (3.15, the paper's value),
 %           .deps (0.034), .win_m (30, eq.-7 window, match the data path),
@@ -148,7 +152,18 @@ gpd1 = ptt.birefringentPhaseRate(fc, eps_perp, deps);
 win_pow = H_opt(opts, 'win_power_m', 0);
 dz_model = H_opt(opts, 'dz_model', []);
 
-% the caller's rows, and the internal grid the model is evaluated on
+% the caller's rows, and the internal grid the model is evaluated on. The
+% stack, the refinement and the bed all read DEPTH, not row position, so
+% rows out of ascending order are evaluated sorted and handed back
+if any(diff(z(:)) < 0)
+  [zs, order] = sort(z(:));
+  out = ptt.fujitaModel(layers, zs, psi, opts);
+  back = zeros(size(order)); back(order) = 1:numel(order);
+  for f = {'s_hh', 's_vv', 's_hv', 'dP_hh', 'dP_hv', 'C', 'phi', 'Cmag', 'P_hh_db'}
+    out.(f{1}) = out.(f{1})(back, :);
+  end
+  return
+end
 z_in = z(:);
 [z, k_ref, uniform] = H_refine(z_in, win_m, win_pow, dz_model);
 Nz = numel(z);

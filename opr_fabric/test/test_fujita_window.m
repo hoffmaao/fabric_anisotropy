@@ -45,6 +45,12 @@
 %      unchanged from the bedless call, and a uniform grid with a row at
 %      the same depth gives the same bed row - the bed convention is one
 %      convention on both grids, evaluated at the caller row's depth.
+%   5. ROW ORDER. The same rows given in descending order - on a grid the
+%      model refines, on a non-uniform grid, and on one it leaves alone,
+%      each with and without a bed - return the ascending call's rows
+%      reversed, bit for bit in every per-depth field, with the bed's NaN
+%      band still below the bed. The refinement had assumed ascending rows
+%      and errored on a descending axis the pre-#29 model had run.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_fujita_window.m')"
 clear;
@@ -159,6 +165,30 @@ ok4 = e_phi4 < 0.02 && okb;
 fprintf('4. non-uniform rows interpolated: phi within %.4f rad; bed row %d at %.1f m: finite to it %d, NaN below %d, +%.1f dB, rows clear of it within %.1e, uniform grid''s bed row within %.4f (|C|, phi) %.3f dB: %s\n', ...
   e_phi4, ib, zn(ib), fin_above, nan_below, bed_db, e_clear, e_bed, e_bed_db, H_tick(ok4));
 fails = fails + ~ok4;
+
+% ---- 5. row order
+grids = {'refined', z; 'non-uniform', zn; 'fine', zf(1:4:end)};
+ok5 = true; n5 = 0;
+for gi = 1:size(grids, 1)
+  za = grids{gi, 2};
+  for withbed = [false true]
+    o5 = struct('fc', fc, 'win_m', W, 'win_power_m', W, 'dz_model', dzf);
+    if withbed, o5.bed = struct('z_m', ZB, 'gx_db', 30, 'r_db', 0); end
+    ma = ptt.fujitaModel(lay, za, psi, o5);
+    md = ptt.fujitaModel(lay, flipud(za), psi, o5);
+    for f = fld
+      ok5 = ok5 && isequaln(md.(f{1}), flipud(ma.(f{1})));
+    end
+    if withbed
+      ok5 = ok5 && all(isnan(md.C(flipud(za) > za(find(za >= ZB, 1)), :)), 'all') ...
+        && all(isfinite(md.C(flipud(za) <= za(find(za >= ZB, 1)), :)), 'all');
+    end
+    n5 = n5 + 1;
+  end
+end
+fprintf('5. descending rows return the ascending call reversed, bit for bit, on %d grid/bed cases: %s\n', ...
+  n5, H_tick(ok5));
+fails = fails + ~ok5;
 
 fprintf('\n%s (%.1f s)\n', H_tick(fails == 0), toc(t0));
 if fails > 0
