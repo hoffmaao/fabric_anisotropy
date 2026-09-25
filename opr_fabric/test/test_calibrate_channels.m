@@ -27,7 +27,10 @@
 %      intercept and is echoed back with the flag set; and the same phase
 %      given a turn away (315 deg for -45) gives the same gains to 1e-9,
 %      on the branch in phase with H, not the (-a, -b) one that would
-%      mirror every axis.
+%      mirror every axis. A pin at -pi is the pin at +pi: same gains, echoed
+%      as +180.
+%   5. THE GUARDS. A frame with too few rows in the reciprocity range or
+%      the firn window raises the function's own error identifier.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_calibrate_channels.m')"
 clear;
@@ -114,6 +117,16 @@ fprintf('3. family axis gap raw %.1f deg -> calibrated %.1f deg; pedestal a3 cal
   gap_raw, gap_cal, a3_cal, a3_true, H_tick(ok3));
 fails = fails + ~ok3;
 
+[~, gn, in_] = ptt.calibrateChannels(M, z, struct('phase_ab', -pi));
+[~, gq] = ptt.calibrateChannels(M, z, struct('phase_ab', pi));
+id_recip = H_error_id(@() ptt.calibrateChannels(M(1:100, :, :), z(1:100)));
+id_firn = H_error_id(@() ptt.calibrateChannels(M, z, struct('firn_m', [2000 2100])));
+ok5 = max(abs(gn - gq)) < 1e-12 && in_.phase_ab_deg == 180 ...
+  && strcmp(id_recip, 'ptt:calibrateChannels:recip') && strcmp(id_firn, 'ptt:calibrateChannels:firn');
+fprintf('5. a pin at -pi gives the +pi gains (%.1e, echoed %+.0f); guards raise %s, %s: %s\n', ...
+  max(abs(gn - gq)), in_.phase_ab_deg, id_recip, id_firn, H_tick(ok5));
+fails = fails + ~ok5;
+
 fprintf('\n%s (%.1f min)\n', H_tick(fails == 0), toc(t0)/60);
 if fails > 0
   error('test_calibrate_channels:failed', '%d check(s) failed', fails);
@@ -121,4 +134,13 @@ end
 
 function s = H_tick(ok)
 if ok, s = 'PASS'; else, s = 'FAIL'; end
+end
+
+function id = H_error_id(f)
+id = '';
+try
+  f();
+catch e
+  id = e.identifier;
+end
 end

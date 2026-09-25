@@ -123,7 +123,7 @@ end
 % --- reciprocity: |b/a| and arg a - arg b, summed over the record
 mr = z >= recip(1) & z <= recip(2) & isfinite(real(M(:, 3, 3))) & isfinite(real(M(:, 4, 4)));
 if nnz(mr) < 10
-  error('ptt:calibrateChannels:recip', 'fewer than 10 rows in the reciprocity range [%g %g] m', recip);
+  error('ptt:calibrateChannels:recip', 'fewer than 10 rows in the reciprocity range [%g %g] m', recip(1), recip(2));
 end
 p_hv = sum(real(M(mr, 3, 3))); p_vh = sum(real(M(mr, 4, 4)));
 x = sum(M(mr, 3, 4));                   % <HV VH*> = a conj(b) |S_x|^2
@@ -134,7 +134,7 @@ xcoh = abs(x) / max(sqrt(p_hv * p_vh), realmin);
 % --- the firn: |ab| from the co-pol power ratio
 mf = z >= firn(1) & z <= firn(2) & isfinite(real(M(:, 1, 1))) & isfinite(real(M(:, 2, 2)));
 if nnz(mf) < 10
-  error('ptt:calibrateChannels:firn', 'fewer than 10 rows in the firn window [%g %g] m', firn);
+  error('ptt:calibrateChannels:firn', 'fewer than 10 rows in the firn window [%g %g] m', firn(1), firn(2));
 end
 firn_ratio = sum(real(M(mf, 2, 2))) / max(sum(real(M(mf, 1, 1))), realmin);
 abm = sqrt(firn_ratio);                  % |a b|
@@ -159,6 +159,7 @@ if isempty(phase_ab)
 else
   ab_arg = phase_ab;
 end
+ab_arg = pi - mod(pi - ab_arg, 2*pi);   % onto (-pi, pi], so -pi and pi are one pin
 
 % --- assemble a and b, on the branch in phase with H (see THE SIGN OF a
 % AND b): the half-angle split fixes the pair only up to adding pi to both
@@ -185,7 +186,7 @@ info = struct('a_db', 20*log10(am), 'b_db', 20*log10(bm), ...
   'phase_fit', struct('z', zf, 'phase_deg', rad2deg(ph), ...
     'intercept_deg', rad2deg(fit_int), 'dlam', fit_dl, 'mu', fit_mu, ...
     'rms_deg', rad2deg(rms), 'line_intercept_deg', rad2deg(line_int)), ...
-  'phase_ab_deg', rad2deg(angle(exp(1i * ab_arg))), 'phase_ab_pinned', ~isempty(phase_ab), ...
+  'phase_ab_deg', rad2deg(ab_arg), 'phase_ab_pinned', ~isempty(phase_ab), ...
   'firn_m', firn, 'recip_m', recip, 'g', g);
 end
 
