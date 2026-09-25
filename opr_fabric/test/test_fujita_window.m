@@ -41,8 +41,10 @@
 %   4. NON-UNIFORM ROWS are interpolated, within the same tolerances as
 %      verdict 1, and a bed among them lands on the caller's row that
 %      contains it: that row carries the bed's return, every row below
-%      it is NaN in every field, and the rows clear of the bed's window
-%      are unchanged from the bedless call.
+%      it is NaN in every field, the rows clear of the bed's window are
+%      unchanged from the bedless call, and a uniform grid with a row at
+%      the same depth gives the same bed row - the bed convention is one
+%      convention on both grids, evaluated at the caller row's depth.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_fujita_window.m')"
 clear;
@@ -144,10 +146,18 @@ for f = fld
   e_clear = max(e_clear, max(abs(mb.(f{1})(1:ib-2, :) - mn.(f{1})(1:ib-2, :)), [], 'all'));
 end
 bed_db = mb.P_hh_db(ib) - max(mb.P_hh_db(1:ib-1));
-okb = fin_above && nan_below && bed_db > 20 && e_clear < 1e-9;
+zu = zn(ib) + (W + dzf) * (-(ib - 1):5).';      % uniform rows through the same bed row
+mu = ptt.fujitaModel(lay, zu, psi, struct('fc', fc, 'win_m', W, 'win_power_m', W, 'dz_model', dzf, ...
+  'bed', struct('z_m', ZB, 'gx_db', 30, 'r_db', 0)));
+iu = find(zu >= ZB, 1);
+e_bed = max(max(abs(mb.Cmag(ib, :) - mu.Cmag(iu, :))), ...
+  max(abs(angle(exp(1i * (mb.phi(ib, :) - mu.phi(iu, :)))))));
+e_bed_db = max(abs(mb.P_hh_db(ib) - mu.P_hh_db(iu)), max(abs(mb.dP_hh(ib, :) - mu.dP_hh(iu, :))));
+same_bed = iu == ib && all(isnan(mu.C(iu+1:end, :)), 'all') && e_bed < 0.02 && e_bed_db < 0.1;
+okb = fin_above && nan_below && bed_db > 20 && e_clear < 1e-9 && same_bed;
 ok4 = e_phi4 < 0.02 && okb;
-fprintf('4. non-uniform rows interpolated: phi within %.4f rad; bed row %d at %.1f m: finite to it %d, NaN below %d, +%.1f dB, rows clear of it within %.1e: %s\n', ...
-  e_phi4, ib, zn(ib), fin_above, nan_below, bed_db, e_clear, H_tick(ok4));
+fprintf('4. non-uniform rows interpolated: phi within %.4f rad; bed row %d at %.1f m: finite to it %d, NaN below %d, +%.1f dB, rows clear of it within %.1e, uniform grid''s bed row within %.4f (|C|, phi) %.3f dB: %s\n', ...
+  e_phi4, ib, zn(ib), fin_above, nan_below, bed_db, e_clear, e_bed, e_bed_db, H_tick(ok4));
 fails = fails + ~ok4;
 
 fprintf('\n%s (%.1f s)\n', H_tick(fails == 0), toc(t0));

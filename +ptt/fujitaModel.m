@@ -101,8 +101,14 @@ function out = fujitaModel(layers, z, psi, opts)
 %                ice-bed reflection, tens of dB above the internals
 %                (Fujita's Table-2 internals sit at Gamma_x = 1e-12;
 %                a bed amplitude coefficient of 0.1-0.3 is typical). The
-%                row CONTAINING bed z_m scatters with the bed's Gamma in
-%                the local layer frame; every row BELOW it returns NaN in
+%                caller's row CONTAINING bed z_m - its first row at or
+%                below z_m - scatters with the bed's Gamma in the local
+%                layer frame, on every grid: the bed is evaluated at that
+%                row's depth (the internal row it sits on when refined,
+%                the nearest one when interpolated), the internal rows
+%                between z_m and it keep the internal-layer return
+%                inside the windows exactly as an unrefined grid does,
+%                and every row BELOW it returns NaN in
 %                all fields, because the domain ends at the bed - sub-bed
 %                returns are the thing the movies grey out, not a
 %                prediction this model should make. The eq.-(7) coherence
@@ -178,19 +184,16 @@ if ~isempty(bed)
     error('ptt:fujitaModel:bed', 'opts.bed needs z_m and gx_db');
   end
   if ~isfield(bed, 'r_db') || isempty(bed.r_db), bed.r_db = 0; end
-  % the CALLER'S row containing the bed keeps the bed's return and the
-  % rows below it none, exactly as on an unrefined grid. On a refined
-  % uniform grid the bed row is the internal row that caller row sits on,
-  % not the first fine row past z_m, so refinement cannot push a caller
-  % row below the bed; on a non-uniform grid it is the first internal row
-  % past z_m and H_sample hands its values to the caller's row directly.
+  % the bed row is the internal row the CALLER'S bed row maps to, not the
+  % first fine row past z_m, so refinement cannot push a caller row below
+  % the bed; H_sample hands its values back to that caller row
   bed_in = find(z_in >= bed.z_m, 1);
   if isempty(bed_in)
     bed_in = 0;                            % bed below the axis: no effect
   elseif uniform
     bed_row = 1 + k_ref * (bed_in - 1);
   else
-    bed_row = find(z >= bed.z_m, 1);
+    [~, bed_row] = min(abs(z - z_in(bed_in)));
   end
 end
 
