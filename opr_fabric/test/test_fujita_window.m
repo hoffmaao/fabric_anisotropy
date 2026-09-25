@@ -46,7 +46,8 @@
 %      the same depth gives the same bed row - the bed convention is one
 %      convention on both grids, evaluated at the caller row's depth.
 %   5. ROW ORDER. The same rows given in descending order - on a grid the
-%      model refines, on a non-uniform grid, and on one it leaves alone,
+%      model refines, on a non-uniform grid, and on one it leaves alone
+%      (the 0.5 m grid at dz_model 0.5, refinement factor 1),
 %      each with and without a bed - return the ascending call's rows
 %      reversed, bit for bit in every per-depth field, with the bed's NaN
 %      band still below the bed. The refinement had assumed ascending rows
@@ -167,7 +168,7 @@ fprintf('4. non-uniform rows interpolated: phi within %.4f rad; bed row %d at %.
 fails = fails + ~ok4;
 
 % ---- 5. row order
-grids = {'refined', z; 'non-uniform', zn; 'fine', zf(1:4:end)};
+grids = {'refined', z; 'non-uniform', zn; 'fine', zf};
 ok5 = true; n5 = 0;
 for gi = 1:size(grids, 1)
   za = grids{gi, 2};
@@ -176,6 +177,9 @@ for gi = 1:size(grids, 1)
     if withbed, o5.bed = struct('z_m', ZB, 'gx_db', 30, 'r_db', 0); end
     ma = ptt.fujitaModel(lay, za, psi, o5);
     md = ptt.fujitaModel(lay, flipud(za), psi, o5);
+    if strcmp(grids{gi, 1}, 'fine')
+      ok5 = ok5 && ma.dz_model == dzf && md.dz_model == dzf;
+    end
     for f = fld
       ok5 = ok5 && isequaln(md.(f{1}), flipud(ma.(f{1})));
     end

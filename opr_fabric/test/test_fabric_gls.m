@@ -22,17 +22,20 @@
 %      documented as such rather than quietly widened by a fudge factor.
 %   5. CORRELATED AZIMUTHS. Verdicts 1-4 give the solver independent noise,
 %      which real synthesized azimuths never have. Under noise confined to
-%      a rank-4 azimuthal subspace the diagonal posterior IS optimistic -
-%      measured 0.38 of the true scatter for dlam, near the 1/sqrt(18/4)
-%      = 0.47 that counting four independent azimuths as eighteen predicts
-%      - and opts.n_indep_psi = 4 brings it back to 1.27. The verdict
-%      asserts that corrected calibration, and that the naive ratio sits
-%      below it. An earlier reading of this verdict measured the naive
-%      posterior slightly CONSERVATIVE (1.15) and kept the option off on
-%      that evidence; that number was an artefact of the forward model
-%      windowing its coherence over the three 10 m caller rows of this
-%      grid rather than over 30 m at a fine step (issue #29), and went
-%      away when the forward was corrected.
+%      a rank-4 azimuthal subspace the diagonal posterior is NOT optimistic
+%      for dlam: the reported sigma over the ROBUST empirical scatter
+%      (1.4826 * MAD) is about 1.00, and opts.n_indep_psi = 4, which
+%      multiplies every sigma by sqrt(18/4) = 2.1, overshoots to about
+%      1.59. The verdict asserts that naive calibration and the overshoot,
+%      so the option stays off for channel-synthesised azimuths. The scatter
+%      is robust because the solver occasionally stops in a nearby local
+%      minimum (issue #28), which a converged solver does not produce: an
+%      earlier revision of this branch read a plain std over the 16
+%      realisations, where two unconverged ones (5 and 15, 7 and 5 robust
+%      sigmas off the cluster) made the naive posterior look 2.6x
+%      optimistic (0.38). That reading was wrong; correcting the forward
+%      (issue #29) did not change the conclusion. The std-based ratios and
+%      the count of such outliers are printed beside the robust ones.
 %
 %   4. THE ORIENTATION PRIOR IS A PRIOR, NOT A CONSTRAINT. Given a column
 %      whose axis really does rotate with depth, a long theta correlation
@@ -171,21 +174,29 @@ for k = 1:R5
   d_naive(k) = a.dlam_z(round(end/2)); s_naive(k) = a.sigma_dlam_z(round(end/2));
   d_corr(k)  = b.dlam_z(round(end/2)); s_corr(k)  = b.sigma_dlam_z(round(end/2));
 end
-rn = median(s_naive) / max(std(d_naive), eps);
-rc = median(s_corr)  / max(std(d_corr),  eps);
+% robust scatter: realisations the solver leaves in a nearby local
+% minimum (issue #28) are not posterior scatter, and a plain std counts
+% them as if they were
+rsd = @(d) 1.4826 * mad(d, 1);
+n_out = @(d) sum(abs(d - median(d)) > 5 * rsd(d));
+rn = median(s_naive) / max(rsd(d_naive), eps);
+rc = median(s_corr)  / max(rsd(d_corr),  eps);
 fprintf('\n5. azimuth noise with only 4 independent modes, dlam at mid-column:\n');
-fprintf('   assuming independence: reported/empirical %.2f\n', rn);
-fprintf('   with n_indep_psi = 4:  reported/empirical %.2f\n', rc);
+fprintf('   assuming independence: reported/empirical %.2f (std-based %.2f, %d solver outlier(s) beyond 5 robust sigmas)\n', ...
+  rn, median(s_naive) / max(std(d_naive), eps), n_out(d_naive));
+fprintf('   with n_indep_psi = 4:  reported/empirical %.2f (std-based %.2f, %d solver outlier(s) beyond 5 robust sigmas)\n', ...
+  rc, median(s_corr) / max(std(d_corr), eps), n_out(d_corr));
 % MEASURED on the corrected forward model: confining the noise to four
-% azimuthal modes makes the diagonal posterior optimistic by about 2.6x
-% (naive ratio 0.38, near the 1/sqrt(Np/4) = 0.47 that counting each
-% synthesised azimuth as fresh evidence predicts), and n_indep_psi = 4
-% brings it to 1.27. The earlier reading of 1.15 naive / 2.43 corrected,
-% which kept the option off, was measured with the coherence windowed
-% over three 10 m rows and did not survive the fix of issue #29. The
-% assertion is on the corrected ratio, and on the redundancy being real.
-ok5 = rc > 0.5 && rc < 3 && rn < rc;
-fprintf('   n_indep_psi = 4 restores calibration under azimuth correlation: %s\n', H_tick(ok5));
+% azimuthal modes leaves the diagonal posterior calibrated for dlam (naive
+% robust ratio about 1.00), and n_indep_psi = 4 multiplies every sigma by
+% sqrt(Np/4) = 2.1 and overshoots (about 1.59). An earlier revision of
+% this branch read std over the 16 realisations, where two unconverged
+% realisations (5 and 15) made the naive posterior look 2.6x optimistic
+% (0.38); that reading was wrong, and correcting the forward (issue #29)
+% did not change the conclusion. The option stays off for synthesised
+% azimuths.
+ok5 = rn > 0.5 && rn < 2 && rc > 1.4 * rn;
+fprintf('   naive posterior calibrated, n_indep_psi = 4 overshoots: %s\n', H_tick(ok5));
 
 fails = ~ok1 + ~ok2 + ~ok3 + ~ok4 + ~ok5;
 fprintf('\n%s (%.1f min)\n', H_tick(fails == 0), toc(t0)/60);
