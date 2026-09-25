@@ -177,7 +177,7 @@ end
 % robust scatter: realisations the solver leaves in a nearby local
 % minimum (issue #28) are not posterior scatter, and a plain std counts
 % them as if they were
-rsd = @(d) 1.4826 * mad(d, 1);
+rsd = @(d) 1.4826 * median(abs(d - median(d)));
 n_out = @(d) sum(abs(d - median(d)) > 5 * rsd(d));
 rn = median(s_naive) / max(rsd(d_naive), eps);
 rc = median(s_corr)  / max(rsd(d_corr),  eps);
