@@ -34,15 +34,14 @@ function out = nymandTwoStep(obs, z, opts)
 % never forms a coherence, so it survives where coherence does not - the
 % Thwaites zones measured to have lost their fringes - and its strength
 % step returns an exact posterior. It pays for that by ASSUMING a
-% constant eigenframe, which is an assumption this repo has measured to
-% be consequential. (An earlier claim here that the held axis sits 42.6
-% degrees from the free-window axis was a units error - it is 1.7 degrees
-% median, 8.8 at p90 - so the assumption is mild at Ridge A.) Where the
-% held and free products differ in strength, the axis assumption is not
-% what does it: over Ridge A's 36 frames the two modes' block dlam agree
-% within 1% (survey medians 0.0524 free, 0.0528 held), and the large gaps
-% at Taylor Dome, Eastwind and McMurdo came
-% from sub-bed windows capturing the held axis (see SUB-BED WINDOWS in
+% constant eigenframe, an assumption that is MILD where it has been
+% measured: at Ridge A the held axis sits 1.7 degrees median (8.8 at p90)
+% from the free-window axis - an earlier claim here of 42.6 degrees was a
+% units error - and over its 36 frames the two modes' block dlam agree
+% within 1% (survey medians 0.0524 free, 0.0528 held). Where the held and
+% free products differ in strength, the axis assumption is not what does
+% it: the large gaps at Taylor Dome, Eastwind and McMurdo came from
+% sub-bed windows capturing the held axis (see SUB-BED WINDOWS in
 % ptt.quadpolFabricLS). Compare this estimator's strength with a free-axis
 % one only on above-bed ice.
 %

@@ -26,7 +26,10 @@
 %      likewise gives all-NaN with the reason - never a bed bound by
 %      position. Traces that all lie beyond max_match_m of every pick get
 %      all-NaN with the reason AND an empty source, so the pipeline's log
-%      and its saved bed_source agree that no bed was applied.
+%      and its saved bed_source agree that no bed was applied. A file whose
+%      only bottom-named layer is a DEM (surface_dem / bottom_dem) is
+%      refused too: a DEM is a model, not a radar pick, as the bed
+%      producer's NOT_A_PICK rules.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_bed_from_layer.m')"
 clear;
@@ -113,14 +116,22 @@ save(fullfile(segdir, sprintf('Data_%s_003.mat', seg)), 'twtt', 'lat', 'lon', 'g
 [zb6, info6] = bed_from_layer(root, seg, 3, tlat, tlon, surf_t);
 [zb7, info7] = bed_from_layer(root, seg, 4, tlat, tlon, surf_t);
 [zb9, info9] = bed_from_layer(root, seg, 2, tlat_off, tlon, surf_t);
+twtt = [tw_dem; tw_bot]; %#ok<NASGU>             % a DEM under a DEM name, no pick
+save(fullfile(segdir, sprintf('Data_%s_005.mat', seg)), 'twtt', 'lat', 'lon', 'gps_time');
+lyr_name = {'surface_dem', 'bottom_dem'}; lyr_id = 1:2; %#ok<NASGU>
+save(fullfile(segdir, sprintf('layer_%s.mat', seg)), 'lyr_name', 'lyr_id');
+[zb10, info10] = bed_from_layer(root, seg, 5, tlat, tlon, surf_t);
 delete(fullfile(segdir, sprintf('layer_%s.mat', seg)));
 [zb8, info8] = bed_from_layer(root, seg, 2, tlat, tlon, surf_t);
 ok6 = all(isnan(zb6)) && isempty(info6.source) && ~isempty(info6.reason) ...
   && all(isnan(zb7)) && ~isempty(info7.reason) && all(isnan(zb8)) && ~isempty(info8.reason) ...
-  && all(isnan(zb9)) && isempty(info9.source) && ~isempty(info9.reason);
+  && all(isnan(zb9)) && isempty(info9.source) && ~isempty(info9.reason) ...
+  && all(isnan(zb10)) && isempty(info10.source) && ~isempty(info10.reason);
 fprintf(['6. transposed twtt -> "%s";\n   no layer file -> "%s";\n' ...
-  '   no catalogue -> "%s";\n   no trace near a pick -> "%s" (source "%s"): %s\n'], ...
-  info6.reason, info7.reason, info8.reason, info9.reason, info9.source, H_tick(ok6));
+  '   no catalogue -> "%s";\n   no trace near a pick -> "%s" (source "%s");\n' ...
+  '   only a DEM bottom -> "%s" (source "%s"): %s\n'], ...
+  info6.reason, info7.reason, info8.reason, info9.reason, info9.source, ...
+  info10.reason, info10.source, H_tick(ok6));
 fails = fails + ~ok6;
 
 fprintf('\n%s (%.1f s)\n', H_tick(fails == 0), toc(t0));

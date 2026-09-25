@@ -24,7 +24,8 @@ function [z_bed, info] = bed_from_layer(site_root, day_seg, frm, la, lo, surf_t)
 % established (bottom_mc runs a median 44.6 m shallow of the polarimetric
 % picks and ranks last): the per-trace median of the bottom_HH/VV/HV/VH
 % picks the file carries; then `bottom`; then `bottom_mc`; then a uniquely
-% bottom-named layer. A frame whose layers cannot be named, whose file is
+% bottom-named layer that is not a DEM (a model, not a radar pick - the
+% producer's NOT_A_PICK). A frame whose layers cannot be named, whose file is
 % in another layout, or with no layer file at all, returns all NaN and says
 % so in info - not masking is recoverable, masking ice away is not.
 %
@@ -147,6 +148,6 @@ for want = {'bottom', 'bottom_mc'}
   i = find(strcmp(names, want{1}));
   if isscalar(i), tw = tw_all(i, :); src = want{1}; return; end
 end
-i = find(contains(names, 'bottom'));
+i = find(contains(names, 'bottom') & ~contains(names, 'dem'));
 if isscalar(i), tw = tw_all(i, :); src = names{i}; end
 end
