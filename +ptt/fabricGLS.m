@@ -145,7 +145,6 @@ z_mid = z_layer + [diff(z_layer); max(z)-z_layer(end)]/2;
 
 % --- parameter vector and its prior
 ip = struct('th', 1:nL, 'dl', nL+(1:nL), 'rd', 2*nL+(1:nL));
-np = 3*nL;
 m_p = [th_pr(1)*ones(nL,1); dl_pr(1)*ones(nL,1); rd_pr(1)*ones(nL,1)];
 Cm = blkdiag(H_gp(z_mid, th_pr(2), th_pr(3)), ...
              H_gp(z_mid, dl_pr(2), dl_pr(3)), ...
@@ -330,7 +329,7 @@ lay = struct('top_m', num2cell(z_layer), ...
 M = ptt.fujitaModel(lay, z, psi, fwd_opts);
 end
 
-function [d, sd, idx, is_ph] = H_pack(obs, use, nlook, Nz, Np, clip_db)
+function [d, sd, idx, is_ph] = H_pack(obs, use, nlook, ~, ~, clip_db)
 d = []; sd = []; idx = struct(); is_ph = [];
 % dB variance of a log-power from N independent looks: the log of a
 % Gamma(N) variable has variance psi'(N), and 10/ln10 converts to dB.
