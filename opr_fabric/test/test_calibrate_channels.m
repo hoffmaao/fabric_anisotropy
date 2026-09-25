@@ -24,7 +24,10 @@
 %      Ridge A family split); calibrated, they agree within 1.5 deg, and
 %      the LS pedestal's a3 falls to within 0.05 of the true-moment value.
 %   4. A PINNED PHASE is honoured: opts.phase_ab overrides the firn
-%      intercept and is echoed back with the flag set.
+%      intercept and is echoed back with the flag set; and the same phase
+%      given a turn away (315 deg for -45) gives the same gains to 1e-9,
+%      on the branch in phase with H, not the (-a, -b) one that would
+%      mirror every axis.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_calibrate_channels.m')"
 clear;
@@ -93,9 +96,12 @@ for gi = 1:2
 
   if gi == 1
     [~, gp, ip] = ptt.calibrateChannels(M, z, struct('phase_ab', deg2rad(-45)));
+    [~, gw] = ptt.calibrateChannels(M, z, struct('phase_ab', deg2rad(315)));
     ok4 = ip.phase_ab_pinned && abs(ip.phase_ab_deg + 45) < 1e-9 ...
-      && abs(rad2deg(angle(gp(2))) + 45) < 1e-6;
-    fprintf('4. a pinned co-pol phase is applied and echoed: %s\n', H_tick(ok4));
+      && abs(rad2deg(angle(gp(2))) + 45) < 1e-6 && max(abs(gw - gp)) < 1e-9 ...
+      && real(gp(3) / abs(gp(3)) + gp(4) / abs(gp(4))) > 0;
+    fprintf('4. a pinned co-pol phase is applied and echoed, a turn away gives the same gains (%.1e): %s\n', ...
+      max(abs(gw - gp)), H_tick(ok4));
     fails = fails + ~ok4;
   end
 end

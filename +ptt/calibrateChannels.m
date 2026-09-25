@@ -50,6 +50,20 @@ function [Mc, g, info] = calibrateChannels(M, z, opts)
 %   least certain (see info.phase_fit) and the one the crossing-pair
 %   test is there to check.
 %
+% THE SIGN OF a AND b. The four constraints fix ab and a/b, and so a and
+% b only up to a COMMON sign: (-a, -b) has the same ab and a/b. The two
+% branches are not equivalent. Negating both negates HV and VH against the
+% co-pol channels, which mirrors every synthesised azimuth (psi -> -psi)
+% and with it every antenna-frame axis, and no moment can tell them apart
+% because a mirrored column is also a column. The branch taken is the one
+% in which the V chains are, on average, in phase with the H chain -
+% Re(a/|a| + b/|b|) >= 0 - which keeps the handedness the uncalibrated
+% synthesis has always used, the one the Ridge A heading test validated
+% (one geographic axis across five heading families). For this system
+% (arg a - arg b = +111, arg ab = -45 deg) that is arg a = +33, arg b = -78
+% rather than -147 and +102. A wrong branch would show as a mirrored axis
+% between heading families, which the heading test would catch.
+%
 % WHY THIS MATTERS. Uncalibrated, the -3.6 dB cross-pol pedestal that
 % antenna-locks every power-based axis estimate on this system is mostly
 % these gains: on the same Ridge A moments the synthesised cross-pol null
@@ -79,7 +93,8 @@ function [Mc, g, info] = calibrateChannels(M, z, opts)
 %
 % Outputs
 %   Mc    the calibrated moments, M_kl / (g_k conj(g_l))
-%   g     [1 x 4] complex gains [1, ab, a, b] that were divided out
+%   g     [1 x 4] complex gains [1, ab, a, b] that were divided out, on
+%         the branch THE SIGN OF a AND b names
 %   info  a_db, b_db (20log10 of the moduli), arg_a_deg, arg_b_deg,
 %         xpol_phase_deg (arg a - arg b, from reciprocity), xpol_coh (the
 %         HV-VH coherence it was read from), firn_db (10log10 of the
@@ -136,7 +151,8 @@ w = abs(cf).^2;
 [fit_int, fit_dl, fit_mu, rms] = H_firn_phase(cf, zf, w, gpd);
 ph = unwrap(angle(cf));
 A = [ones(size(zf)), zf];
-coef = (A .* w) \ (ph .* w);
+sw = sqrt(w);                            % weighted LS: residuals weighted by w
+coef = (A .* sw) \ (ph .* sw);
 line_int = coef(1);
 if isempty(phase_ab)
   ab_arg = -fit_int;                     % measured = true - arg(ab), true -> 0 at z = 0
@@ -144,9 +160,14 @@ else
   ab_arg = phase_ab;
 end
 
-% --- assemble a and b
+% --- assemble a and b, on the branch in phase with H (see THE SIGN OF a
+% AND b): the half-angle split fixes the pair only up to adding pi to both
 am = sqrt(abm / ba); bm = sqrt(abm * ba);
 arg_a = (ab_arg + dphi) / 2; arg_b = (ab_arg - dphi) / 2;
+if cos(arg_a) + cos(arg_b) < 0
+  arg_a = arg_a + pi; arg_b = arg_b + pi;
+end
+arg_a = angle(exp(1i * arg_a)); arg_b = angle(exp(1i * arg_b));
 a = am * exp(1i * arg_a); b = bm * exp(1i * arg_b);
 g = [1, a * b, a, b];
 
@@ -164,7 +185,7 @@ info = struct('a_db', 20*log10(am), 'b_db', 20*log10(bm), ...
   'phase_fit', struct('z', zf, 'phase_deg', rad2deg(ph), ...
     'intercept_deg', rad2deg(fit_int), 'dlam', fit_dl, 'mu', fit_mu, ...
     'rms_deg', rad2deg(rms), 'line_intercept_deg', rad2deg(line_int)), ...
-  'phase_ab_deg', rad2deg(ab_arg), 'phase_ab_pinned', ~isempty(phase_ab), ...
+  'phase_ab_deg', rad2deg(angle(exp(1i * ab_arg))), 'phase_ab_pinned', ~isempty(phase_ab), ...
   'firn_m', firn, 'recip_m', recip, 'g', g);
 end
 
