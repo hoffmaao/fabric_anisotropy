@@ -210,7 +210,9 @@ units).
     HV/VH leakage once per system at the channel level and correct
     BEFORE synthesis, removing the pedestal at its source; the per-frame
     ls_pedestal record and the crossing-pair test (paired same-ice
-    difference -> 0) are its inputs and acceptance criterion.
+    difference -> 0) are its inputs and acceptance criterion. The
+    estimator is `ptt.calibrateChannels` (issue #23, below); the
+    pipeline does not call it yet.
     RULED OUT as the cause: the 0/180 heading-wrap interpolation bug
     fixed in 0e793d5 lived exactly on the N-S family, so all 17 N-S and
     curved Ridge A frames were reswept with the fixed code, and all 17

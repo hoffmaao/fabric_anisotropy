@@ -101,7 +101,7 @@ function [Mc, g, info] = calibrateChannels(M, z, opts)
 %         firn VV/HH power ratio), phase_fit (struct: z, phase_deg, the
 %         fit's intercept_deg, its dlam and mu, its rms_deg, and the
 %         straight line's intercept_deg for comparison), and
-%         phase_ab_deg as applied
+%         phase_ab_deg as applied, wrapped to (-180, 180]
 %
 % See also ptt.equaliseChannels, ptt.quadpolMoments, ptt.quadpolFabricLS.
 
