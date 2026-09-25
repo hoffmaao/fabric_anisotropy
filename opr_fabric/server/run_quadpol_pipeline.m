@@ -618,6 +618,29 @@ kr = ones(NRW,1)/NRW;
 % so they are defined once here rather than after the first use.
 la = P.Latitude(:); lo = P.Longitude(:);
 
+%% 2e. where the ice ends, per trace
+% The record runs to z_max at every site and the ice does not: Eastwind and
+% McMurdo end near 225-270 m, Taylor Dome varies 567-996 m inside single
+% frames. Below the bed the channels are not noise but coherent bed and
+% basal returns, which the fabric model reads as fabric with an axis of
+% its own - measured 23 Sep 2026, 95% of the windows voting on the held
+% axis at Eastwind and McMurdo and 35% at Taylor Dome lay below the bed,
+% and the held axes landed a median 51 / 41 / 9 deg off the ice above it
+% (see SUB-BED WINDOWS in ptt.quadpolFabricLS). So the bed is read here
+% from the season's CSARP_layer picks, per trace, on this run's own depth
+% axis, and everything below it is masked before any estimator sees it
+% (section 3d). A frame with no picks runs whole, and the log says so:
+% not masking is recoverable, masking ice away is not.
+BED_MARGIN_M = 20;
+[z_bed, bed_info] = bed_from_layer(site_root, day_seg, frm, la, lo, st);
+if any(isfinite(z_bed))
+  fprintf('bed: %s from %s; %d of %d traces matched a pick (%d picks), %d more across gaps; depth %.0f-%.0f m, median %.0f\n', ...
+    bed_info.source, bed_info.file, bed_info.n_matched, Nx, bed_info.n_picks, ...
+    bed_info.n_filled, min(z_bed), max(z_bed), median(z_bed, 'omitnan'));
+else
+  fprintf('bed: none - %s; the record runs whole to %.0f m\n', bed_info.reason, Z_MAX);
+end
+
 % --- BLOCK SIZE IS A LENGTH, AND IS SET FOR EVERY SEASON.
 % A section block must cover the same ice everywhere or block-level
 % quantities are not comparable between surveys. 125 traces is ~125 m only
@@ -774,6 +797,25 @@ if exist('coreg_only', 'var') && isequal(coreg_only, true)
   return;
 end
 
+%% 3d. blank the record below the bed, after the cache and the coherences
+% The coreg cache stays whole (it is estimator-independent and the mask is
+% a per-run choice), and the before/after coherences above were measured
+% on the whole record as they always were. From here on every estimator
+% sees NaN below each trace's own bed less the margin: ptt.quadpolMoments
+% averages traces with 'omitnan', so a moment at depth z is formed only
+% from the traces whose ice reaches z, and a depth no trace reaches is NaN
+% through every chain. The UNCOREGISTERED record S is masked the same way,
+% so the raw Ershadi chain below, the coreg-vs-raw console comparison and
+% the saved theta_raw / dlam_raw are formed on the same ice as the
+% coregistered chain rather than on the bed return it no longer sees.
+if any(isfinite(z_bed))
+  n_before = nnz(isfinite(T.hh));
+  T = ptt.maskBelowBed(T, z, z_bed, BED_MARGIN_M);
+  S = ptt.maskBelowBed(S, z, z_bed, BED_MARGIN_M);
+  fprintf('bed mask: %.1f%% of the record blanked below the bed less %d m\n', ...
+    100 * (1 - nnz(isfinite(T.hh)) / max(n_before, 1)), BED_MARGIN_M);
+end
+
 %% 4. inversion, on the coregistered channels
 t0 = tic;
 out = ptt.ershadiFabric(T, z, struct('fc', FC, 'psi_step_deg', PSI_STEP_DEG, ...
@@ -860,7 +902,8 @@ NBLK_ROT = 200;
 fp = ptt.quadpolFrameTheta(T, z, az_tr, x_along, struct('fc', FC, ...
   'deramped', true, 'dlam_max', DLAM_MAX, 'seg_len_m', SEG_LEN_M, ...
   'nblk_rot', NBLK_ROT, 'track_az', track_az, ...
-  'theta_const', THETA_CONST, 'jackknife', true));
+  'theta_const', THETA_CONST, 'jackknife', true, ...
+  'z_bed', z_bed, 'bed_margin_m', BED_MARGIN_M));
 lsq = fp.lsq;
 curved = fp.curved;
 hspread = fp.hspread;
@@ -932,9 +975,13 @@ sec_resid_ls = nan(numel(z), nb);
 % so each block is refit on its two halves with the same held axis and
 % pedestal; half the difference of two independent half-block estimates
 % is one draw of the full block's error (var_full = var(diff)/4). The
-% per-block draw is saved raw, and a pooled sigma is formed below.
+% per-block draw is saved raw, and a pooled sigma is formed below. The
+% rate is signed at a held axis (ptt.quadpolFabricLS), so two halves that
+% both see no fabric scatter about zero rather than both clamping to it
+% and reporting a zero difference.
 sec_dlam_ls_hdiff = nan(numel(z), nb);
 sec_lat = nan(1, nb); sec_lon = nan(1, nb); sec_az = nan(1, nb);
+sec_bed = nan(1, nb);      % the block's median bed pick [m], NaN if none
 for b = 1:nb
   j0 = (b-1)*NBLK_TR + 1;
   j1 = min(b*NBLK_TR, Nx);
@@ -989,6 +1036,7 @@ for b = 1:nb
     sec_dlam_ls_hdiff(:, b) = dh(:, 1) - dh(:, 2);
     clear Th oh;
   end
+  sec_bed(b) = median(z_bed(j0:j1), 'omitnan');
   sec_lat(b) = mean(la(j0:j1));
   sec_lon(b) = mean(lo(j0:j1));
   p0b = deg2rad(la(j0)); p1b = deg2rad(la(j1));
@@ -1096,6 +1144,8 @@ res = struct('tag', sprintf('%s_%03d', day_seg, frm), ...
   'sec_dlam', single(sec_dlam(s,:)), 'sec_theta', single(sec_theta(s,:)), ...
   'sec_cmag', single(sec_cmag(s,:)), 'sec_lat', sec_lat, ...
   'sec_lon', sec_lon, 'sec_az', sec_az, 'nblk_tr', NBLK_TR, ...
+  'sec_bed', sec_bed, 'bed_source', bed_info.source, ...
+  'bed_margin_m', BED_MARGIN_M, ...
   'row_med', cinfo.row_med, 'coh_before', coh_before, ...
   'coh_after', coh_after, 'pairs', {pairs}, ...
   'lat', median(la), 'lon', median(lo), ...

@@ -55,7 +55,18 @@ function out = ershadiFabric(S, z, opts)
 % printed form is most likely a typesetting loss of the radical.
 %
 % Inputs
-%   S     struct of complex [Nt x Nx] channels hh, vv, hv (vh optional)
+%   S     struct of complex [Nt x Nx] channels hh, vv, hv (vh optional).
+%         A trace may be NaN below its own bed (ptt.maskBelowBed); a row
+%         whose moments are then not finite - every trace blanked - is NOT
+%         ice and ABSTAINS: theta, dlam, Cmag, phi, dP_hh and dP_hv are NaN
+%         there, the orientation search never sees it, and the depth
+%         kernels (coherence window, gradient) treat it as absent - zero
+%         weight in every sum, and both observables are ratios in which
+%         the window's finite-row count cancels - so the ice above keeps
+%         its own value rather than inheriting NaN from below, with the
+%         same one-sided-kernel edge behaviour the record's own top has
+%         (dlam reads low within ~2 sigma of either). With no such row
+%         every output is bit-identical to the unmasked chain.
 %   z     [Nt x 1] depth of each row [m]
 %   opts  fc (750e6), psi_step_deg (1), win_m (coherence window, 30),
 %         grad_win_m (Gaussian sigma for the gradient, 25),
@@ -107,14 +118,23 @@ for j = 1:Np
   Chhvv(:, j) = H_quad(M, w_hh, w_vv);
 end
 
+% --- rows with no finite moment (every trace blanked there) abstain from
+% everything below; a row is either whole or absent
+fin = all(isfinite(Phh) & isfinite(Pvv) & isfinite(Phv) & isfinite(Chhvv), 2);
+Phh(~fin, :) = 0; Pvv(~fin, :) = 0; Phv(~fin, :) = 0; Chhvv(~fin, :) = 0;
+
 % --- (E4) power anomalies, eq. (12): dB against the azimuthal mean of the
 % AMPLITUDE, so the reference is mean|s| and not mean|s|^2
 A_hh = sqrt(max(Phh, 0));
 A_hv = sqrt(max(Phv, 0));
 dP_hh = 20*log10(max(A_hh, realmin) ./ max(mean(A_hh, 2), realmin));
 dP_hv = 20*log10(max(A_hv, realmin) ./ max(mean(A_hv, 2), realmin));
+dP_hh(~fin, :) = NaN;
+dP_hv(~fin, :) = NaN;
 
-% --- coherence over a depth window, eq. (7), then (E2) the deramp conjugate
+% --- coherence over a depth window, eq. (7), then (E2) the deramp conjugate.
+% Absent rows are zero in numerator and denominator alike, so the ratio is
+% the coherence over the finite rows in the window with no normaliser.
 nw = max(3, 2*floor(win_m / max(dz, eps) / 2) + 1);
 k = ones(nw, 1) / nw;
 num = conv2(real(Chhvv), k, 'same') + 1i*conv2(imag(Chhvv), k, 'same');
@@ -123,19 +143,25 @@ Cn = num ./ max(den, realmin);
 if deramped
   Cn = conj(Cn);
 end
+Cn(~fin, :) = NaN;
 Cmag = abs(Cn);
 phi = angle(Cn);
 
 % --- (E3) unwrap-free gradient: convolve the real and imaginary parts,
-% then dphi/dz = Im(conj(C) dC/dz)/|C|^2
+% then dphi/dz = Im(conj(C) dC/dz)/|C|^2. Absent rows enter both sums as
+% zero, exactly as the rows beyond the record's ends always have; a
+% normaliser over the finite rows would be a real positive factor common
+% to Cs and dC and drops out of the ratio, so none is applied.
 ns = max(3, 2*ceil(3 * grad_win_m / max(dz, eps)) + 1);
 x = (-(ns-1)/2:(ns-1)/2).' * dz;
 sig = max(grad_win_m, dz);
 g = exp(-0.5*(x/sig).^2); g = g / sum(g);
 dg = -(x./sig.^2) .* g; dg = dg - mean(dg);      % zero-sum derivative kernel
-Cs = conv2(real(Cn), g, 'same') + 1i*conv2(imag(Cn), g, 'same');
-dC = conv2(real(Cn), dg, 'same') + 1i*conv2(imag(Cn), dg, 'same');
+Cz = Cn; Cz(~fin, :) = 0;
+Cs = conv2(real(Cz), g, 'same') + 1i*conv2(imag(Cz), g, 'same');
+dC = conv2(real(Cz), dg, 'same') + 1i*conv2(imag(Cz), dg, 'same');
 dphi = imag(conj(Cs) .* dC) ./ max(abs(Cs).^2, realmin);
+dphi(~fin, :) = NaN;
 
 % --- eq. (9)/(10) with the square-root form
 psi_grad = (c0 * sqrt(eps_perp) / (2*pi*fc*deps)) * dphi;
@@ -156,7 +182,8 @@ phi(bad) = NaN;
 
 % --- orientation: minimum of dP_hv, which has period 90 deg, then the
 % polarity of phi at that azimuth to choose between the two axes
-[~, imin] = min(dP_hv, [], 2);
+theta = nan(Nt, 1);
+[~, imin] = min(dP_hv(fin, :), [], 2);
 % NEGATED. The sweep is built with the paper's R S R' sense, which is the
 % inverse rotation to ptt.rotatePolarization's R' S R, so the sweep index
 % that aligns with the fabric sits at MINUS the physical azimuth. Reporting
@@ -166,10 +193,10 @@ phi(bad) = NaN;
 % sign convention hides until it is tested off the symmetry points. The
 % printed equation cannot settle this on its own, because it turns on how
 % R is defined; the synthetic does.
-theta = mod(-psi(imin).', pi);
+theta(fin) = mod(-psi(imin).', pi);
 theta_quality = max(dP_hv, [], 2) - min(dP_hv, [], 2);   % dB modulation
-lin = sub2ind([Nt Np], (1:Nt).', imin);
-dl_at = psi_grad(lin);
+dl_at = nan(Nt, 1);
+dl_at(fin) = psi_grad(sub2ind([Nt Np], find(fin), imin));
 % Eq. (10) evaluates Psi at the principal axes; the axis carrying lam_max
 % is the one where Psi is positive, so a negative value means the minimum
 % found was the other axis and theta moves by 90 deg.

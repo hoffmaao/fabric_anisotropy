@@ -70,7 +70,30 @@ function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 %            theta_const (false; true holds ONE axis per segment, constant
 %            in depth - see below),
 %            jackknife (false; true adds sub-block jackknife standard
-%            errors per segment, see ptt.quadpolJackknife)
+%            errors per segment, see ptt.quadpolJackknife),
+%            z_bed ([] = no bed known; else [Nx] per-trace bed depth [m],
+%            NaN where unpicked) and bed_margin_m (20): every trace is
+%            blanked below its own bed less the margin (ptt.maskBelowBed),
+%            so each moment averages only traces still in ice at that
+%            depth, and a window is fitted only where at least HALF the
+%            traces of its pass (the frame, or the segment) are still in
+%            ice at the window's bottom edge (ptt.quadpolFabricLS z_valid
+%            at the median bed). The two together follow a bed that varies
+%            along the line - 567-996 m inside one Taylor Dome frame, 42-
+%            300 m on one Eastwind line - which no single depth cut can:
+%            a 5th-percentile cut, tried first, left an Eastwind frame no
+%            window at all (p5 79 m against a 224 m median). Without a bed
+%            the record's coherent sub-bed returns vote on the held axis
+%            and feed the pedestal median as if they were ice - see
+%            SUB-BED WINDOWS in ptt.quadpolFabricLS.
+%            A pass's windows at or below its own z_valid are NOT ice and
+%            are never filled: th_seg stays NaN and q_seg 0 there in both
+%            modes, neither borrowed from a live neighbouring segment nor
+%            taken from the frame profile (a held segment's axis below
+%            its bed would otherwise be its neighbour's, and a block that
+%            clamps to that segment would inherit a depth-varying axis
+%            the constant model never asserted). The two fallbacks apply
+%            only to dead windows ABOVE the pass's z_valid.
 %
 % Output struct fp
 %   zw        [Nw x 1] window centres
@@ -79,8 +102,10 @@ function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 %   q_frame   [Nw x 1] its q_theta weights (0 where dead)
 %   th_seg    [Nw x Nseg] smoothed geographic profile per segment; every
 %             finite value is usable, NaN only where even the frame
-%             profile is dead
-%   q_seg     [Nw x Nseg] weights (0 where the segment fell back)
+%             profile is dead or the window is at or below the segment's
+%             own z_valid (never filled, see opts.z_bed)
+%   q_seg     [Nw x Nseg] weights (0 where the segment fell back or the
+%             window is at or below its z_valid)
 %   dlam_seg  [Nw x Nseg] per-segment dlam (diagnostic; blocks still fit
 %             their own)
 %   resid_seg [Nw x Nseg]
@@ -170,6 +195,25 @@ Nx = size(T.hh, 2);
 az_tr = az_tr(:).';
 x_along = x_along(:).';
 
+% --- where the ice ends. Every frame-level pass stops at the frame's bed,
+% and each segment below at its own.
+Z_BED = H_opt(opts, 'z_bed', []);
+BED_MARGIN = H_opt(opts, 'bed_margin_m', 20);
+if ~isempty(Z_BED)
+  Z_BED = Z_BED(:).';
+  if numel(Z_BED) ~= Nx
+    error('ptt:quadpolFrameTheta:zBed', ...
+      'opts.z_bed has %d entries for %d traces', numel(Z_BED), Nx);
+  end
+  % idempotent: a caller that already masked (the pipeline does, for its
+  % section blocks) loses nothing by this second pass
+  T = ptt.maskBelowBed(T, z, Z_BED, BED_MARGIN);
+end
+zv_frame = H_zvalid(Z_BED, 1:Nx, BED_MARGIN, Inf);
+base.z_valid = zv_frame;
+fbase.z_valid = zv_frame;
+segbase.z_valid = zv_frame;
+
 % --- heading statistics on the doubled-angle phasor
 az0 = mod(rad2deg(angle(mean(exp(2i*deg2rad(az_tr)))))/2, 180);
 if isempty(track_az), track_az = az0; end
@@ -217,22 +261,28 @@ else
 end
 zw = lsq.zw;
 Nw = numel(zw);
+half = lsq.win_half;
 % A HELD column needs no depth smoothing - the profile is one number - and
 % must not get any: the kernel's weight threshold would drop windows from
 % a profile that is constant by construction. Its weight is the pooled
-% contrast, uniform in depth, so the handoff interpolation between
-% segments stays depth-independent too (a depth-varying weight would turn
-% two constant neighbours into a depth-varying blend). A column whose vote
-% failed (theta_const NaN) fell back to per-window axes inside the
-% estimator and is treated as such here.
+% contrast, uniform over the windows that were fitted, so the handoff
+% interpolation between segments stays depth-independent too (a
+% depth-varying weight would turn two constant neighbours into a
+% depth-varying blend); a window the column never fitted (below z_valid)
+% carries no axis and so no weight. A column whose vote failed
+% (theta_const NaN) fell back to per-window axes inside the estimator and
+% is treated as such here.
 th_spread_frame = NaN;
 if isfield(lsq, 'theta_spread_deg'), th_spread_frame = lsq.theta_spread_deg; end
 if TH_CONST && isfinite(lsq.theta_const)
   th_frame = th_geo_raw(:);
-  q_frame = lsq.theta_const_q * ones(Nw, 1);
+  q_frame = lsq.theta_const_q * double(isfinite(th_frame));
 else
   [th_frame, q_frame] = H_smooth_profile(th_geo_raw, lsq.q_theta);
 end
+sub_frame = zw(:) + half > zv_frame;
+th_frame(sub_frame) = NaN;
+q_frame(sub_frame) = 0;
 
 % --- segmentation in along-track distance
 span = x_along(end) - x_along(1);
@@ -300,14 +350,17 @@ se_theta_r = nan(Nw, nseg);
 se_theta_sat = false(Nw, nseg);
 jack_n = zeros(1, nseg);
 jack_edge = zeros(1, nseg);
+zv_seg = inf(1, nseg);
 for s = 1:nseg
   js = find(x_along >= xb(s) & (x_along < xb(s+1) | s == nseg));
   seg_n(s) = numel(js);
   seg_x(s) = (xb(s) + xb(s+1)) / 2;
+  zv_seg(s) = H_zvalid(Z_BED, js, BED_MARGIN, zv_frame);
   if numel(js) < 32, continue; end
   [Mg, Msub, nsub] = H_geo_moments(T, az_tr, js, NBLK_ROT, CHAN);
   if isempty(Mg), continue; end
   os = segbase;   % carries theta_const: one axis per SEGMENT, constant in depth
+  os.z_valid = zv_seg(s);
   os.pedestal = H_ped_field(ped_ant, az_tr, js, PSI_FIT);
   o = ptt.quadpolFabricLS(struct('M', Mg), z, os);
   if nnz(isfinite(o.theta0)) < MIN_SEG_W, continue; end
@@ -316,7 +369,7 @@ for s = 1:nseg
   held_seg(s) = TH_CONST && isfinite(o.theta_const);
   if held_seg(s)
     % one axis, one weight (the pooled contrast) - see the frame profile
-    q_raw(:, s) = o.theta_const_q;
+    q_raw(:, s) = o.theta_const_q * double(isfinite(o.theta0));
   else
     qs = o.q_theta;
     qs(~isfinite(qs) | qs < 0) = 0;
@@ -354,21 +407,26 @@ for s = 1:nseg
     [th_seg(:, s), q_seg(:, s)] = H_smooth_profile(th_raw(:, s), q_raw(:, s));
   end
 end
+% windows at or below the segment's own z_valid are not ice: no axis, no
+% weight, and excluded from both fallbacks below
+sub_seg = zw(:) + half > zv_seg;
+th_seg(sub_seg) = NaN;
+q_seg(sub_seg) = 0;
 % fallback, two levels, value-only (weight stays 0 so the handoff
-% interpolation cannot be dragged): a dead segment window first BORROWS
-% the q-weighted phasor mean of the segments that are alive at that
-% window - the axis field is the slowly-varying quantity, and a live
-% neighbour beats any dead pooled fit - and only where no segment is
-% alive does the frame profile fill in
+% interpolation cannot be dragged): a dead segment window ABOVE its
+% z_valid first BORROWS the q-weighted phasor mean of the segments that
+% are alive at that window - the axis field is the slowly-varying
+% quantity, and a live neighbour beats any dead pooled fit - and only
+% where no segment is alive does the frame profile fill in
 dead = ~(q_seg > 0);
 ph_mat = q_seg .* exp(2i*th_seg);
 ph_mat(dead | ~isfinite(ph_mat)) = 0;
 ph_row = sum(ph_mat, 2);
 w_row = sum(q_seg .* ~dead, 2);
-borrow = dead & repmat(w_row > 0, 1, nseg);
+borrow = dead & ~sub_seg & repmat(w_row > 0, 1, nseg);
 thb = repmat(0.5 * angle(ph_row), 1, nseg);
 th_seg(borrow) = thb(borrow);
-fb = dead & ~borrow & repmat(isfinite(th_frame(:)), 1, nseg);
+fb = dead & ~borrow & ~sub_seg & repmat(isfinite(th_frame(:)), 1, nseg);
 thf = repmat(th_frame(:), 1, nseg);
 th_seg(fb) = thf(fb);
 
@@ -425,8 +483,13 @@ function [Mg, Msub, nsub] = H_geo_moments(T, az_tr, js, nblk_rot, chan)
 % are skipped (too few for a moment average worth rotating). The
 % sub-block moments and their trace counts are returned too - they are
 % the jackknife's resampling units, and Mg is exactly their weighted mean.
+% The counts are PER DEPTH, [Nt x n]: where traces are blanked below the
+% bed (ptt.maskBelowBed) a sub-block contributes only the traces still in
+% ice at each depth, and a depth with none carries no weight rather than
+% turning the pooled moment NaN. Unmasked, every column is constant and
+% the pooling is the plain trace-count mean it always was.
 Mg = [];
-wsum = 0;
+wsum = [];
 Msub = {};
 nsub = [];
 for jr = 1:nblk_rot:numel(js)
@@ -438,13 +501,18 @@ for jr = 1:nblk_rot:numel(js)
   Mb = ptt.quadpolMoments(Sb, [1 numel(jj)]);
   hb = mod(rad2deg(angle(mean(exp(2i*deg2rad(az_tr(jj))))))/2, 180);
   Mr = ptt.rotateMoments(Mb, -deg2rad(hb));
-  if isempty(Mg), Mg = zeros(size(Mr)); end
-  Mg = Mg + Mr * numel(jj);
-  wsum = wsum + numel(jj);
+  cnt = sum(isfinite(Sb.(chan{1})), 2);        % traces in ice, per depth
+  Mz = Mr;
+  Mz(~isfinite(Mz)) = 0;
+  if isempty(Mg), Mg = zeros(size(Mr)); wsum = zeros(size(cnt)); end
+  Mg = Mg + Mz .* cnt;
+  wsum = wsum + cnt;
   Msub{end+1} = Mr; %#ok<AGROW>
-  nsub(end+1) = numel(jj); %#ok<AGROW>
+  nsub(:, end+1) = cnt; %#ok<AGROW>
 end
-if wsum > 0, Mg = Mg / wsum; end
+if ~isempty(wsum)
+  Mg = Mg ./ wsum;                             % 0/0 -> NaN where no ice
+end
 end
 
 function pfld = H_ped_field(ped_ant, az_tr, js, psi_fit)
@@ -457,4 +525,17 @@ c4h = real(mh4); s4h = imag(mh4);
 pfld = (ped_ant(1) + 1i*ped_ant(2)) ...
   * (c2h*sin(2*psi_fit(:)) - s2h*cos(2*psi_fit(:))) ...
   + ped_ant(3) * (0.5 - 0.5*(c4h*cos(4*psi_fit(:)) + s4h*sin(4*psi_fit(:))));
+end
+
+function zv = H_zvalid(z_bed, js, margin, fallback)
+% The deepest window bottom at which at least half of traces js are still in
+% ice: their MEDIAN picked bed, less the margin. Unpicked traces count as
+% ice (they are not masked either); with no pick at all the caller's
+% fallback stands (Inf when no bed is known).
+zv = fallback;
+if isempty(z_bed), return; end
+b = z_bed(js);
+if ~any(isfinite(b)), return; end
+b(~isfinite(b)) = Inf;
+zv = median(b) - margin;
 end

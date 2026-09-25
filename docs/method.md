@@ -204,8 +204,18 @@ units).
     sliding depth window (theta0, delta0, ddelta/dz, plus a closed-form
     coherence scale), so the axis comes from the coherence field the
     co-pol channels dominate, the nulls are modelled rather than gated,
-    dlam is signed with no folded-noise floor, and theta0 abstains where
-    the birefringence is unresolvable. Two-pass use: a frame theta0
+    dlam carries no folded-noise floor, and theta0 abstains where the
+    birefringence is unresolvable. Where the axis is NAMED - the blocks,
+    constant mode, the split-half and jackknife refits - the rate is
+    signed (issue #27): a weak depth scatters about zero instead of piling
+    onto it (17-41% of the held Taylor Dome block cells had sat at exactly
+    0), and an axis a quarter turn off reads its contrast negated rather
+    than "no fabric"; a free search over the whole half turn keeps the
+    rate >= 0, which is what fixes its axis convention. A median or mean
+    of signed rates mixes the two eigen-directions - on the thin-ice
+    products the Eastwind held block median falls from 0.024 clamped to
+    0.012 signed while the median magnitude is 0.048 - so read the
+    magnitude and the sign, not a summary of the signed values. Two-pass use: a frame theta0
     pass, laterally segmented (`ptt.quadpolFrameTheta` below), then
     per-block dlam with theta0 pinned.
     KNOWN SYSTEMATIC (measured 11 Aug 2026, unresolved, and CONFIRMED not
@@ -263,6 +273,32 @@ units).
     validated on a 90-deg arc; the header owns the detail, and
     `opr_fabric/test/test_quadpol_segmented.m` /
     `test_quadpol_curved.m` are its regressions.
+    WHERE THE ICE ENDS (`opts.z_bed`, a per-trace bed depth; none by
+    default): every trace is blanked below its own bed less a margin
+    (`ptt.maskBelowBed`), so each moment averages only the traces still
+    in ice at that depth, and a window is fitted only where at least half
+    the traces of its pass - the frame, or the segment - are still in ice
+    at its bottom edge (`ptt.quadpolFabricLS`'s `z_valid` at the median
+    bed); the sub-block pooling and the jackknife weigh each sub-block by
+    its traces in ice per depth. That follows a bed which varies along
+    the line - 567-996 m inside one Taylor Dome frame, 42-300 m on one
+    Eastwind line - where a single depth cut cannot (a 5th-percentile
+    cut, tried first, left an Eastwind frame no window at all). The
+    pipeline reads the bed from the season's `CSARP_layer` picks
+    (`opr_fabric/server/bed_from_layer.m`, bound by name; a gap of up to
+    1 km along track between picked traces is bridged linearly, since a
+    picker's gap is not a hole in the bed and an unmasked stretch of more
+    than half a pass would let its sub-bed return vote again), masks the
+    record before any estimator sees it, and saves each block's bed as
+    `sec_bed`. The record runs past the bed at the thin-ice
+    sites, and what is there is not noise but coherent, polarised bed
+    and basal returns the model reads as fabric: of the windows that
+    cleared the constant-axis vote gates, 95% at Eastwind and McMurdo and
+    35% at Taylor Dome lay below the bed, and the held axis landed a
+    median 51 / 41 / 9 deg off the ice above it (Ridge A, whose record
+    ends in ice: 0.4 deg). They fed the frame pedestal median the same
+    way. `opr_fabric/test/test_quadpol_bed_vote.m` reproduces the capture
+    and pins the fix.
     CONSTANT ORIENTATION WITH DEPTH (`opts.theta_const`, off by
     default; the pipeline's `theta_const=true` writes `_ct` products
     beside the defaults, never over them): one axis per segment, voted
@@ -353,6 +389,12 @@ units).
     the segment profiles interpolated at a block's along-track position
     on the doubled-angle phasor, with robust q-weighted end rows because
     the estimator clamps out-of-range depth windows to the terminal row.
+    Below a segment's median bed the saved profile is empty; a HELD
+    segment is still handed off there with its one axis and weight, so a
+    block between two held segments never switches axis at the shallower
+    one's bed, while a free segment's dead rows are bridged from its live
+    neighbours and the block's own per-trace mask keeps its sub-bed
+    windows out.
   - `ptt.coregisterChannels` - aligns every channel onto the reference by
     CALLING the OPR toolbox `coregistration`, deliberately with no
     implementation of its own (it errors if the toolbox is absent), so the

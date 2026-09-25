@@ -162,7 +162,10 @@ struct `res`. The fabric axis theta0 is per segment and depth window
 `ls_se_*_seg`). The LS block section is `sec_dlam_ls` with `sec_se_dlam_ls`
 and `sec_resid_ls` per window and block, each block fitted on its segment's
 axis. The frame pedestal is `ls_pedestal`, and the Ershadi comparison is
-`sec_theta` / `sec_dlam`.
+`sec_theta` / `sec_dlam`. Where the season carries `CSARP_layer` bed picks
+the record is blanked below each trace's bed before anything is fitted, and
+`sec_bed` holds each block's median pick (NaN where there is none, as at
+Ridge A, whose record ends in ice).
 
 A whole survey runs in two stages. First build the coregistration caches,
 the expensive pass. Then invert, which follows the cache builder frame by

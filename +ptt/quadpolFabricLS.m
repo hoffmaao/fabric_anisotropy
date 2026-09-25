@@ -68,6 +68,23 @@ function out = quadpolFabricLS(S, z, opts)
 % averages to zero instead of folding to a positive floor the way |Psi|
 % does.
 %
+% THE SIGN WHERE THE AXIS IS NAMED. That convention holds where the axis
+% is SEARCHED over the full half turn, so the mirror (theta0 + 90, -ddelta)
+% is always to hand. Where the axis is NAMED - pinned by the caller
+% (opts.theta0: the blocks, the split-half refits), held by constant mode,
+% or searched over a grid narrower than a quarter turn (a resampling
+% replicate's) - the mirror is out of reach, the sign is a measurement,
+% and ddelta is searched over [-dd_max, dd_max] (opts.signed_rate, default
+% true). A negative rate says the phase FALLS along the named axis: dlam
+% with its axes named, lambda(theta0) - lambda(theta0 + 90) < 0, the named
+% axis being the slower eigen-direction there; at a weak depth the signed
+% rate scatters about zero, as noise should. Clamped at 0, the held fits
+% piled weak-depth windows onto exactly 0 - 17-41% of the finite held
+% block cells at Taylor Dome, 29% at Eastwind, 25-30% at McMurdo (issue
+% #27) - pushed every mean upward, zeroed the split-half difference
+% whenever both halves clamped, and read a wrong-branch axis (the other
+% eigen-direction, whose rate is negative) as no fabric at all.
+%
 % TWO-PASS USE ACROSS BLOCKS. theta0 and the pedestal vary slowly (or not
 % at all) along track, so estimate both once per frame, then pass them
 % back in for the per-block section (opts.theta0 and opts.pedestal set):
@@ -112,20 +129,51 @@ function out = quadpolFabricLS(S, z, opts)
 %         width of the grid it was given),
 %         theta_const (false; true holds ONE axis for the whole column,
 %         voted from the per-window theta curves - see the
-%         CONSTANT-ORIENTATION MODE block), theta_const_q_min (0.02, the
-%         normalised curve range below which a window does not vote)
+%         CONSTANT-ORIENTATION MODE block), signed_rate (true: where the
+%         axis is named, the rate is signed - see THE SIGN WHERE THE AXIS
+%         IS NAMED; false clamps it at 0 there too), theta_const_q_min (0.02, the
+%         normalised curve range below which a window does not vote),
+%         z_valid (Inf: the depth [m] the record is ICE to - the bed less
+%         a margin. A window reaching below it is not fitted at all: it
+%         returns NaN everywhere, so it neither votes on a held axis nor
+%         enters the frame pedestal median nor hands an axis to anything
+%         downstream. See SUB-BED WINDOWS below.)
+%
+% SUB-BED WINDOWS. The record usually runs past the bed, and below it the
+% channels hold noise plus the antenna-fixed pedestal and nothing else. Such
+% a window still has a best-fitting axis - wherever the pedestal and the
+% noise put it - and nothing in its own statistics marks it as meaningless:
+% noise easily clears q_min and, because the free axis may flip a quarter
+% turn to keep the rate positive, dlam_min_theta too. MEASURED on the
+% constant-orientation products (23 Sep 2026): of the windows that passed
+% the vote gates, 95% at Eastwind (bed ~225 m) and McMurdo (~268 m) and
+% 35% at Taylor Dome (~837 m) lay below the bed, and because the vote
+% pools curves normalised by their own data power each counted as much as
+% an ice window. The held axis landed a median 51 / 41 / 9 deg off the
+% above-bed free axis (Ridge A, whose record ends in ice: 0.4 deg). Only
+% the caller knows where the bed is, so it says so here.
 %
 % Output fields (per window centre zw [Nw x 1])
 %   zw, theta0, dlam, gamma, leak (pass-A per-window pedestal magnitude,
 %   a calibration diagnostic), resid (weighted rms), q_theta, delta0,
 %   pedestal ([1 x 3] frame estimate, NaN when not estimated), and
-%   dlam_z / theta0_z interpolated back onto z. grad_per_dlam echoes the
+%   dlam_z / theta0_z interpolated back onto z. dlam is >= 0 where the axis
+%   was searched and signed where it was named (THE SIGN WHERE THE AXIS IS
+%   NAMED): negative there means the named axis is the slower
+%   eigen-direction at that depth. A median or mean of signed rates mixes
+%   the two eigen-directions - on the thin-ice products the Eastwind held
+%   block median falls from 0.024 clamped to 0.012 signed while the median
+%   magnitude is 0.048 - so read the magnitude and the sign, not a summary
+%   of the signed values. grad_per_dlam echoes the
 %   conversion constant. theta_cost [Nw x Ngrid] is every window's theta
 %   cost curve from the free grid search over theta_grid (raw weighted
 %   misfit, minimised over delta0 and ddelta at each node) with theta_c2
 %   its data-power normaliser - the curves the constant-orientation vote
 %   pools, exported so a pooling rule can be examined offline; NaN when
-%   the axis was caller-supplied. window_ok [Nw x 1] logical is the
+%   the axis was caller-supplied. win_half is the window half-length [m]
+%   (win_fit_m / 2): a window is fitted only where zw + win_half <=
+%   z_valid, and a caller that must know which windows the record could
+%   not support reads it from here. window_ok [Nw x 1] logical is the
 %   per-window verdict this fit reached (free mode: which windows own an
 %   axis; constant mode: which windows voted), to be handed back in as
 %   opts.window_ok by a resampling pass. Constant mode adds theta_const (the held
@@ -155,6 +203,9 @@ window_ok_in = H_opt(opts, 'window_ok', []);
 % Constant fabric orientation over the fitted column. Off by default so
 % existing results are unchanged; see the CONSTANT-ORIENTATION MODE block.
 theta_const = H_opt(opts, 'theta_const', false);
+% where the axis is named, the rate is signed (THE SIGN WHERE THE AXIS IS
+% NAMED); a free full-range search keeps ddelta >= 0 as its convention
+signed_rate = H_opt(opts, 'signed_rate', true);
 % a window votes on the pooled axis only if its own theta cost curve varies
 % by more than this fraction of its data power - a flat curve has no axis
 pool_q_min = H_opt(opts, 'theta_const_q_min', 0.02);
@@ -164,6 +215,8 @@ th_step = H_opt(opts, 'theta_step_deg', 3);
 % replicates use it to search only +-15 deg around the full-data axis,
 % which is what makes a jackknife of the frame pass affordable.
 th_grid_in = H_opt(opts, 'theta_grid', []);
+% the depth the record is ice to; windows reaching below it are not fitted
+z_valid = H_opt(opts, 'z_valid', Inf);
 
 z = z(:);
 Nt = numel(z);
@@ -280,8 +333,10 @@ end
 P = struct('z', z, 'zw', zw, 'half', half, 'jdec', jdec, 'psi', psi, ...
   'th_grid', th_grid, ...
   'dd_grid', linspace(0, dlam_max * grad_per_dlam, 26), ...
+  'dd_grid_s', linspace(-dlam_max * grad_per_dlam, dlam_max * grad_per_dlam, 51), ...
   'd0_grid', (0:15:345) * pi/180, ...
-  'dd_max', dlam_max * grad_per_dlam, 'th_fix', th_fix);
+  'dd_max', dlam_max * grad_per_dlam, 'th_fix', th_fix, 'z_valid', z_valid, ...
+  'signed', signed_rate);
 
 pedestal = nan(1, 3);
 if isnumeric(ped_in)
@@ -439,6 +494,10 @@ if theta_const && isempty(theta0_in)
       R = H_fit_windows(Cm, Wc, P, pedestal);
     end
     R.theta0(:) = th_c;                 % held, not re-estimated
+    % ... except where no window was fitted at all - below z_valid, or
+    % with too little finite data - which is not a weak window the column
+    % speaks for but no measurement, and must not read as one downstream
+    R.theta0(~isfinite(R.c2)) = NaN;
     % The held refit computes no theta curve (nothing to search), so the
     % per-window axis information and the vote it was drawn from come
     % from the free pass: q_theta stays "how much axis does THIS window
@@ -504,7 +563,7 @@ if nnz(okd) >= 2
   dlam_z = interp1(zw, dlam, z, 'linear');
 end
 
-out = struct('zw', zw, 'theta0', theta0, 'dlam', dlam, 'gamma', gam, ...
+out = struct('zw', zw, 'win_half', half, 'theta0', theta0, 'dlam', dlam, 'gamma', gam, ...
   'leak', leak_diag, 'pedestal', pedestal, ...
   'resid', resid, 'q_theta', q_theta, 'delta0', delta0, ...
   'theta0_z', theta0_z, 'dlam_z', dlam_z, ...
@@ -519,6 +578,15 @@ end
 
 function v = H_opt(o, f, d)
 if isstruct(o) && isfield(o, f) && ~isempty(o.(f)), v = o.(f); else, v = d; end
+end
+
+function tf = H_narrow(ths)
+% true when an axis grid spans less than a quarter turn (modulo a half
+% turn), so the search cannot reach theta + 90 and the mirror of a
+% negative rate is not available to it
+if numel(ths) < 2, tf = true; return; end
+a = sort(mod(ths(:), pi));
+tf = pi - max(diff([a; a(1) + pi])) < pi/2;
 end
 
 function R = H_fit_windows(Cm, Wc, P, ped)
@@ -559,6 +627,9 @@ os = optimset('Display', 'off', 'MaxFunEvals', 400, 'MaxIter', 400, ...
   'TolFun', 1e-6, 'TolX', 1e-6);
 
 for w = 1:Nw
+  % a window that reaches below the ice is noise and pedestal only; see
+  % SUB-BED WINDOWS in the header
+  if P.zw(w) + P.half > P.z_valid, continue; end
   jj = find(P.z >= P.zw(w) - P.half & P.z <= P.zw(w) + P.half);
   jj = jj(1:P.jdec:end);
   Cw = Cm(jj, :).';                 % [Nk x Nj]: azimuth rows, depth cols
@@ -588,14 +659,21 @@ for w = 1:Nw
   else
     ths = P.th_grid(min(w, size(P.th_grid, 1)), :);
   end
+  % the rate is signed where the axis is named: pinned, or searched over a
+  % grid that cannot reach theta + 90 (THE SIGN WHERE THE AXIS IS NAMED)
+  if P.signed && (isfinite(P.th_fix(w)) || H_narrow(ths))
+    ddg = P.dd_grid_s; dd_lo = -P.dd_max;
+  else
+    ddg = P.dd_grid; dd_lo = 0;
+  end
   best = struct('cost', inf, 'th', NaN, 'd0', NaN, 'dd', NaN);
   cost_th = inf(numel(ths), 1);
   for it = 1:numel(ths)
     mu = cos(2 * (psi(:) - ths(it)));
     Ak = (1 - mu.^2) / 2;
     Bk = (1 + mu.^2) / 2;
-    for id = 1:numel(P.dd_grid)
-      cu = cos(P.dd_grid(id) * u); su = sin(P.dd_grid(id) * u);
+    for id = 1:numel(ddg)
+      cu = cos(ddg(id) * u); su = sin(ddg(id) * u);
       for i0 = 1:numel(P.d0_grid)
         c0 = cos(P.d0_grid(i0)); s0 = sin(P.d0_grid(i0));
         cd = c0 * cu - s0 * su;
@@ -613,7 +691,7 @@ for w = 1:Nw
         if cost < cost_th(it), cost_th(it) = cost; end
         if cost < best.cost
           best = struct('cost', cost, 'th', ths(it), ...
-            'd0', P.d0_grid(i0), 'dd', P.dd_grid(id));
+            'd0', P.d0_grid(i0), 'dd', ddg(id));
         end
       end
     end
@@ -635,7 +713,7 @@ for w = 1:Nw
   % in range by a clamp rather than a penalty cliff. A caller-fixed
   % theta0 stays PINNED: the whole point of the two-pass use is that the
   % block fits cannot wander off the frame axis.
-  fun = @(p) H_cost(p, psi, u, Cw, wgt, C2, P.dd_max, K);
+  fun = @(p) H_cost(p, psi, u, Cw, wgt, C2, dd_lo, P.dd_max, K);
   if isfinite(P.th_fix(w))
     p2 = fminsearch(@(q) fun([P.th_fix(w); q(:)]), [best.d0; best.dd], os);
     p = [P.th_fix(w); p2(:)];
@@ -643,11 +721,11 @@ for w = 1:Nw
     p = fminsearch(fun, [best.th; best.d0; best.dd], os);
   end
   [cst, g, la, ac] = fun(p);
-  dd = min(max(p(3), 0), P.dd_max);
+  dd = min(max(p(3), dd_lo), P.dd_max);
 
   R.theta0(w) = mod(p(1), pi);
   R.delta0(w) = mod(p(2), 2*pi);
-  if dd > 0.98 * P.dd_max
+  if abs(dd) > 0.98 * P.dd_max
     % Railed at the cap: the window found no interior optimum, so the
     % value is the bound, not a rate. Abstain rather than report it.
     R.dlam(w) = NaN;
@@ -661,14 +739,15 @@ for w = 1:Nw
 end
 end
 
-function [cost, gamma, amp, ac] = H_cost(p, psi, u, Cw, wgt, C2, dd_max, K)
+function [cost, gamma, amp, ac] = H_cost(p, psi, u, Cw, wgt, C2, dd_lo, dd_max, K)
 % Weighted misfit of the model at (theta0, delta0, ddelta), with the
 % linear amplitudes eliminated in closed form: gamma alone when the
 % pedestal is pinned (K empty), gamma plus the three pedestal terms
-% otherwise (H_solve).
+% otherwise (H_solve). ddelta is clamped to [dd_lo, dd_max]: dd_lo is 0
+% for a free search and -dd_max where the axis is named.
 th = p(1);
 d0 = p(2);
-dd = min(max(p(3), 0), dd_max);
+dd = min(max(p(3), dd_lo), dd_max);
 mu = cos(2 * (psi(:) - th));
 Ak = (1 - mu.^2) / 2;
 Bk = (1 + mu.^2) / 2;

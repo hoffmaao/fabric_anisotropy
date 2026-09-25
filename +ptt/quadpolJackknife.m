@@ -54,7 +54,10 @@ function J = quadpolJackknife(Msub, nsub, z, os, ref, opts)
 % Inputs
 %   Msub   cell of [Nt x 4 x 4] sub-block moment matrices (same frame,
 %          same rotation convention, as summed into the full fit)
-%   nsub   [1 x n] traces per sub-block (the pooling weights)
+%   nsub   [1 x n] traces per sub-block (the pooling weights), or
+%          [Nt x n] per depth where traces were blanked below the bed
+%          (ptt.maskBelowBed): a sub-block then weighs only the traces
+%          still in ice at each depth, and none at all where it has none
 %   z      [Nt x 1] depth
 %   os     the estimator options the FULL fit used (pedestal field,
 %          theta_const, grids, ...); theta_grid and window_ok are
@@ -68,7 +71,8 @@ function J = quadpolJackknife(Msub, nsub, z, os, ref, opts)
 % Output struct J (per window centre, as ref.zw)
 %   se_theta   [Nw x 1] standard error of theta0, radians, bounded and
 %              circular over the doubled angle - see ptt.circAxisSE
-%              (constant mode: one value, repeated)
+%              (constant mode: one value, repeated over the windows the
+%              full fit gave an axis; NaN where ref.theta0 is NaN)
 %   se_dlam    [Nw x 1] standard error of dlam
 %   se_theta_c scalar, constant mode: SE of the held axis (NaN otherwise)
 %   n_theta    [Nw x 1] replicates that contributed to se_theta
@@ -140,11 +144,19 @@ else
 end
 
 Nt = size(Msub{1}, 1);
+if size(nsub, 1) == Nt && size(nsub, 2) == n
+  W = nsub;                                  % per-depth weights
+else
+  W = repmat(nsub(:).', Nt, 1);              % one weight per sub-block
+end
+Mz = cell(1, n);
 Mtot = zeros(Nt, 4, 4);
-wtot = 0;
+wtot = zeros(Nt, 1);
 for i = 1:n
-  Mtot = Mtot + Msub{i} * nsub(i);
-  wtot = wtot + nsub(i);
+  Mz{i} = Msub{i};
+  Mz{i}(~isfinite(Mz{i})) = 0;               % no ice there: no weight either
+  Mtot = Mtot + Mz{i} .* W(:, i);
+  wtot = wtot + W(:, i);
 end
 
 theta_rep = nan(Nw, n);
@@ -152,7 +164,9 @@ dlam_rep = nan(Nw, n);
 th_c_rep = nan(1, n);
 n_edge = 0;
 for i = 1:n
-  Mi = (Mtot - Msub{i} * nsub(i)) / max(wtot - nsub(i), eps);
+  wi = wtot - W(:, i);
+  Mi = (Mtot - Mz{i} .* W(:, i)) ./ max(wi, eps);
+  Mi(wi <= 0, :, :) = NaN;
   o = ptt.quadpolFabricLS(struct('M', Mi), z, os);
   if numel(o.zw) ~= Nw
     error('ptt:quadpolJackknife:windows', ...
@@ -185,10 +199,12 @@ se_theta_c = NaN; n_theta_c = 0; r_theta_c = NaN; sat_theta_c = false;
 if held
   [se_theta_c, n_theta_c, r_theta_c, sat_theta_c] = ...
     ptt.circAxisSE(th_c_rep, MIN_REP);
-  se_theta(:) = se_theta_c;
-  n_theta(:) = n_theta_c;
-  r_theta(:) = r_theta_c;
-  sat_theta(:) = sat_theta_c;
+  okw = isfinite(ref.theta0(:));
+  se_theta = nan(Nw, 1);      se_theta(okw) = se_theta_c;
+  n_theta = zeros(Nw, 1);     n_theta(okw) = n_theta_c;
+  r_theta = nan(Nw, 1);       r_theta(okw) = r_theta_c;
+  sat_theta = false(Nw, 1);   sat_theta(okw) = sat_theta_c;
+  se_dlam(~okw) = NaN;
 end
 
 J = struct('se_theta', se_theta, 'se_dlam', se_dlam, ...

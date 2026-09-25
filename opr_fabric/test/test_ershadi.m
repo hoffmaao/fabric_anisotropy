@@ -10,6 +10,18 @@
 % ("we use Eq. 7 for the models and the conjugate of Eq. 7 for the radar
 % data"), so the test passes deramped = false.
 %
+% A second check blanks a 100 m band of every channel (as ptt.maskBelowBed
+% leaves rows below every trace's bed) and requires the chain to ABSTAIN on
+% exactly those rows - theta, dlam, Cmag, dP_hh, dP_hv all NaN, never an
+% exact 0 deg axis from an all-zero anomaly row - while every row beyond
+% the kernels' reach (75 m gradient + 15 m coherence window) is unchanged
+% bit for bit and the rows within reach still carry a finite axis on the
+% truth (circular mean, as above - single rows at the fringe nulls are
+% noise) and a finite dlam (biased low within ~2 sigma of the band edge
+% by the one-sided kernel, as at the record's own top; the median over
+% the 100 m on either side is held to 0.05). It runs at alpha 20, off the
+% symmetry points where the cross-pol channel vanishes altogether.
+%
 % Run: matlab -batch "run('opr_fabric/test/test_ershadi.m')"
 clear;
 rng(11);
@@ -65,13 +77,47 @@ for alpha_deg = [0 20 35 55 80 125]
   ok_t = err < 5;
   ok_d = abs(dl - DLAM_TRUE) < 0.03;
   fails = fails + ~(ok_t && ok_d);
+  if alpha_deg == 20, S_20 = S; out_20 = out; want_20 = want; end
   fprintf('alpha %3d: theta %5.1f (want %5.1f, err %4.1f) %s | dlam %.3f %s\n', ...
     alpha_deg, got, want, err, H_tick(ok_t), dl, H_tick(ok_d));
 end
 
+% --- abstention on a band of blanked rows (the alpha 20 column)
+EOPT = struct('fc', fc, 'psi_step_deg', 1, 'win_m', 30, 'grad_win_m', 25, ...
+  'coh_min', 0.4, 'deramped', false);
+band = z >= 600 & z <= 700;
+S = S_20; out = out_20; want = want_20;
+S_nan = S;
+for k = {'hh', 'vv', 'hv', 'vh'}
+  S_nan.(k{1})(band, :) = NaN;
+end
+out_n = ptt.ershadiFabric(S_nan, z, EOPT);
+reach = z >= 600 - 100 & z <= 700 + 100;
+near = reach & ~band;
+ok_abs = all(isnan(out_n.theta(band))) && all(isnan(out_n.dlam(band))) ...
+  && all(isnan(out_n.Cmag(band, :)), 'all') && all(isnan(out_n.dP_hh(band, :)), 'all') ...
+  && all(isnan(out_n.dP_hv(band, :)), 'all');
+ok_same = isequaln(out_n.theta(~reach), out.theta(~reach)) ...
+  && isequaln(out_n.dlam(~reach), out.dlam(~reach)) ...
+  && isequaln(out_n.Cmag(~reach, :), out.Cmag(~reach, :)) ...
+  && isequaln(out_n.psi_grad(~reach, :), out.psi_grad(~reach, :)) ...
+  && isequaln(out_n.dP_hh(~band, :), out.dP_hh(~band, :)) ...
+  && isequaln(out_n.dP_hv(~band, :), out.dP_hv(~band, :));
+th_n = rad2deg(out_n.theta(near));
+got_n = mod(rad2deg(0.5*angle(mean(exp(2i*deg2rad(2*th_n))))) / 2, 90);
+err_n = abs(mod(got_n - want + 45, 90) - 45);
+dl_n = median(out_n.dlam(near), 'omitnan');
+ok_near = all(isfinite(out_n.theta(near))) && all(isfinite(out_n.dlam(near))) ...
+  && err_n < 5 && abs(dl_n - DLAM_TRUE) < 0.05;
+ok_band = ok_abs && ok_same && ok_near;
+fails = fails + ~ok_band;
+fprintf(['blanked 600-700 m: abstains on the band %s | bit-identical beyond reach %s | ' ...
+  'within reach theta err %.1f, dlam %.3f %s\n'], H_tick(ok_abs), H_tick(ok_same), ...
+  err_n, dl_n, H_tick(ok_near));
+
 fprintf('\n%s (%.1f s)\n', H_tick(fails == 0), toc(t0));
 if fails > 0
-  error('test_ershadi:failed', '%d azimuth(s) failed', fails);
+  error('test_ershadi:failed', '%d check(s) failed', fails);
 end
 
 function s = H_tick(ok)

@@ -19,6 +19,19 @@ function prof = thetaProfileAt(fp, x)
 % Positions beyond the end segments clamp, matching the depth-clamping
 % rule in the estimator: a linear extrapolation of a phasor can pass
 % near zero and land on an arbitrary angle.
+%
+% BELOW A SEGMENT'S BED. The frame pass leaves a segment's windows at or
+% below its own median bed (its z_valid) empty - no axis, no weight - so
+% the saved profiles never show fabric where there is no ice. The handoff
+% treats the two modes differently there. A HELD segment asserts ONE axis
+% for its column, so it is handed off at every depth with its one weight:
+% a block between two held segments interpolates two constants and never
+% switches axis at the shallower neighbour's bed (it used to, taking the
+% deeper neighbour's axis alone between the two beds). A FREE segment
+% says nothing about its axis below its bed, so there a block's rows are
+% bridged from the live neighbours' deeper ice, the convention for any
+% dead row; the block's own per-trace bed mask (ptt.maskBelowBed), not
+% this profile, is what keeps the block's sub-bed windows out.
 
 if isempty(fp) || ~isfield(fp, 'th_seg') || isempty(fp.th_seg)
   prof = [];
@@ -32,12 +45,24 @@ if fp.nseg == 1
 end
 
 xq = min(max(x, fp.seg_x(1)), fp.seg_x(end));
+% a held segment's one axis and weight at every depth (see BELOW A
+% SEGMENT'S BED)
+th = fp.th_seg;
+w = fp.q_seg;
+if isfield(fp, 'held_seg')
+  for s = find(fp.held_seg(:).')
+    live = isfinite(th(:, s)) & w(:, s) > 0;
+    if ~any(live), continue; end
+    % the live windows already carry the axis; only the empty ones change
+    th(~live, s) = 0.5 * angle(sum(w(live, s) .* exp(2i*th(live, s))));
+    w(~live, s) = max(w(live, s));
+  end
+end
 % weighted phasor per segment; weightless (fallback) segments enter with a
 % small epsilon so a fully-dead row still interpolates its frame values
-w = fp.q_seg;
-w(~isfinite(fp.th_seg)) = 0;
-w = w + 1e-6 * double(isfinite(fp.th_seg));
-ph = w .* exp(2i*fp.th_seg);
+w(~isfinite(th)) = 0;
+w = w + 1e-6 * double(isfinite(th));
+ph = w .* exp(2i*th);
 ph(~isfinite(ph)) = 0;
 num = interp1(fp.seg_x(:), ph.', xq, 'linear').';
 den = interp1(fp.seg_x(:), w.', xq, 'linear').';

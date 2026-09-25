@@ -276,6 +276,25 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     per-segment fits are saved beside the frame fields as
     `ls_theta_seg`/`ls_q_seg`/`ls_dlam_seg`/`ls_resid_seg`/`ls_seg_x`/
     `ls_nseg`.
+    THE RECORD ENDS AT THE BED, per trace. The bed is read from the
+    season's `CSARP_layer` picks (`bed_from_layer.m`, binding the layer by
+    NAME under the preference `make_bed_by_block.py` established) onto the
+    run's own depth axis, bridging gaps of up to 1 km between picked
+    traces, and everything below each trace's bed less 20 m
+    is blanked (`ptt.maskBelowBed`) after the coreg cache is written and
+    the before/after coherences are measured, so no estimator - the
+    segment fits, the constant-axis vote, the pedestal median, the
+    blocks - ever fits it. Below the bed the record is coherent bed and
+    basal return that the model reads as fabric with an axis of its own:
+    measured on the constant-axis products, 95% of the windows voting on
+    the held axis at Eastwind and McMurdo and 35% at Taylor Dome lay
+    below the bed, and the held axes sat a median 51 / 41 / 9 deg off the
+    ice above it (`test/test_quadpol_bed_vote.m` reproduces the capture
+    and pins the fix). A frame with no layer file - all of Ridge A - runs
+    whole and says so in its log. The product carries `sec_bed` (each
+    block's median pick, NaN where none), `bed_source` (the layer bound)
+    and `bed_margin_m`, so a consumer reads the bed from the product
+    rather than from a sidecar.
     `z_max` (default 1500 m) is overridable like `day_seg`/`frm` for
     special runs that need the full record; any non-default depth gets a
     `_z<depth>` suffix on both the coreg cache and the section output
@@ -545,6 +564,13 @@ the same way:
   folded-noise floor and the leakage-shaped axis are both regressions this
   estimator exists to avoid - and that the theta0-pinned two-pass path the
   pipeline section uses reproduces the free fit's contrast.
+- `test_quadpol_signed_rate.m` - where the axis is named (held, pinned,
+  or searched over a replicate's narrow grid) the LS rate is signed: in
+  an isotropic stretch under a held axis the clamp piled half the windows
+  onto exactly 0 and the signed rate scatters about it, the clamped rates
+  are exactly the signed ones folded at 0, an axis pinned a quarter turn
+  off reads the contrast negated instead of 0, and a free full-range
+  search is bit-identical either way.
 - `test_quadpol_curved.m` - the curving-line adaptation
   `run_quadpol_pipeline.m` dispatches to. A synthetic 90-deg arc with the
   fabric fixed geographically: the standard antenna-frame path must
@@ -599,6 +625,14 @@ the same way:
   0.225 -> 0.002, correlation 1.00 - and a mid-frame 45 deg axis step,
   the shear-margin case, resolves to under 3 deg in the pure segments
   with block dlam unbiased).
+- `test_quadpol_bed_vote.m` - the frame pass must stop where the ice
+  does. Of the windows that cleared the constant-axis vote gates, 95% at
+  Eastwind and McMurdo and 35% at Taylor Dome lay below the bed and held
+  axes landed a median 51 / 41 / 9 deg off the ice above it. The
+  synthetic reproduces that capture with a coherent sub-bed return (pure
+  noise does not - it votes at random), then requires the per-trace bed
+  (`opts.z_bed`) to bring every held axis within 3 deg, leave no sub-bed
+  window with a contrast, and change nothing when no bed is given.
 
 `test/test_copol_surface.m` covers the co-polarized chain's surface
 reference at the solver level: the OLD surface-anchored call must
