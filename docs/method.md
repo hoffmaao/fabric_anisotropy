@@ -194,7 +194,11 @@ units).
     onto it (17-41% of the held Taylor Dome block cells had sat at exactly
     0), and an axis a quarter turn off reads its contrast negated rather
     than "no fabric"; a free search over the whole half turn keeps the
-    rate >= 0, which is what fixes its axis convention. Two-pass use: a frame theta0
+    rate >= 0, which is what fixes its axis convention. A median or mean
+    of signed rates mixes the two eigen-directions - on the thin-ice
+    products the Eastwind held block median falls from 0.024 clamped to
+    0.012 signed while the median magnitude is 0.048 - so read the
+    magnitude and the sign, not a summary of the signed values. Two-pass use: a frame theta0
     pass, laterally segmented (`ptt.quadpolFrameTheta` below), then
     per-block dlam with theta0 pinned.
     KNOWN SYSTEMATIC (measured 11 Aug 2026, unresolved, and CONFIRMED not

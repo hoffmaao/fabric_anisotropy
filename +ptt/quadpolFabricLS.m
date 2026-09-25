@@ -160,7 +160,11 @@ function out = quadpolFabricLS(S, z, opts)
 %   dlam_z / theta0_z interpolated back onto z. dlam is >= 0 where the axis
 %   was searched and signed where it was named (THE SIGN WHERE THE AXIS IS
 %   NAMED): negative there means the named axis is the slower
-%   eigen-direction at that depth. grad_per_dlam echoes the
+%   eigen-direction at that depth. A median or mean of signed rates mixes
+%   the two eigen-directions - on the thin-ice products the Eastwind held
+%   block median falls from 0.024 clamped to 0.012 signed while the median
+%   magnitude is 0.048 - so read the magnitude and the sign, not a summary
+%   of the signed values. grad_per_dlam echoes the
 %   conversion constant. theta_cost [Nw x Ngrid] is every window's theta
 %   cost curve from the free grid search over theta_grid (raw weighted
 %   misfit, minimised over delta0 and ddelta at each node) with theta_c2
