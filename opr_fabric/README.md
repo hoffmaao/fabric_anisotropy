@@ -564,6 +564,13 @@ the same way:
   folded-noise floor and the leakage-shaped axis are both regressions this
   estimator exists to avoid - and that the theta0-pinned two-pass path the
   pipeline section uses reproduces the free fit's contrast.
+- `test_quadpol_signed_rate.m` - where the axis is named (held, pinned,
+  or searched over a replicate's narrow grid) the LS rate is signed: in
+  an isotropic stretch under a held axis the clamp piled half the windows
+  onto exactly 0 and the signed rate scatters about it, the clamped rates
+  are exactly the signed ones folded at 0, an axis pinned a quarter turn
+  off reads the contrast negated instead of 0, and a free full-range
+  search is bit-identical either way.
 - `test_quadpol_curved.m` - the curving-line adaptation
   `run_quadpol_pipeline.m` dispatches to. A synthetic 90-deg arc with the
   fabric fixed geographically: the standard antenna-frame path must

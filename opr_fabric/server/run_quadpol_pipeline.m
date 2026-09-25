@@ -975,7 +975,10 @@ sec_resid_ls = nan(numel(z), nb);
 % so each block is refit on its two halves with the same held axis and
 % pedestal; half the difference of two independent half-block estimates
 % is one draw of the full block's error (var_full = var(diff)/4). The
-% per-block draw is saved raw, and a pooled sigma is formed below.
+% per-block draw is saved raw, and a pooled sigma is formed below. The
+% rate is signed at a held axis (ptt.quadpolFabricLS), so two halves that
+% both see no fabric scatter about zero rather than both clamping to it
+% and reporting a zero difference.
 sec_dlam_ls_hdiff = nan(numel(z), nb);
 sec_lat = nan(1, nb); sec_lon = nan(1, nb); sec_az = nan(1, nb);
 sec_bed = nan(1, nb);      % the block's median bed pick [m], NaN if none
