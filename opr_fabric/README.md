@@ -475,12 +475,12 @@ MATLAB, and exits non-zero if any test failed.
 
 ```sh
 bash opr_fabric/test/run_all_tests.sh quick   # the 14 fast tests, 2-4 min
-bash opr_fabric/test/run_all_tests.sh         # all 22, ~3 h on mem1 at 8 threads
+bash opr_fabric/test/run_all_tests.sh         # all 23, ~3 h on mem1 at 8 threads
 bash opr_fabric/test/run_all_tests.sh test_fabric_task test_quadpol
 ```
 
-`quick` leaves out the eight synthetics that take minutes each (the
-quad-pol and EastGRIP ones; the list is in `run_all_tests.m`). It is the
+`quick` leaves out the nine synthetics that take minutes each (the
+quad-pol, calibration and EastGRIP ones; the list is in `run_all_tests.m`). It is the
 gate's test command in `.no-mistakes.yaml`. Run the full suite by hand
 before merging a change to that code. On a shared CReSIS node, prefix
 `MATLAB_THREADS=8 nice`: uncapped, one test took ~65 of mem1's 112 cores.
@@ -545,6 +545,12 @@ the same way:
   folded-noise floor and the leakage-shaped axis are both regressions this
   estimator exists to avoid - and that the theta0-pinned two-pass path the
   pipeline section uses reproduces the free fit's contrast.
+- `test_calibrate_channels.m` - `ptt.calibrateChannels` on the LS test
+  column with the gains measured on the real system injected (|b| -3.2 dB,
+  arg a - arg b +111 deg, co-pol phase -45 deg), seen from both Ridge A
+  heading families: the four gains come back within 0.3 dB and 3 deg, the
+  LS on the calibrated moments matches the LS on the true ones, and the
+  family axis gap closes (10 deg raw, ~1 deg calibrated).
 - `test_quadpol_curved.m` - the curving-line adaptation
   `run_quadpol_pipeline.m` dispatches to. A synthetic 90-deg arc with the
   fabric fixed geographically: the standard antenna-frame path must

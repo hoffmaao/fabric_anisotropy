@@ -332,6 +332,28 @@ units).
     A moment-level stand-in for raw-channel chan_equal (M_kl scales by
     g_k g_l, so the same table applies to the channels). Applying the
     full cross-pol gain to VV over-corrects; the header records that.
+  - `ptt.calibrateChannels` - the complex per-channel gains of the
+    system, from a frame's own moments (issue #23). With a = t_v/t_h and
+    b = r_v/r_h the measured channels are HH, ab VV, a HV, b VH, and the
+    moments scale by g_k conj(g_l). Reciprocity gives |b/a| and
+    arg a - arg b from <HV VH*> (+110..+112 deg on every season this
+    system has flown, cross-pol coherence 0.94-0.99: a design constant);
+    the firn gives |ab| from the co-pol power ratio at 60-150 m (-3.3 to
+    -4.0 dB on every Ridge A frame, whatever its heading) and arg(ab) from
+    the intercept at zero depth of the firn co-pol phase, the one term
+    that carries a fabric contribution and the one the crossing pairs are
+    there to check (`opts.phase_ab` pins it). On the same Ridge A moments
+    the synthesised cross-pol null moves from the antennas (psi 0-6 deg,
+    both heading families) to within 3-9 deg of the fabric axis, the LS
+    pedestal a3 falls from ~0.27 to ~0, and the heading-family gap in dlam
+    closes from +0.006 to 0.000 at a co-pol phase near 0 - so most of the
+    "antenna pedestal" was these gains. One complex gain per channel over
+    the record; the range-dependent amplitude imbalance of the 2023
+    Antarctic season and EastGRIP (#24) is `ptt.equaliseChannels`'s job.
+    `opr_fabric/test/test_calibrate_channels.m` injects the measured
+    gains into the LS test column at both Ridge A headings and requires
+    them back within 0.3 dB / 3 deg, the LS on calibrated moments to
+    match the LS on the true ones, and the family axis gap to close.
   - `ptt.thetaProfileAt` - the per-block handoff from that frame pass:
     the segment profiles interpolated at a block's along-track position
     on the doubled-angle phasor, with robust q-weighted end rows because

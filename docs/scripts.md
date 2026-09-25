@@ -549,8 +549,9 @@ comparing HDF5 object references, which never match.
     cross-polarized channels are measuring the system.
   - `crossing_pairs.py` - the same-ice crossing-pair test of the
     heading-family dlam systematic, and the acceptance criterion for the
-    planned chan_equal raw-channel calibration (the paired difference
-    should go to ~0 once the cross-pol pedestal is removed at source).
+    channel calibration (`ptt.calibrateChannels`, issue #23: the paired
+    difference should go to ~0 once the channel gains are removed at
+    source, and its co-pol phase is the one term the pairs settle).
     Where two lines of different heading families cross, their nearest
     blocks see the same ice, so their difference isolates what the
     acquisition geometry adds and not the survey's real NW-SE gradient.
