@@ -187,8 +187,18 @@ units).
     sliding depth window (theta0, delta0, ddelta/dz, plus a closed-form
     coherence scale), so the axis comes from the coherence field the
     co-pol channels dominate, the nulls are modelled rather than gated,
-    dlam is signed with no folded-noise floor, and theta0 abstains where
-    the birefringence is unresolvable. Two-pass use: a frame theta0
+    dlam carries no folded-noise floor, and theta0 abstains where the
+    birefringence is unresolvable. Where the axis is NAMED - the blocks,
+    constant mode, the split-half and jackknife refits - the rate is
+    signed (issue #27): a weak depth scatters about zero instead of piling
+    onto it (17-41% of the held Taylor Dome block cells had sat at exactly
+    0), and an axis a quarter turn off reads its contrast negated rather
+    than "no fabric"; a free search over the whole half turn keeps the
+    rate >= 0, which is what fixes its axis convention. A median or mean
+    of signed rates mixes the two eigen-directions - on the thin-ice
+    products the Eastwind held block median falls from 0.024 clamped to
+    0.012 signed while the median magnitude is 0.048 - so read the
+    magnitude and the sign, not a summary of the signed values. Two-pass use: a frame theta0
     pass, laterally segmented (`ptt.quadpolFrameTheta` below), then
     per-block dlam with theta0 pinned.
     KNOWN SYSTEMATIC (measured 11 Aug 2026, unresolved, and CONFIRMED not
