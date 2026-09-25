@@ -162,9 +162,11 @@ units).
     evaluates the stack on an internal grid no coarser than a twentieth
     of the window (`dz_model` pins it to the data's native step), windows
     there, and samples at the caller's rows; `win_power_m` windows the
-    powers behind `dP_hh`/`dP_hv` the way the data path does (default 0
-    keeps the paper's point amplitudes, which the Table-2 reproduction is
-    pinned to). A caller already on a fine grid is untouched.
+    powers behind `dP_hh`/`dP_hv` for observables averaged over a range
+    window (default 0 keeps the paper's point amplitudes, which the
+    Table-2 reproduction is pinned to and `ptt.ershadiFabric`'s
+    single-look-in-range powers share, issue #33). A caller already on a
+    fine grid is untouched.
     `opr_fabric/test/test_fujita_window.m` pins it: on rows one window
     apart the model reproduces a data path built on a 0.5 m grid to
     roundoff, and the true column's chi-square against noise at the
