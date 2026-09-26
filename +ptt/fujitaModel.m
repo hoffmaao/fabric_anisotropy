@@ -70,8 +70,10 @@ function out = fujitaModel(layers, z, psi, opts)
 %                0 keeps the point-amplitude anomalies of the paper's
 %                eq. (12), which the Table-2 reproduction in
 %                test_ershadi_seven and the direct-chain tests are pinned
-%                to. Callers fitting real observables pass the window
-%                those observables were formed with, usually win_m.
+%                to. A caller whose observables' powers were averaged over
+%                a range window passes that window (the quad-pol ApRES
+%                chain's, usually win_m); ptt.ershadiFabric's powers are
+%                single-look in range, and ptt.ershadiInverse keeps 0.
 %           .dz_model ([]): the internal grid step in metres. Default a
 %                twentieth of the narrowest window (a 1 m caller grid at
 %                win_m 30 is left as it is). A caller that knows the

@@ -77,6 +77,13 @@
 %      and exactly 0 on R2025b/macOS. A real change of window would show
 %      at 1e-2 or more.
 %
+% CONVENTION, for every verdict: point-amplitude powers (win_power_m 0),
+% the paper's eq. (12) and ptt.ershadiFabric's single-look-in-range
+% observables alike (issue #33). The direct Table-2 reproduction runs on
+% the paper's 1 m grid, and the 2a-2c ptt.ershadiInverse fits run the
+% model on the 8 m cost rows (fit_decim 8) refined to 1.33 m (win_m/20),
+% both unchanged by #33.
+%
 % Run: matlab -batch "run('opr_fabric/test/test_ershadi_seven.m')"
 clear;
 t0 = tic;
