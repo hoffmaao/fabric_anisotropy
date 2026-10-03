@@ -29,6 +29,7 @@ t0 = tic;
 
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
+ptt.estimators.use('ershadi');
 
 C = ptt.constants();
 fc = 750e6;
@@ -63,7 +64,7 @@ for alpha_deg = [0 20 35 55 80 125]
   S.hv = hv .* r + na*(randn(Nz,Nx)+1i*randn(Nz,Nx));
   S.vh = S.hv;
 
-  out = ptt.ershadiFabric(S, z, struct('fc', fc, 'psi_step_deg', 1, ...
+  out = ptt.estimators.run('ershadiFabric', S, z, struct('fc', fc, 'psi_step_deg', 1, ...
     'win_m', 30, 'grad_win_m', 25, 'coh_min', 0.4, 'deramped', false));
 
   mid = z > 300 & z < 1200;
@@ -91,7 +92,7 @@ S_nan = S;
 for k = {'hh', 'vv', 'hv', 'vh'}
   S_nan.(k{1})(band, :) = NaN;
 end
-out_n = ptt.ershadiFabric(S_nan, z, EOPT);
+out_n = ptt.estimators.run('ershadiFabric', S_nan, z, EOPT);
 reach = z >= 600 - 100 & z <= 700 + 100;
 near = reach & ~band;
 ok_abs = all(isnan(out_n.theta(band))) && all(isnan(out_n.dlam(band))) ...

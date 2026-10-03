@@ -25,6 +25,7 @@ out_fn = fullfile(scratch, 'stages', 'fabric_sections.mat');
 
 addpath(code); addpath(fullfile(code,'opr_fabric'));
 addpath(fullfile(code,'opr_fabric','test','stubs'));
+ptt.estimators.use('copol');
 
 % name, file, dtau source
 sites = { ...
@@ -137,7 +138,7 @@ for si = 1:size(sites,1)
     bad = ~isfinite(dtau);
     info2.coh_mask(bad) = false;
     blk = ptt.blockAverage(dtau, map, info2, o2);
-    iv = ptt.invertBlocks(blk, map, par, o2);
+    iv = ptt.estimators.run('invertBlocks', blk, map, par, o2);
     dl = iv.dlam;
     cs = [];
     for b = 1:size(dl,2)-1

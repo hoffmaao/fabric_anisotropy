@@ -57,6 +57,10 @@ for k = 1:numel(names)
   saved_dir = pwd;
   saved_warn = warning;
   saved_figs = findall(groot, 'Type', 'figure');
+  % No estimation method carries over from the previous test: each test
+  % selects its own with ptt.estimators.use, and one that forgets fails.
+  addpath(fullfile(here, '..', '..'));
+  ptt.estimators.use('none');
   t = tic;
   try
     H_run(fullfile(here, [names{k} '.m']));

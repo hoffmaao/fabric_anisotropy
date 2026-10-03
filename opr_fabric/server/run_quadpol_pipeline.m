@@ -7,12 +7,12 @@
 %   3. coregister VV, HV and VH onto HH with the OPR toolbox, using the
 %      settings the product recorded - or load the coreg_cache from a
 %      previous run, which turns a rerun from ~52 min into a few
-%   4. invert the COREGISTERED channels twice: ptt.ershadiFabric (the
+%   4. invert the COREGISTERED channels twice: ershadiFabric (the
 %      published chain, evaluated at the cross-pol minimum, which on this
-%      system is antenna-locked) and ptt.quadpolFabricLS (the model fit
+%      system is antenna-locked) and quadpolFabricLS (the model fit
 %      that takes the axis from the coherence field; a laterally-segmented
-%      frame theta0 pass via ptt.quadpolFrameTheta, then per-block dlam
-%      with the block's segment theta0 held via ptt.thetaProfileAt)
+%      frame theta0 pass via quadpolFrameTheta, then per-block dlam
+%      with the block's segment theta0 held via thetaProfileAt)
 %   5. report against the LS frame fit - the two-azimuth solve is printed
 %      as context only, not as a standard - and save
 %
@@ -159,7 +159,7 @@ NBLK_TR = nblk_tr;
 % variation is resolved instead of pooled away - the pooled frame pass is
 % the two-pass design's single point of failure on laterally-varying
 % frames (test_egrip_blocks.m). Frames shorter than two segments keep the
-% single frame fit unchanged. See ptt.quadpolFrameTheta.
+% single frame fit unchanged. See quadpolFrameTheta.
 if exist('seg_len_m', 'var') && ~isempty(seg_len_m)
   SEG_LEN_M = seg_len_m;
 else
@@ -626,7 +626,7 @@ la = P.Latitude(:); lo = P.Longitude(:);
 % its own - measured 23 Sep 2026, 95% of the windows voting on the held
 % axis at Eastwind and McMurdo and 35% at Taylor Dome lay below the bed,
 % and the held axes landed a median 51 / 41 / 9 deg off the ice above it
-% (see SUB-BED WINDOWS in ptt.quadpolFabricLS). So the bed is read here
+% (see SUB-BED WINDOWS in quadpolFabricLS). So the bed is read here
 % from the season's CSARP_layer picks, per trace, on this run's own depth
 % axis, and everything below it is masked before any estimator sees it
 % (section 3d). A frame with no picks runs whole, and the log says so:
@@ -818,11 +818,16 @@ end
 
 %% 4. inversion, on the coregistered channels
 t0 = tic;
-out = ptt.ershadiFabric(T, z, struct('fc', FC, 'psi_step_deg', PSI_STEP_DEG, ...
+% TWO methods write into this product: the published ershadi chain
+% (reference, its sec_dlam/sec_theta/dlam_raw/theta_raw fields) and
+% quadpol_ls (production, every ls_* field). Each switch between them is
+% an explicit ptt.estimators.use, so the mixing is visible where it happens.
+ptt.estimators.use('ershadi');
+out = ptt.estimators.run('ershadiFabric', T, z, struct('fc', FC, 'psi_step_deg', PSI_STEP_DEG, ...
   'win_m', 30, 'grad_win_m', 25, 'coh_min', 0.4, 'deramped', true));
 % and on the UNCOREGISTERED channels, so the effect of step 3 on the
 % ANSWER - not just on the coherence - is measured rather than assumed
-out_raw = ptt.ershadiFabric(S, z, struct('fc', FC, ...
+out_raw = ptt.estimators.run('ershadiFabric', S, z, struct('fc', FC, ...
   'psi_step_deg', PSI_STEP_DEG, 'win_m', 30, 'grad_win_m', 25, ...
   'coh_min', 0.4, 'deramped', true));
 fprintf('\nershadi inversion %.1f min\n', toc(t0)/60);
@@ -834,7 +839,7 @@ fprintf('\nershadi inversion %.1f min\n', toc(t0)/60);
 % what put the odd-pi coherence-null bands and the fringe-periodic
 % roughness in the section, and scaled dlam by ~cos 2*25 deg. The LS fit
 % takes the axis from the coherence field itself and models the nulls
-% instead of gating on them; see ptt.quadpolFabricLS and test_quadpol_ls.
+% instead of gating on them; see quadpolFabricLS and test_quadpol_ls.
 t0 = tic;
 p0 = deg2rad(la(1)); p1 = deg2rad(la(end));
 dl = deg2rad(lo(end) - lo(1));
@@ -880,7 +885,7 @@ NBLK_ROT = 200;
 
 % The frame pass - the antenna-frame pedestal, the frame-pooled theta0(z)
 % profile, and the per-SEGMENT geographic theta0(z) profiles the blocks
-% inherit - lives in ptt.quadpolFrameTheta, so the synthetic gates
+% inherit - lives in quadpolFrameTheta, so the synthetic gates
 % (test_quadpol_segmented.m) exercise exactly the code that runs here.
 % Segments re-fit theta0 laterally every ~SEG_LEN_M because the pooled
 % frame pass is the two-pass design's single point of failure on
@@ -888,7 +893,7 @@ NBLK_ROT = 200;
 % an instrument constant. Curved frames keep the validated geographic
 % path (test_quadpol_curved.m) inside the helper.
 % theta_const: ONE axis per segment, constant in depth, still free to vary
-% along track (see ptt.quadpolFabricLS's CONSTANT-ORIENTATION MODE). It is
+% along track (see quadpolFabricLS's CONSTANT-ORIENTATION MODE). It is
 % a MODEL ASSUMPTION about the site, so it is set at the call site or in
 % the season driver, never defaulted on: at a divide it removes per-window
 % axis noise and sharpens dlam, but where the axis rotates with depth -
@@ -897,9 +902,10 @@ NBLK_ROT = 200;
 % which case a segment is in.
 % jackknife: standard errors of every segment's axis and dlam profile by
 % delete-one resampling over the segment's heading sub-blocks
-% (ptt.quadpolJackknife) - the estimate's measured repeatability, no noise
+% (quadpolJackknife) - the estimate's measured repeatability, no noise
 % model. Blocks get theirs from a split-half below.
-fp = ptt.quadpolFrameTheta(T, z, az_tr, x_along, struct('fc', FC, ...
+ptt.estimators.use('quadpol_ls');
+fp = ptt.estimators.run('quadpolFrameTheta', T, z, az_tr, x_along, struct('fc', FC, ...
   'deramped', true, 'dlam_max', DLAM_MAX, 'seg_len_m', SEG_LEN_M, ...
   'nblk_rot', NBLK_ROT, 'track_az', track_az, ...
   'theta_const', THETA_CONST, 'jackknife', true, ...
@@ -916,7 +922,7 @@ end
 okt = isfinite(th_geo_raw);
 % Blocks inherit the ANTENNA-frame pedestal (an instrument constant, so it
 % is the same in every block's own frame) and their segment's geographic
-% axis through ptt.thetaProfileAt below. A frame whose pedestal fit did not
+% axis through thetaProfileAt below. A frame whose pedestal fit did not
 % converge carries the marker instead of a measurement, and the marker is
 % finite, so the test is ptt.pedestalFailed and not isfinite: anchoring the
 % blocks to it would fit every block at a pedestal of exactly zero on
@@ -976,7 +982,7 @@ sec_resid_ls = nan(numel(z), nb);
 % pedestal; half the difference of two independent half-block estimates
 % is one draw of the full block's error (var_full = var(diff)/4). The
 % per-block draw is saved raw, and a pooled sigma is formed below. The
-% rate is signed at a held axis (ptt.quadpolFabricLS), so two halves that
+% rate is signed at a held axis (quadpolFabricLS), so two halves that
 % both see no fabric scatter about zero rather than both clamping to it
 % and reporting a zero difference.
 sec_dlam_ls_hdiff = nan(numel(z), nb);
@@ -993,7 +999,8 @@ for b = 1:nb
   if j1 - j0 < min(16, NBLK_TR - 1), continue; end
   Tb = struct();
   for k = 1:4, Tb.(CHAN{k}) = T.(CHAN{k})(:, j0:j1); end
-  ob = ptt.ershadiFabric(Tb, z, struct('fc', FC, ...
+  ptt.estimators.use('ershadi');
+  ob = ptt.estimators.run('ershadiFabric', Tb, z, struct('fc', FC, ...
     'psi_step_deg', PSI_STEP_DEG, 'win_m', 30, 'grad_win_m', 25, ...
     'coh_min', 0.4, 'deramped', true));
   sec_dlam(:, b) = ob.dlam;
@@ -1002,13 +1009,14 @@ for b = 1:nb
   hb_blk = mod(rad2deg(angle(mean(exp(2i*deg2rad(az_tr(j0:j1))))))/2, 180);
   % the block's SEGMENT profile, phasor-interpolated across segment
   % centres at the block centre, converted into the block's antenna frame
-  pg = ptt.thetaProfileAt(fp, mean(x_along(j0:j1)));
+  ptt.estimators.use('quadpol_ls');
+  pg = ptt.estimators.run('thetaProfileAt', fp, mean(x_along(j0:j1)));
   if isstruct(pg)
     th_b = struct('z', pg.z, 'theta', pg.theta - deg2rad(hb_blk));
   else
     th_b = [];
   end
-  ob_ls = ptt.quadpolFabricLS(Tb, z, struct('fc', FC, 'deramped', true, ...
+  ob_ls = ptt.estimators.run('quadpolFabricLS', Tb, z, struct('fc', FC, 'deramped', true, ...
     'theta0', th_b, 'pedestal', blk_ped, 'dlam_max', DLAM_MAX));
   sec_dlam_ls(:, b) = ob_ls.dlam_z;
   sec_resid_ls(:, b) = interp1(ob_ls.zw, ob_ls.resid, z, 'linear');
@@ -1029,7 +1037,7 @@ for b = 1:nb
       if h == 1, jh = j0:jm; else, jh = jm+1:j1; end
       Th = struct();
       for k = 1:4, Th.(CHAN{k}) = T.(CHAN{k})(:, jh); end
-      oh = ptt.quadpolFabricLS(Th, z, struct('fc', FC, 'deramped', true, ...
+      oh = ptt.estimators.run('quadpolFabricLS', Th, z, struct('fc', FC, 'deramped', true, ...
         'theta0', th_h, 'pedestal', blk_ped, 'dlam_max', DLAM_MAX));
       dh(:, h) = oh.dlam_z;
     end

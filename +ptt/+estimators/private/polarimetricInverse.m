@@ -1,7 +1,7 @@
 function out = polarimetricInverse(obs, z, opts)
 %POLARIMETRICINVERSE Joint inversion for fabric orientation and scattering ratio.
 %
-% out = ptt.polarimetricInverse(obs, z, opts)
+% out = ptt.estimators.run('polarimetricInverse', obs, z, opts)
 %
 % Solves for ONE fabric orientation theta0 and a depth profile of the
 % anisotropic scattering ratio r(z) from the AZIMUTHAL POWER ANOMALIES,
@@ -12,10 +12,10 @@ function out = polarimetricInverse(obs, z, opts)
 % inverts it in the sense of Ershadi et al. (2022) but WITHOUT relying on
 % the coherence method.
 %
-% WHY ADD THIS WHEN WE ALREADY HAVE TWO INVERSIONS. ptt.quadpolFabricLS
+% WHY ADD THIS WHEN WE ALREADY HAVE TWO INVERSIONS. quadpolFabricLS
 % fits the complex coherence field and returns theta0 and dlam; it says
 % nothing about anisotropic SCATTERING, and it needs coherence to exist.
-% ptt.ershadiInverse fits geometry per interval. Neither delivers a
+% ershadiInverse fits geometry per interval. Neither delivers a
 % depth-resolved scattering ratio jointly with one column orientation,
 % and r(z) is not a nuisance: Gerber et al. (2025) find anisotropic
 % scattering dominates the azimuthal power response at 80% of their
@@ -60,7 +60,7 @@ function out = polarimetricInverse(obs, z, opts)
 % separate (theta0, r) from (theta0 + 90, 1/r) - the swap exchanges the
 % HH and VV roles and the anomaly is normalised, so it absorbs the rest.
 % Nymand notes the same trap (p76) and suggests resolving it from the sign
-% of the phase gradient or from prior knowledge. ptt.polarimetricRatioInverse
+% of the phase gradient or from prior knowledge. polarimetricRatioInverse
 % resolves it by including the coherence phase, which changes sign under
 % the swap; prefer that function where the phase is available.
 %
@@ -68,11 +68,11 @@ function out = polarimetricInverse(obs, z, opts)
 % Nymand tried it and reported that linearised iteration "yields poor
 % results", the forward problem being too non-linear in the eigenvalues
 % for any realistic initial guess - which is the same conditioning we
-% recorded independently in ptt.ershadiStrength, where theta is global in
+% recorded independently in ershadiStrength, where theta is global in
 % the observables and dlam is local. dlam enters here only through the
 % accumulated phase dpsi(z), supplied by the caller:
 %   - where the coherence survives, pass our own dlam(z) from
-%     ptt.quadpolFabricLS. This is the extension over Nymand: at NEGIS he
+%     quadpolFabricLS. This is the extension over Nymand: at NEGIS he
 %     had no usable coherence and had to set dlam = 0, and his eq 6.10
 %     for the coherence phase is written but unused. At Ridge A, Taylor
 %     Dome and the shallow half of most sites we DO have it.
@@ -83,7 +83,7 @@ function out = polarimetricInverse(obs, z, opts)
 %
 %
 % SIGN CONVENTION, PINNED BY TEST. Here d = theta0 - gamma, the SYNTHESIS
-% sense, the same one ptt.quadpolAzimuth and ptt.quadpolFabricLS use, in
+% sense, the same one ptt.quadpolAzimuth and quadpolFabricLS use, in
 % which a fabric at azimuth theta0 puts its features at sweep index
 % +theta0. ptt.fujitaModel deliberately uses the paper's R S R' sense, in
 % which they appear at -theta0. The two agree only with theta negated:
@@ -129,8 +129,8 @@ function out = polarimetricInverse(obs, z, opts)
 %   out.resid struct of residuals, out.rms per observable
 %   out.azimuth_source, out.dlam_used, out.warn (cellstr)
 %
-% See also ptt.quadpolFabricLS, ptt.ershadiInverse, ptt.fujitaModel,
-%   ptt.equaliseChannels, ptt.quadpolFabricPower.
+% See also quadpolFabricLS, ershadiInverse, ptt.fujitaModel,
+%   ptt.equaliseChannels, quadpolFabricPower.
 
 if nargin < 3, opts = struct(); end
 psi = obs.psi(:).';
@@ -229,7 +229,7 @@ fwd = @(mm) H_pack_pred(H_forward(mm, psi, dpsi, z, z_nodes, Nz, Np), use, idx, 
 % and datum straddling +-pi differ by ~2pi where the true misfit is ~0.
 % Those cells sit where the phase is near the branch cut rather than where
 % the model is wrong, so differencing them drags theta0 - the failure
-% ptt.fabricGLS measured and wraps away. out.resid already wrapped; the
+% fabricGLS measured and wraps away. out.resid already wrapped; the
 % objective now agrees with it.
 resid = @(mm) H_resid(d_obs, fwd(mm), is_ph);
 loss = @(mm) sum(w_obs .* resid(mm).^2) + eta^2 * sum((Gam*mm).^2);
@@ -370,7 +370,7 @@ function th = H_theta_from_hv(obs, psi, use)
 % where it is supplied it gives the initial guess for free: its minima sit
 % on the fabric axes. Guarded, because on THIS system the cross-pol sits
 % on a -3.6 dB instrument pedestal that antenna-locks exactly this
-% minimum, which is the whole reason ptt.quadpolFabricLS exists - so the
+% minimum, which is the whole reason quadpolFabricLS exists - so the
 % guess is a starting point only, never a result.
 th = 0;
 if ~any(strcmp(use, 'hv')) || ~isfield(obs, 'dP_hv') || isempty(obs.dP_hv)

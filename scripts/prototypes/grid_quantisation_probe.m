@@ -1,6 +1,6 @@
 %GRID_QUANTISATION_PROBE Does the variable-projection grid limit accuracy?
 %
-% ptt.quadpolFabricLS is a separable nonlinear least squares solved by
+% quadpolFabricLS is a separable nonlinear least squares solved by
 % variable projection: three non-linear parameters (theta_0, delta_0,
 % delta') on an exhaustive grid, four linear ones eliminated in closed
 % form at every node. The grid is 60 x 26 x 24 = 37440 four-by-four solves
@@ -39,6 +39,7 @@
 %
 if ~exist('ptt_root','var'), ptt_root = fileparts(fileparts(fileparts(mfilename('fullpath')))); end % this checkout's root, holding +ptt
 addpath(ptt_root);
+ptt.estimators.use('quadpol_ls');
 rng(5);
 fc=750e6; z=(10:10:1200).'; Nx=400; DL=0.05; TH=deg2rad(35);
 C=ptt.constants(); n=sqrt(C.eps_bar);
@@ -60,7 +61,7 @@ for k=1:size(cfg,1)
   o=base; o.theta_step_deg=cfg{k,2};
   o.d0_grid=(0:(360/cfg{k,3}):360-(360/cfg{k,3}))*pi/180;
   o.dd_grid=linspace(0, 0.25*gpd, cfg{k,4});
-  t0=tic; out=ptt.quadpolFabricLS(S,z,o); el=toc(t0);
+  t0=tic; out=ptt.estimators.run('quadpolFabricLS', S,z,o); el=toc(t0);
   g=isfinite(out.theta0);
   th=angle(median(exp(2i*out.theta0(g))))/2;
   e=rad2deg(abs(angle(exp(2i*(th-TH_EXP)))/2));

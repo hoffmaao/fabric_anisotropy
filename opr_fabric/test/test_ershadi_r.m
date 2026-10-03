@@ -1,6 +1,6 @@
 %TEST_ERSHADI_R The Sect.-3.5 reflection-ratio retrieval recovers known r.
 %
-% Validates ptt.fujitaModel + ptt.ershadiInverse - the faithful Ershadi et
+% Validates ptt.fujitaModel + ershadiInverse - the faithful Ershadi et
 % al. (2022) chain - on speckle synthetics with a known three-zone profile
 % shaped like their EDML result (two anisotropic-scattering zones of
 % opposite sign under an isotropic lid):
@@ -17,7 +17,7 @@
 %     against the closed-form channel expressions validated in
 %     test_quadpol_ls, a derivation that never forms a matrix product; and
 %   - the recovery verdicts, which reach the model only through
-%     ptt.ershadiFabric's quadpolMoments sweep - the real data path, built
+%     ershadiFabric's quadpolMoments sweep - the real data path, built
 %     from weight vectors rather than from a rotation matrix - so a sweep
 %     sense that disagrees with fujitaModel's misplaces the fitted axis.
 % The H_truth_M-vs-fujitaModel correlation is kept as an internal
@@ -50,6 +50,7 @@ t0 = tic;
 
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
+ptt.estimators.use('ershadi');
 
 rng(11);
 C = ptt.constants();
@@ -124,7 +125,7 @@ M = H_truth_M(z, TRUTH, gpd1);
 S = H_channels(M, Nz, Nx, NA);
 
 EOPT = struct('fc', fc, 'psi_step_deg', 1, 'deramped', false);
-fr = ptt.ershadiFabric(S, z, EOPT);
+fr = ptt.estimators.run('ershadiFabric', S, z, EOPT);
 
 % ---- verdict 1: fujitaModel against the INDEPENDENT closed form.
 % For a SINGLE uniform layer the channels have a closed form reached by
@@ -211,7 +212,7 @@ fprintf(['1b. multi-layer internal consistency (shared algebra): corr ' ...
 % this synthetic's geometry does not at 100 m.
 IOPT = struct('interval_m', 200, 'z_fit', [200 1150], ...
   'w_theta', [1 0 0], 'w_r', [0 1 0], 'fc', fc, 'eps_perp', eps_perp);
-inv = ptt.ershadiInverse(fr, z, IOPT);
+inv = ptt.estimators.run('ershadiInverse', fr, z, IOPT);
 
 function m = H_zone_med(v, z, zn)
   m = median(v(z >= zn(1) & z <= zn(2)), 'omitnan');
@@ -240,8 +241,8 @@ TRUTH0 = TRUTH;
 for k = 1:3, TRUTH0(k).r_db = 0; end
 M0 = H_truth_M(z, TRUTH0, gpd1);
 S0 = H_channels(M0, Nz, Nx, NA);
-fr0 = ptt.ershadiFabric(S0, z, EOPT);
-inv0 = ptt.ershadiInverse(fr0, z, IOPT);
+fr0 = ptt.estimators.run('ershadiFabric', S0, z, EOPT);
+inv0 = ptt.estimators.run('ershadiInverse', fr0, z, IOPT);
 r0_med = arrayfun(@(k) H_zone_med(inv0.r_db, z, ZONES(k, :)), 1:3);
 fprintf('   null-control r_db per zone: %+5.1f %+5.1f %+5.1f\n', r0_med);
 ok_null = all(abs(r0_med) < 2);

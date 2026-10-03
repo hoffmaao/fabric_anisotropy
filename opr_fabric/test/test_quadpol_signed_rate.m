@@ -1,6 +1,6 @@
 %TEST_QUADPOL_SIGNED_RATE Where the axis is named, the LS rate is signed.
 %
-% ptt.quadpolFabricLS fixes its axis convention by keeping the rate
+% quadpolFabricLS fixes its axis convention by keeping the rate
 % ddelta >= 0: (theta0 + 90, -ddelta) is the same field, so a free search
 % over the whole half turn always has the mirror to hand. Where the axis
 % is NAMED - held by constant mode, pinned by the caller (the blocks and
@@ -33,6 +33,7 @@ clear;
 t0 = tic;
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
+ptt.estimators.use('quadpol_ls');
 rng(27);
 
 C = ptt.constants();
@@ -49,8 +50,8 @@ held = setfield(BASE, 'theta_const', true); %#ok<SFLD>
 fails = 0;
 
 % 1. held, isotropic part and fabric part
-oc = ptt.quadpolFabricLS(M, z, setfield(held, 'signed_rate', false)); %#ok<SFLD>
-os = ptt.quadpolFabricLS(M, z, held);
+oc = ptt.estimators.run('quadpolFabricLS', M, z, setfield(held, 'signed_rate', false)); %#ok<SFLD>
+os = ptt.estimators.run('quadpolFabricLS', M, z, held);
 iso = oc.zw - oc.win_half > Z_ISO + 20 & isfinite(oc.dlam) & isfinite(os.dlam);
 fab = oc.zw + oc.win_half < Z_ISO - 20 & oc.zw > 100;
 z0_c = mean(oc.dlam(iso) == 0); z0_s = mean(os.dlam(iso) == 0);
@@ -73,8 +74,8 @@ fails = fails + ~ok1;
 
 % 2. a wrong-branch axis, pinned a quarter turn off
 pin = setfield(BASE, 'theta0', TH + pi/2); %#ok<SFLD>
-wc = ptt.quadpolFabricLS(M, z, setfield(pin, 'signed_rate', false)); %#ok<SFLD>
-ws = ptt.quadpolFabricLS(M, z, pin);
+wc = ptt.estimators.run('quadpolFabricLS', M, z, setfield(pin, 'signed_rate', false)); %#ok<SFLD>
+ws = ptt.estimators.run('quadpolFabricLS', M, z, pin);
 w_c = median(wc.dlam(fab), 'omitnan'); w_s = median(ws.dlam(fab), 'omitnan');
 ok2 = abs(w_s + DL) < 0.005 && abs(w_c) < 0.005;
 fprintf('2. axis pinned a quarter turn off: signed median %+.4f (truth %+.2f), clamped %+.4f: %s\n', ...
@@ -82,10 +83,10 @@ fprintf('2. axis pinned a quarter turn off: signed median %+.4f (truth %+.2f), c
 fails = fails + ~ok2;
 
 % 3. a narrow grid, as a replicate searches, is named
-of = ptt.quadpolFabricLS(M, z, BASE);
+of = ptt.estimators.run('quadpolFabricLS', M, z, BASE);
 nar = setfield(setfield(BASE, 'theta_grid', TH + deg2rad(-15:3:15)), 'window_ok', true(size(of.zw))); %#ok<SFLD>
-on = ptt.quadpolFabricLS(M, z, nar);
-nc = ptt.quadpolFabricLS(M, z, setfield(nar, 'signed_rate', false)); %#ok<SFLD>
+on = ptt.estimators.run('quadpolFabricLS', M, z, nar);
+nc = ptt.estimators.run('quadpolFabricLS', M, z, setfield(nar, 'signed_rate', false)); %#ok<SFLD>
 isn = on.zw - on.win_half > Z_ISO + 20 & isfinite(on.dlam) & isfinite(nc.dlam);
 ok3 = any(on.dlam(isn) < 0) && ~any(on.dlam(isn) == 0) && mean(nc.dlam(isn) == 0) > 0.2;
 fprintf('3. +-15 deg grid: %d of %d isotropic windows negative signed, %.0f%% exactly 0 clamped: %s\n', ...
@@ -93,7 +94,7 @@ fprintf('3. +-15 deg grid: %d of %d isotropic windows negative signed, %.0f%% ex
 fails = fails + ~ok3;
 
 % 4. a free full-range search is untouched
-ofc = ptt.quadpolFabricLS(M, z, setfield(BASE, 'signed_rate', false)); %#ok<SFLD>
+ofc = ptt.estimators.run('quadpolFabricLS', M, z, setfield(BASE, 'signed_rate', false)); %#ok<SFLD>
 ok4 = isequaln(of.theta0, ofc.theta0) && isequaln(of.dlam, ofc.dlam) && all(of.dlam(isfinite(of.dlam)) >= 0);
 fprintf('4. free search: signed_rate on and off bit-identical, every rate >= 0: %s\n', H_tick(ok4));
 fails = fails + ~ok4;

@@ -44,6 +44,7 @@ if ~exist('out_fn', 'var') || isempty(out_fn)
     sprintf('quadpol_%s_%03d.mat', day_seg, frm));
 end
 addpath(fabric_code);
+ptt.estimators.use('direct');
 
 CHAN = {'hh','vv','hv','vh'};
 NR = 9;                 % range looks for the moment matrix
@@ -127,7 +128,7 @@ fprintf('   null wherever delta passes a multiple of 2*pi)\n\n');
 M = ptt.quadpolMoments(S, [NR Nx]);
 psi = (0:PSI_STEP_DEG:180-PSI_STEP_DEG) * pi/180;
 A = ptt.quadpolAzimuth(M, psi);
-out = ptt.quadpolFabric(A, z, struct('fc', FC, 'win_m', 50, ...
+out = ptt.estimators.run('quadpolFabric', A, z, struct('fc', FC, 'win_m', 50, ...
   'grad_win_m', 200));
 
 % --- antenna frame -> geographic. H is along-track on this system, so the

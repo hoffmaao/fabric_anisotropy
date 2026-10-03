@@ -26,6 +26,7 @@ t0 = tic;
 
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
+ptt.estimators.use('copol');
 
 par = ptt.defaultParams();
 par.H = 2000;
@@ -64,7 +65,7 @@ fails = 0;
 
 % --- OLD path: surface-anchored forward, no offset nuisance. Must
 % REPRODUCE the bug, or the mechanism named here is not the mechanism.
-[dl_old, out_old] = ptt.invertHorizontalFabricJoint(obs, par, ...
+[dl_old, out_old] = ptt.estimators.run('invertHorizontalFabricJoint', obs, par, ...
   struct('reg', 0.05));
 ok = dl_old(1) > 0.03;
 fails = fails + ~ok;
@@ -73,7 +74,7 @@ fprintf('old: dlam(1) %.3f (truth 0.000) - spurious near-surface fabric %s\n', .
 
 % --- NEW path: reference-consistent forward + offset nuisance
 obs.zref = zref;
-[dl_new, out_new] = ptt.invertHorizontalFabricJoint(obs, par, ...
+[dl_new, out_new] = ptt.estimators.run('invertHorizontalFabricJoint', obs, par, ...
   struct('reg', 0.05));
 ok = abs(out_new.ref_offset - C_TRUE) < 0.12;
 fails = fails + ~ok;

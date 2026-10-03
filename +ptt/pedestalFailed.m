@@ -12,7 +12,7 @@ function tf = pedestalFailed(ped)
 % own). Anything not shaped like a [1 x 3] coefficient triple is failed
 % too, since it cannot be used as one.
 %
-% See also ptt.pedestalMarker, ptt.quadpolFrameTheta, ptt.quadpolFabricLS.
+% See also ptt.pedestalMarker, quadpolFrameTheta, quadpolFabricLS.
 
 p = ped(:).';
 tf = numel(p) ~= 3 || ~all(isfinite(p)) || isequal(p, ptt.pedestalMarker());

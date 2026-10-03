@@ -1,7 +1,7 @@
 function out = nymandTwoStep(obs, z, opts)
 %NYMANDTWOSTEP Two-step fabric inversion: orientation then strength.
 %
-% out = ptt.nymandTwoStep(obs, z, opts)
+% out = ptt.estimators.run('nymandTwoStep', obs, z, opts)
 %
 % Implements the two-step scheme presented by Nymand for NEGIS, using the
 % Fujita et al. (2006) depolarization-matrix model as the forward problem
@@ -10,13 +10,13 @@ function out = nymandTwoStep(obs, z, opts)
 %   STEP 1  orientation and scattering ratio, from the co- and
 %           cross-polarized POWER anomalies. The forward problem is Taylor
 %           expanded and the first-order system solved by iterative least
-%           squares - ptt.polarimetricInverse, which carries the analytic
+%           squares - polarimetricInverse, which carries the analytic
 %           reduction and is pinned against ptt.fujitaModel by test.
 %           The scattering ratio is r = S22 / S11.
 %
 %   STEP 2  the horizontal contrast dlam(z), from the TRAVEL-TIME
 %           anomalies, by linear maximum likelihood -
-%           ptt.traveltimeFabricML. Exactly linear, so its posterior is
+%           traveltimeFabricML. Exactly linear, so its posterior is
 %           exact rather than linearised.
 %
 % WHY THE STEPS ARE COUPLED, AND WHY THIS ITERATES. The split is not
@@ -29,7 +29,7 @@ function out = nymandTwoStep(obs, z, opts)
 % something the slides state. Set max_outer = 1 for the strict two-pass
 % reading; the output records both, and n_outer says which you got.
 %
-% WHAT THIS BUYS OVER THE ESTIMATORS ALREADY HERE. ptt.quadpolFabricLS
+% WHAT THIS BUYS OVER THE ESTIMATORS ALREADY HERE. quadpolFabricLS
 % fits the complex coherence field and is the production path. This one
 % never forms a coherence, so it survives where coherence does not - the
 % Thwaites zones measured to have lost their fringes - and its strength
@@ -42,7 +42,7 @@ function out = nymandTwoStep(obs, z, opts)
 % free products differ in strength, the axis assumption is not what does
 % it: the large gaps at Taylor Dome, Eastwind and McMurdo came from
 % sub-bed windows capturing the held axis (see SUB-BED WINDOWS in
-% ptt.quadpolFabricLS). Compare this estimator's strength with a free-axis
+% quadpolFabricLS). Compare this estimator's strength with a free-axis
 % one only on above-bed ice.
 %
 % obs fields:
@@ -64,8 +64,8 @@ function out = nymandTwoStep(obs, z, opts)
 % out.theta0, out.r_z, out.dlam, out.sigma_dlam, out.resolution,
 % out.chi2_dof, out.n_outer, out.converged, out.step1, out.step2, out.hist
 %
-% See also ptt.polarimetricInverse, ptt.traveltimeFabricML,
-% ptt.orientationToFlow, ptt.quadpolFabricLS.
+% See also polarimetricInverse, traveltimeFabricML,
+% ptt.orientationToFlow, quadpolFabricLS.
 if nargin < 3, opts = struct(); end
 z = z(:);
 max_outer = H_opt(opts, 'max_outer', 4);
@@ -86,7 +86,7 @@ for it = 1:max(1, max_outer)
   % --- step 1: orientation and scattering ratio from power anomalies
   o1 = opts;
   o1.dlam = dl_scalar;                    % scalar contrast for the phase term
-  s1 = ptt.polarimetricInverse(obs, z, o1);
+  s1 = polarimetricInverse(obs, z, o1);
   th = s1.theta0;
 
   % --- step 2: contrast profile from travel-time anomalies
@@ -95,7 +95,7 @@ for it = 1:max(1, max_outer)
   else
     dtau = obs.dtau;
   end
-  s2 = ptt.traveltimeFabricML(dtau, z, opts);
+  s2 = traveltimeFabricML(dtau, z, opts);
   dl_med = median(s2.dlam, 'omitnan');
   if isfinite(dl_med), dl_scalar = dl_med; end
 

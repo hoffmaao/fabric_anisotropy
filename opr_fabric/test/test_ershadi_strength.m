@@ -1,8 +1,8 @@
 %TEST_ERSHADI_STRENGTH Part two: infer dlam(z) given orientation and r.
 %
-% The inversion is two problems, not one. Part one (ptt.ershadiInverse)
+% The inversion is two problems, not one. Part one (ershadiInverse)
 % infers the GEOMETRY - orientation theta and reflection ratio r - and
-% accepts a dlam it never revisits. Part two (ptt.ershadiStrength) infers
+% accepts a dlam it never revisits. Part two (ershadiStrength) infers
 % the STRENGTH, dlam(z), with that geometry held.
 %
 % The split is not cosmetic: the two halves have OPPOSITE conditioning.
@@ -28,7 +28,7 @@
 %      into its own gradient. So staging beats accept-once (where the
 %      error is permanent and total) without being immune to it, and the
 %      verdict asserts the measured half rather than an aspirational
-%      "local". The measurement survived ptt.ershadiStrength moving to a
+%      "local". The measurement survived ershadiStrength moving to a
 %      PADDED per-interval evaluation (the modelled coherence formed with
 %      the interval's real neighbourhood instead of a zero-padded window,
 %      verified to reproduce a full-column evaluation to 1e-16 against
@@ -43,7 +43,7 @@
 %      drifting toward that is the failure, and the deep dlam should then
 %      not be quoted without the upstream one.
 %   3. WEIGHTED, NOT GATED: with coherence driven under the |C| > 0.4 gate
-%      that ptt.ershadiFabric applies to its own dlam, the direct chain
+%      that ershadiFabric applies to its own dlam, the direct chain
 %      goes blank while this stage still returns a profile. That is the
 %      point of fitting |C|^2-weighted instead of thresholded - it is what
 %      voids 61% of deep Ridge A intervals in the published chain.
@@ -75,6 +75,7 @@ t0 = tic;
 
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
+ptt.estimators.use('ershadi');
 
 rng(17);
 C = ptt.constants();
@@ -116,9 +117,9 @@ geom = struct('edges', EDG, 'theta_int', TH*ones(3,1), 'r_db_int', RDB);
 
 %% verdict 1: recovery with the geometry held at truth
 S = H_col(z, EDG, DL, TH, gpd1, Nx, 0.30);
-fr = ptt.ershadiFabric(S, z, struct('fc', fc, 'psi_step_deg', 3, ...
+fr = ptt.estimators.run('ershadiFabric', S, z, struct('fc', fc, 'psi_step_deg', 3, ...
   'deramped', false));
-st = ptt.ershadiStrength(fr, z, geom, struct('dlam_max', 0.30));
+st = ptt.estimators.run('ershadiStrength', fr, z, geom, struct('dlam_max', 0.30));
 err = abs(st.dlam_int - DL);
 fprintf('%8s %9s %10s %10s %12s\n','zone','truth','fitted','|err|','weight');
 for k = 1:3
@@ -133,7 +134,7 @@ fprintf('1. dlam recovered in all three zones (<0.01):           %s\n', ...
 INJ = 0.04;                                     % forced error, top zone
 % zone 1 PINNED at a wrong value; zones 2-3 still fitted, so the question
 % is whether they absorb the upstream error or re-find their own gradient
-st2 = ptt.ershadiStrength(fr, z, geom, struct('dlam_max', 0.30, ...
+st2 = ptt.estimators.run('ershadiStrength', fr, z, geom, struct('dlam_max', 0.30, ...
   'dlam_fixed', [DL(1) + INJ; NaN; NaN]));
 deep_err_clean = max(abs(st.dlam_int(2:3) - DL(2:3)));
 deep_err_hurt = max(abs(st2.dlam_int(2:3) - DL(2:3)));
@@ -146,10 +147,10 @@ fprintf('2. an upstream dlam error stays local:                  %s\n', ...
 
 %% verdict 3: works where the published gate goes blank
 S_lo = H_col(z, EDG, DL, TH, gpd1, Nx, 0.95);   % coherence driven down
-fr_lo = ptt.ershadiFabric(S_lo, z, struct('fc', fc, 'psi_step_deg', 3, ...
+fr_lo = ptt.estimators.run('ershadiFabric', S_lo, z, struct('fc', fc, 'psi_step_deg', 3, ...
   'deramped', false));
 gated = mean(isfinite(fr_lo.dlam));
-st_lo = ptt.ershadiStrength(fr_lo, z, geom, struct('dlam_max', 0.30));
+st_lo = ptt.estimators.run('ershadiStrength', fr_lo, z, geom, struct('dlam_max', 0.30));
 fprintf('\n   median |C| %.2f: direct-chain dlam finite on %.0f%% of rows\n', ...
   median(fr_lo.Cmag(:), 'omitnan'), 100*gated);
 fprintf('   strength stage returned %d of 3 zones\n', ...
@@ -162,10 +163,10 @@ fprintf('3. returns a profile where the |C| gate goes blank:      %s\n', ...
 fr_gap = fr;
 gap = z >= EDG(2) & z < EDG(3);            % zone 2 loses all its weight
 fr_gap.Cmag(gap, :) = 0;
-st4 = ptt.ershadiStrength(fr_gap, z, geom, struct('dlam_max', 0.30));
+st4 = ptt.estimators.run('ershadiStrength', fr_gap, z, geom, struct('dlam_max', 0.30));
 % the same column with the gap PINNED at zero: what propagating a
 % fabricated isotropic layer costs the interval below it
-st4z = ptt.ershadiStrength(fr_gap, z, geom, struct('dlam_max', 0.30, ...
+st4z = ptt.estimators.run('ershadiStrength', fr_gap, z, geom, struct('dlam_max', 0.30, ...
   'dlam_fixed', [NaN; 0; NaN]));
 e4 = abs(st4.dlam_int(3) - DL(3));
 e4z = abs(st4z.dlam_int(3) - DL(3));

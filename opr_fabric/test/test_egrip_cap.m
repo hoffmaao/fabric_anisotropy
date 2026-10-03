@@ -3,7 +3,7 @@
 % The EastGRIP validation frame failed with a signature the block-size
 % synthetic did NOT reproduce: HIGH residuals (0.30-0.64, worst mid-column)
 % with dlam OSCILLATING between ~0.05 and ~0.19 by depth band. The EGRIP
-% core puts the true contrast near 0.2-0.35 - and ptt.quadpolFabricLS caps
+% core puts the true contrast near 0.2-0.35 - and quadpolFabricLS caps
 % its ddelta search at dlam_max, DEFAULT 0.25, which the pipeline never
 % overrides. Ridge A (0.07) never came near the cap; EastGRIP is the first
 % site above it. A window whose true rate exceeds the cap either rails
@@ -25,6 +25,7 @@ rng(5);
 t0 = tic;
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
+ptt.estimators.use('quadpol_ls');
 
 C = ptt.constants();
 fc = 750e6;
@@ -64,7 +65,7 @@ for pass = 1:2
   if pass == 2, o.dlam_max = 0.45; end
   capv = 0.25; if pass == 2, capv = 0.45; end
 
-  frq = ptt.quadpolFabricLS(S, z, o);
+  frq = ptt.estimators.run('quadpolFabricLS', S, z, o);
   m = frq.zw > 300 & frq.zw < 1100;
   fin = mean(isfinite(frq.dlam(m)));
   dlm = median(frq.dlam(m), 'omitnan');
@@ -107,7 +108,7 @@ for pass = 1:2
         j0 = (b-1)*NB + 1; j1 = min(b*NB, Nx);
         Sb = struct('hh', S.hh(:, j0:j1), 'vv', S.vv(:, j0:j1), ...
           'hv', S.hv(:, j0:j1), 'vh', S.vh(:, j0:j1));
-        ob = ptt.quadpolFabricLS(Sb, z, ob_o);
+        ob = ptt.estimators.run('quadpolFabricLS', Sb, z, ob_o);
         mm = ob.zw > 300 & ob.zw < 1100;
         dlb(b) = median(ob.dlam(mm), 'omitnan');
         rsb(b) = median(ob.resid(mm), 'omitnan');

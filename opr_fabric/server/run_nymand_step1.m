@@ -2,7 +2,7 @@
 %
 % Solves ONE fabric orientation and the scattering-ratio profile per frame
 % from the azimuthal POWER anomalies, by the iterative linearisation of
-% ptt.polarimetricInverse - the first step of the two-step scheme, under a
+% polarimetricInverse - the first step of the two-step scheme, under a
 % constant eigenframe.
 %
 % WHY THIS IS WORTH RUNNING ON ITS OWN. It reaches theta0 by a route that
@@ -28,6 +28,7 @@
 % Optional: nr (range looks, 15), psi_step_deg (2), fc (750e6).
 [code_root, work_root] = fabric_paths();
 addpath(code_root);   % +ptt
+ptt.estimators.use('nymand');
 if ~exist('fab_root', 'var'), fab_root = work_root; end
 if ~exist('filter', 'var'), filter = '2025'; end
 if ~exist('nr', 'var'), nr = 15; end
@@ -74,7 +75,7 @@ for i = 1:numel(tags)
     A = ptt.quadpolAzimuth(M, psi);
     clear M
 
-    % Power anomalies in the convention ptt.polarimetricInverse expects:
+    % Power anomalies in the convention polarimetricInverse expects:
     % 20*log10 of the power ratio to the azimuthal mean, matching the
     % generator in test_polarimetric_inverse.
     obs = struct('psi', psi, 'dP_hh', an(double(A.Phh)), ...
@@ -96,7 +97,7 @@ for i = 1:numel(tags)
     dl_z = interp1(zs(gd), dl(gd), z, 'linear', 'extrap');
     dl_z(~isfinite(dl_z)) = median(dl(gd));
 
-    o = ptt.polarimetricInverse(obs, z, struct('fc', fc, 'dlam', dl_z, ...
+    o = ptt.estimators.run('polarimetricInverse', obs, z, struct('fc', fc, 'dlam', dl_z, ...
       'n_r', 10, 'eta', 1e-2, 'azimuth_source', 'synthetic'));
 
     % production answer on its own grid, same trusted band, circular median

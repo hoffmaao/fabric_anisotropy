@@ -218,7 +218,7 @@ fprintf('Joint mode: max |error| block 1: %.3f\n', max_err_j);
 assert(max_err_j < 0.05, 'joint-mode dlam deviates from truth by %.3f', max_err_j);
 
 % Joint mode saves the per-block regularization diagnostics; stripping mode
-% leaves them NaN (see ptt.invertBlocks)
+% leaves them NaN (see invertBlocks)
 assert(all(isfinite(outj.dtau_rms)) && all(isfinite(outj.reg_alpha)), ...
   'joint mode did not save dtau_rms/reg_alpha');
 assert(all(ismember(outj.dlam_clipped(:), [0;1])), ...

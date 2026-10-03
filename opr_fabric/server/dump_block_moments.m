@@ -6,12 +6,12 @@
 % along-track block of ~blk_m metres, the 4x4 polarimetric moment matrix
 % of the coregistered channels [Nt x 4 x 4 x nb] (single), in BOTH the
 % antenna frame (as recorded) and the geographic frame (heading-rotated
-% per 200-trace sub-block, as ptt.quadpolFrameTheta pools them), with the
+% per 200-trace sub-block, as quadpolFrameTheta pools them), with the
 % block centre position, heading and trace count.
 %
 % WHY. Every estimator in +ptt that works on moments - the coherence LS
-% (ptt.quadpolFabricLS), the power-extinction fit
-% (ptt.quadpolFabricPower), and whatever comes next - can then run on a
+% (quadpolFabricLS), the power-extinction fit
+% (quadpolFabricPower), and whatever comes next - can then run on a
 % frame in seconds on a laptop instead of a 30-70 min pipeline pass on
 % the shared node, and on exactly the same blocks, which is what a
 % comparison between them needs. A block matrix is ~1.3 MB, so a frame is

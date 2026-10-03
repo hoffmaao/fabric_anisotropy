@@ -83,6 +83,7 @@ t0 = tic;
 
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
+ptt.estimators.use('ershadi');
 
 rng(4);
 fc = 300e6;                             % ApRES, the paper's system
@@ -168,9 +169,9 @@ S.vv = squeeze(M(2,2,:)) .* g + NA*(randn(Nz,360)+1i*randn(Nz,360));
 S.hv = squeeze(M(1,2,:)) .* g + NA*(randn(Nz,360)+1i*randn(Nz,360));
 S.vh = squeeze(M(2,1,:)) .* g + NA*(randn(Nz,360)+1i*randn(Nz,360));
 
-fr = ptt.ershadiFabric(S, z, struct('fc', fc, 'psi_step_deg', 1, ...
+fr = ptt.estimators.run('ershadiFabric', S, z, struct('fc', fc, 'psi_step_deg', 1, ...
   'deramped', false));
-inv = ptt.ershadiInverse(fr, z, struct('interval_m', 500, ...
+inv = ptt.estimators.run('ershadiInverse', fr, z, struct('interval_m', 500, ...
   'z_fit', [50 3950], 'w_theta', [1 0 0], 'w_r', [0 1 0], ...
   'fit_decim', 8, 'fit_psi_decim', 6, 'max_iter', 80));
 

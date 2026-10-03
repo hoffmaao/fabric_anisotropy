@@ -6,7 +6,7 @@
 % it on synthetic columns whose truth is known, for both resampling
 % estimators the pipeline uses:
 %
-%   A. SEGMENT LEVEL - ptt.quadpolJackknife, delete-one over the sub-blocks
+%   A. SEGMENT LEVEL - quadpolJackknife, delete-one over the sub-blocks
 %      whose weighted mean is the segment's pooled moment matrix, in
 %      constant-orientation mode (the held axis and the dlam(z) profile).
 %      R independent realisations of the same column give the empirical
@@ -46,7 +46,7 @@
 %      being narrow-searched, not for being bad, and it does so silently -
 %      n_edge does not cover it, and a window that loses enough replicates
 %      returns NaN from the standard error with nothing saying why. See the
-%      note in ptt.quadpolJackknife.
+%      note in quadpolJackknife.
 %      MEASURED on this column: gated on the raw contrast, 88% of
 %      replicate theta0 values survive; with the contrast put back on the
 %      full-range scale, 100%. The loss grows as the fabric weakens and
@@ -66,8 +66,8 @@
 %      should never have been re-estimated: whether a window carries
 %      enough contrast to own an axis is a property of the WINDOW, settled
 %      once by the full fit on the full grid with all the data. So
-%      ptt.quadpolFabricLS exports that verdict as out.window_ok and
-%      ptt.quadpolJackknife hands it back in as opts.window_ok; a
+%      quadpolFabricLS exports that verdict as out.window_ok and
+%      quadpolJackknife hands it back in as opts.window_ok; a
 %      replicate reports for exactly the windows its parent accepted and
 %      abstains for exactly the ones it rejected, whatever grid it
 %      searched. Asserted: a full grid handed in explicitly behaves like
@@ -126,6 +126,7 @@ clear;
 t0 = tic;
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
+ptt.estimators.use('quadpol_ls');
 
 rng(17);
 C = ptt.constants();
@@ -184,8 +185,8 @@ dl_hat = []; se_dl = []; edge = zeros(1, R);
 for r = 1:R
   S = H_col(z, TH, DL_Z, NB*NSB, gpd, LEAK_C, LEAK_D, NA);
   [Mg, Msub, nsub] = H_subblocks(S, NB, NSB);
-  o = ptt.quadpolFabricLS(struct('M', Mg), z, OPTS);
-  J = ptt.quadpolJackknife(Msub, nsub, z, OPTS, o, JOPTS);
+  o = ptt.estimators.run('quadpolFabricLS', struct('M', Mg), z, OPTS);
+  J = ptt.estimators.run('quadpolJackknife', Msub, nsub, z, OPTS, o, JOPTS);
   th_hat(r) = o.theta_const; se_th(r) = J.se_theta_c;
   if isempty(dl_hat), dl_hat = nan(numel(o.zw), R); se_dl = dl_hat; zw = o.zw; end
   dl_hat(:, r) = o.dlam; se_dl(:, r) = J.se_dlam; edge(r) = J.n_edge;
@@ -220,8 +221,8 @@ se_big = [];
 for r = 1:2
   S = H_col(z, TH, DL_Z, 2*NB*NSB, gpd, LEAK_C, LEAK_D, NA);
   [Mg, Msub, nsub] = H_subblocks(S, 2*NB, NSB);
-  o = ptt.quadpolFabricLS(struct('M', Mg), z, OPTS);
-  J = ptt.quadpolJackknife(Msub, nsub, z, OPTS, o, JOPTS);
+  o = ptt.estimators.run('quadpolFabricLS', struct('M', Mg), z, OPTS);
+  J = ptt.estimators.run('quadpolJackknife', Msub, nsub, z, OPTS, o, JOPTS);
   se_big = [se_big; J.se_dlam(:)]; %#ok<AGROW>
 end
 r_scale = median(se_dl(:), 'omitnan') / median(se_big, 'omitnan');
@@ -234,8 +235,8 @@ fails = fails + ~okC;
 S = H_col(z, TH, DL_Z, NB*NSB, gpd, LEAK_C, LEAK_D, NA);
 [Mg, Msub, nsub] = H_subblocks(S, NB, NSB);
 FOPTS = OPTS; FOPTS.theta_const = false;
-of = ptt.quadpolFabricLS(struct('M', Mg), z, FOPTS);
-Jf = ptt.quadpolJackknife(Msub, nsub, z, FOPTS, of, JOPTS);
+of = ptt.estimators.run('quadpolFabricLS', struct('M', Mg), z, FOPTS);
+Jf = ptt.estimators.run('quadpolJackknife', Msub, nsub, z, FOPTS, of, JOPTS);
 okf = isfinite(of.theta0);
 rep_fin = mean(isfinite(Jf.theta_rep(okf, :)), 'all');
 se_fin = mean(isfinite(Jf.se_theta(okf)));
@@ -253,9 +254,9 @@ fails = fails + ~okD;
 
 %% E. a replicate inherits its parent's verdict; grid width gates nothing
 GFREE = OPTS; GFREE.theta_const = false;
-o_def = ptt.quadpolFabricLS(struct('M', Mg), z, GFREE);
+o_def = ptt.estimators.run('quadpolFabricLS', struct('M', Mg), z, GFREE);
 GEXP = GFREE; GEXP.theta_grid = (0:4:176) * pi/180;
-o_exp = ptt.quadpolFabricLS(struct('M', Mg), z, GEXP);
+o_exp = ptt.estimators.run('quadpolFabricLS', struct('M', Mg), z, GEXP);
 same_abst = isequal(isfinite(o_def.theta0), isfinite(o_exp.theta0));
 finb = isfinite(o_def.theta0) & isfinite(o_exp.theta0);
 dth = max(abs(angle(exp(2i*(o_def.theta0(finb) - o_exp.theta0(finb))))/2));
@@ -263,7 +264,7 @@ okE1 = same_abst && (isempty(dth) || rad2deg(dth) < 1e-6);
 
 Siso = H_col(z, TH, 1e-4 * ones(size(z)), NB*NSB, gpd, LEAK_C, LEAK_D, NA);
 Miso = H_subblocks(Siso, NB, NSB);
-o_iso = ptt.quadpolFabricLS(struct('M', Miso), z, GFREE);
+o_iso = ptt.estimators.run('quadpolFabricLS', struct('M', Miso), z, GFREE);
 f_iso = mean(isfinite(o_iso.theta0));
 f_ani = mean(isfinite(o_def.theta0));
 okE2 = f_iso <= 0.25 && f_ani >= 0.75;
@@ -275,8 +276,8 @@ okE2 = f_iso <= 0.25 && f_ani >= 0.75;
 par = o_def.window_ok;
 NAR = GFREE; NAR.theta_grid = TH + (-15:3:15) * pi/180; NAR.window_ok = par;
 FUL = GFREE; FUL.window_ok = par;
-r_nar = ptt.quadpolFabricLS(struct('M', Mg), z, NAR);
-r_ful = ptt.quadpolFabricLS(struct('M', Mg), z, FUL);
+r_nar = ptt.estimators.run('quadpolFabricLS', struct('M', Mg), z, NAR);
+r_ful = ptt.estimators.run('quadpolFabricLS', struct('M', Mg), z, FUL);
 acc = par(:);
 okE3 = nnz(acc) >= 3 && all(isfinite(r_nar.theta0(acc))) && ...
   all(isfinite(r_ful.theta0(acc))) && ...
@@ -286,7 +287,7 @@ okE3 = nnz(acc) >= 3 && all(isfinite(r_nar.theta0(acc))) && ...
 % column must not be handed an axis by the narrow-grid pass either.
 ISO = GFREE; ISO.theta_grid = TH + (-15:3:15) * pi/180;
 ISO.window_ok = o_iso.window_ok;
-r_iso = ptt.quadpolFabricLS(struct('M', Miso), z, ISO);
+r_iso = ptt.estimators.run('quadpolFabricLS', struct('M', Miso), z, ISO);
 okE4 = mean(isfinite(r_iso.theta0)) <= 0.25 && ...
   isequal(isfinite(r_iso.theta0), logical(o_iso.window_ok(:)));
 
@@ -429,9 +430,9 @@ fails = fails + ~okF1 + ~okF2 + ~okF2b + ~okF3 + ~okF4;
 % jackknife, so setting none of the new options must give the same answer
 % as the pipeline's own default call - bit for bit, not just close.
 GDEF = OPTS; GDEF.theta_const = false;
-g_ref = ptt.quadpolFabricLS(struct('M', Mg), z, GDEF);
+g_ref = ptt.estimators.run('quadpolFabricLS', struct('M', Mg), z, GDEF);
 GEXTRA = GDEF; GEXTRA.window_ok = [];        % documented "decide as usual"
-g_new = ptt.quadpolFabricLS(struct('M', Mg), z, GEXTRA);
+g_new = ptt.estimators.run('quadpolFabricLS', struct('M', Mg), z, GEXTRA);
 same_th = isequaln(g_ref.theta0, g_new.theta0);
 same_dl = isequaln(g_ref.dlam, g_new.dlam);
 same_q = isequaln(g_ref.q_theta, g_new.q_theta);
@@ -455,12 +456,12 @@ BOPTS = struct('fc', fc, 'psi_step_deg', 4, 'win_short_m', 10, ...
 dl_b = []; hd_b = [];
 for r = 1:RB
   S = H_col(z, TH, DL_Z, NBLK, gpd, LEAK_C, LEAK_D, NA);
-  ob = ptt.quadpolFabricLS(S, z, BOPTS);
+  ob = ptt.estimators.run('quadpolFabricLS', S, z, BOPTS);
   jm = NBLK / 2;
   S1 = struct('hh', S.hh(:, 1:jm), 'vv', S.vv(:, 1:jm), 'hv', S.hv(:, 1:jm), 'vh', S.vh(:, 1:jm));
   S2 = struct('hh', S.hh(:, jm+1:end), 'vv', S.vv(:, jm+1:end), 'hv', S.hv(:, jm+1:end), 'vh', S.vh(:, jm+1:end));
-  o1 = ptt.quadpolFabricLS(S1, z, BOPTS);
-  o2 = ptt.quadpolFabricLS(S2, z, BOPTS);
+  o1 = ptt.estimators.run('quadpolFabricLS', S1, z, BOPTS);
+  o2 = ptt.estimators.run('quadpolFabricLS', S2, z, BOPTS);
   if isempty(dl_b), dl_b = nan(numel(ob.zw), RB); hd_b = dl_b; zb = ob.zw; end
   dl_b(:, r) = ob.dlam; hd_b(:, r) = o1.dlam - o2.dlam;
 end

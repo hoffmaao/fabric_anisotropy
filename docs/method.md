@@ -1,8 +1,48 @@
 # Method code (`+ptt` package)
 
 Reference detail for every function in the `+ptt` package. Each function
-carries a full header of its own (`help ptt.<name>` in MATLAB); this page
-is the map and the reasoning that connects them.
+carries a full header of its own (`help ptt.<name>` in MATLAB, or the
+estimator's own file in `+ptt/+estimators/private/`); this page is the map
+and the reasoning that connects them.
+
+## Estimators (`+ptt/+estimators`)
+
+Every function that infers fabric from data lives in
+`+ptt/+estimators/private/`, where MATLAB lets nothing outside the folder
+call it. The rest of `+ptt` is physics and data handling: forward models,
+constants, coregistration, moments and rotations, which anything may call.
+
+- `ptt.estimators.run(name, ...)` is the only way to call an estimator. It
+  runs the one estimator named and stamps its first struct output with
+  `.estimator`: the method, the name, and the convention, meaning which
+  axis an angle names, in which frame, and whether dlam is signed.
+- `ptt.estimators.use(method)` selects one method for the session, and
+  `run` refuses any estimator outside it. A caller that compares two
+  methods switches with a second `use` call, so the switch is visible in
+  the code. `use('none')` deselects, and the test runner does that before
+  every test.
+- `ptt.estimators.registry()` lists the methods, their members and the
+  conventions; `ptt.estimators.current()` reports the selection.
+  `opr_fabric/test/test_estimators.m` holds the folder to the registry.
+
+| method | status | estimators | run by |
+|---|---|---|---|
+| `quadpol_ls` | production | `quadpolFabricLS`, `quadpolFrameTheta`, `quadpolJackknife`, `thetaProfileAt` | `run_quadpol_pipeline` |
+| `copol` | production | `invertHorizontalFabric`, `invertHorizontalFabricJoint`, `invertBlocks` | the OPR module, `fabric_task` |
+| `ershadi` | reference | `ershadiFabric`, `ershadiInverse`, `ershadiStrength` | `run_quadpol_pipeline` beside `quadpol_ls`, `run_ershadi_r` |
+| `nymand` | experimental | `polarimetricInverse`, `polarimetricRatioInverse`, `traveltimeFabricML`, `nymandTwoStep` | `run_nymand_step1` |
+| `gls` | experimental | `fabricGLS` | tests only |
+| `power` | experimental | `quadpolFabricPower` | a prototype |
+| `cmp` | reference | `invertFabric` | `synthetic_experiments` |
+| `direct` | superseded | `quadpolFabric` | `run_quadpol_survey`, `run_quadpol_frame` |
+
+`run_quadpol_pipeline` is the one place two methods still write into one
+product: its `ls_*` fields come from `quadpol_ls` and its `sec_dlam`,
+`sec_theta`, `dlam_raw` and `theta_raw` fields from the `ershadi` chain.
+Each switch between them is an explicit `ptt.estimators.use` in the
+script.
+
+## Map
 
 Coordinate convention: z is height above the bed, zhat = z/H in [0, 1].
 Units: meters and nanoseconds in the theory functions; the interferometric
@@ -16,15 +56,15 @@ units).
 - `ptt.twttDifference` - forward model of the TWTT difference t_xz - t_y
   for a CMP geometry (half-offset L, reflector height z), including
   refractive ray bending and the refractive shadow zone (eqs. 2.11-2.13, A1).
-- `ptt.invertFabric` - full 5-parameter CMP inversion
+- `invertFabric` (estimator, `cmp`) - full 5-parameter CMP inversion
   (zhat_bco, lam_x_sfc, lam_x_bed, lam_z_sfc, lam_z_bed) via SQP (eq. 4.1+).
   Needs varying-offset data.
-- `ptt.invertHorizontalFabric` - common-offset workflow: layer-stripping
+- `invertHorizontalFabric` (estimator, `copol`) - common-offset workflow: layer-stripping
   inversion for the horizontal fabric contrast lam_x - lam_y per reflector
   interval. This is the method for standard accumulation-radar profiling,
   where the Tx-Rx offset is fixed; lam_z and BCO depth must be assumed but
   the contrast is insensitive to them at small offsets.
-- `ptt.invertHorizontalFabricJoint` - smoothness-regularized joint variant
+- `invertHorizontalFabricJoint` (estimator, `copol`) - smoothness-regularized joint variant
   of the common-offset inversion: solves all depth intervals
   simultaneously (Gauss-Newton with a first-difference Tikhonov penalty,
   coherence-weighted misfit), robust where per-interval dtau increments
@@ -87,7 +127,7 @@ units).
     cost on the 0.9 us settings.
   - `ptt.blockAverage` - coherence-weighted along-track block averaging
     with per-block fringe correction
-  - `ptt.invertBlocks` - twtt-to-depth mapping and per-block inversion
+  - `invertBlocks` (estimator, `copol`) - twtt-to-depth mapping and per-block inversion
     (exact layer stripping or the regularized joint solve, selected by
     `opts.inversion`). Where the seam mask (or an incoherent run) leaves a
     gap, the node's dtau is interpolated across it so the joint solve
@@ -126,20 +166,20 @@ units).
     birefringent column the cross-pol power factors exactly as
     sin^2(2(psi - theta)) sin^2(delta(z)/2), so azimuth fixes orientation
     and depth fixes birefringence independently.
-  - `ptt.quadpolFabric` - inverts the sweep for the horizontal principal
+  - `quadpolFabric` (estimator, `direct`) - inverts the sweep for the horizontal principal
     azimuth (projected onto the cos/sin 4psi harmonic, not an argmin, so a
     near-isotropic layer reports a flat sweep instead of a confident angle)
     plus two deliberately independent contrast estimates: the coherence
     phase gradient, and the cross-polarized node spacing.
-  - `ptt.ershadiFabric` - Ershadi et al. (2022, TC 16, 1719) implemented
-    faithfully and kept SEPARATE from `ptt.quadpolFabric`, so the two can be
+  - `ershadiFabric` (estimator, `ershadi`) - Ershadi et al. (2022, TC 16, 1719) implemented
+    faithfully and kept SEPARATE from `quadpolFabric`, so the two can be
     run on the same data and scored against each other. Every departure from
     that file is a place the paper differs and is marked (E1)-(E5) in the
     header, including why the birefringence coefficient carries sqrt(eps')
     rather than the printed eps'. Note this is the paper's DIRECT stage
     only; the constrained nonlinear fit of the Fujita model their published
     profiles additionally pass through (their Sect. 3.5) is
-    `ptt.ershadiInverse` below, which is why the output struct also records
+    `ershadiInverse` below, which is why the output struct also records
     the constants the call ran under: `dlam` is derived from them, so a
     step that accepts it without re-fitting must propagate phase under the
     same ones.
@@ -148,7 +188,7 @@ units).
     per-depth, per-azimuth scattering amplitudes, eq.-(12) power anomalies
     and the eq.-(7) coherence, for a stack of uniform layers each with its
     own `dlam`, axis and reflection ratio. Its header owns the conventions
-    it was pinned to - the sweep sense shared with `ptt.ershadiFabric`, the
+    it was pinned to - the sweep sense shared with `ershadiFabric`, the
     unconjugated model coherence, and `r_dB = 20*log10(Gamma_y/Gamma_x)`,
     the amplitude convention fixed by reproducing the paper's Fig. 4 from
     their eq. (13). ITS WINDOWS ARE FORMED ON ITS OWN GRID, not the
@@ -169,9 +209,9 @@ units).
     apart the model reproduces a data path built on a 0.5 m grid to
     roundoff, and the true column's chi-square against noise at the
     assumed sigmas is 1.02.
-  - `ptt.ershadiInverse` - the Sect.-3.5 step on top of that model: a
+  - `ershadiInverse` (estimator, `ershadi`) - the Sect.-3.5 step on top of that model: a
     constrained fit of piecewise-constant theta and reflection-ratio
-    profiles to the observables `ptt.ershadiFabric` extracts, with `dlam`
+    profiles to the observables `ershadiFabric` extracts, with `dlam`
     ACCEPTED from the phase gradient and never re-fit (3.5.4). Staged by
     the paper's Table-3 0/1 weight rows and cycled, since theta and r are
     coupled in both observables. Carries the eq. (13) analytic
@@ -188,11 +228,11 @@ units).
     or the pedestal carried in the forward model.
   - `ptt.birefringentPhaseRate` - the one owner of the one-way relative
     phase per metre per unit `dlam`. `ptt.fujitaModel` propagates phase
-    with it and `ptt.ershadiInverse` places its eq.-(13) anti-phase depths
+    with it and `ershadiInverse` places its eq.-(13) anti-phase depths
     with it, and a retrieval that disagrees with the model it is scored
     against lands on different depths, so the constant is not written out
     at either call site.
-  - `ptt.quadpolFabricLS` - the least-squares replacement for the direct
+  - `quadpolFabricLS` (estimator, `quadpol_ls`) - the least-squares replacement for the direct
     chain's weak point. ershadiFabric takes the fabric axis from the
     cross-polarized minimum; on this system that minimum is antenna-locked
     (89.6 +- 1.9 deg across 1790 Ridge A blocks spanning all headings,
@@ -216,7 +256,7 @@ units).
     products the Eastwind held block median falls from 0.024 clamped to
     0.012 signed while the median magnitude is 0.048 - so read the
     magnitude and the sign, not a summary of the signed values. Two-pass use: a frame theta0
-    pass, laterally segmented (`ptt.quadpolFrameTheta` below), then
+    pass, laterally segmented (`quadpolFrameTheta` below), then
     per-block dlam with theta0 pinned.
     KNOWN SYSTEMATIC (measured 11 Aug 2026, unresolved, and CONFIRMED not
     to be the heading-wrap bug - see below): dlam carries a
@@ -264,7 +304,7 @@ units).
     the resweep ran 03:09-10:40 CDT, so the fixed code was in place for
     all of it and every 2025-series member of the mirror (9 Aug 23:40 to
     10 Aug 02:09) is pre-fix.
-  - `ptt.quadpolFrameTheta` - the frame pass of that two-pass use,
+  - `quadpolFrameTheta` (estimator, `quadpol_ls`) - the frame pass of that two-pass use,
     laterally segmented: one antenna-frame pedestal per frame (an
     instrument constant) plus a geographic theta0(z) profile re-fitted
     per ~2 km along-track segment, because one pooled theta0 handoff is
@@ -278,7 +318,7 @@ units).
     (`ptt.maskBelowBed`), so each moment averages only the traces still
     in ice at that depth, and a window is fitted only where at least half
     the traces of its pass - the frame, or the segment - are still in ice
-    at its bottom edge (`ptt.quadpolFabricLS`'s `z_valid` at the median
+    at its bottom edge (`quadpolFabricLS`'s `z_valid` at the median
     bed); the sub-block pooling and the jackknife weigh each sub-block by
     its traces in ice per depth. That follows a bed which varies along
     the line - 567-996 m inside one Taylor Dome frame, 42-300 m on one
@@ -318,7 +358,7 @@ units).
     pooled contrast `theta_const_q` is NOT that diagnostic and is not
     read as one. Where the axis rotates with depth (Thwaites' margin,
     EastGRIP) the mode is the wrong model and measured 6x worse.
-  - `ptt.quadpolJackknife` - standard errors of a pooled segment fit by
+  - `quadpolJackknife` (estimator, `quadpol_ls`) - standard errors of a pooled segment fit by
     delete-one jackknife over the heading sub-blocks whose weighted mean
     is the segment's moment matrix. Every replicate re-votes the axis
     (or refits every window's theta0) on a +-15 deg grid around the
@@ -339,7 +379,7 @@ units).
     leakage pedestal present, whose nuisance terms absorb most of it);
     real data carry the pedestal, so quote dlam with a ~0.003 systematic
     until a per-SNR characterisation replaces that number.
-  - `ptt.quadpolFabricPower` - fabric from the co-polarised POWER
+  - `quadpolFabricPower` (estimator, `power`) - fabric from the co-polarised POWER
     extinction pattern, with no use of the HH-VV phase or coherence.
     Built (2 Sep 2026) for ice where that coherence is gone: the Thwaites
     margin measures as depolarised at the single-look level, so every
@@ -385,7 +425,7 @@ units).
     A moment-level stand-in for raw-channel chan_equal (M_kl scales by
     g_k g_l, so the same table applies to the channels). Applying the
     full cross-pol gain to VV over-corrects; the header records that.
-  - `ptt.thetaProfileAt` - the per-block handoff from that frame pass:
+  - `thetaProfileAt` (estimator, `quadpol_ls`) - the per-block handoff from that frame pass:
     the segment profiles interpolated at a block's along-track position
     on the doubled-angle phasor, with robust q-weighted end rows because
     the estimator clamps out-of-range depth windows to the terminal row.
@@ -416,7 +456,7 @@ re-litigated.
   with the surface from the product's own `Surface` (or, in qlook mode
   where that field is NaN, a leading-edge pick at 5% of the trace peak).
 - **Permittivity.** The 3.171 in that formula is the same `eps_bar` that
-  `ptt.constants` gives `ptt.quadpolFabricLS` for the phase-rate to dlam
+  `ptt.constants` gives `quadpolFabricLS` for the phase-rate to dlam
   conversion, so depth and contrast use one ice model. (Worth restating
   because they are declared in different files and could drift apart.)
 - **Estimator settings.** Azimuth grid, short/fit windows, CRB weighting

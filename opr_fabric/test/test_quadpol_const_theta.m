@@ -43,6 +43,7 @@ t0 = tic;
 
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
+ptt.estimators.use('quadpol_ls');
 
 rng(3);
 C = ptt.constants();
@@ -104,8 +105,8 @@ end
 %% case 1: constant axis
 TH1 = deg2rad(35);
 S1 = H_col(z, TH1*ones(Nz,1), DL_Z, Nx, gpd, LEAK_C, LEAK_D, NA);
-of1 = ptt.quadpolFabricLS(S1, z, OPTS);
-oc1 = ptt.quadpolFabricLS(S1, z, setfield(OPTS, 'theta_const', true)); %#ok<SFLD>
+of1 = ptt.estimators.run('quadpolFabricLS', S1, z, OPTS);
+oc1 = ptt.estimators.run('quadpolFabricLS', S1, z, setfield(OPTS, 'theta_const', true)); %#ok<SFLD>
 dlw = interp1(z, DL_Z, of1.zw, 'linear', 'extrap');
 [a_f1, s_f1, d_f1] = H_score(of1, TH1*ones(numel(of1.zw),1), dlw);
 [a_c1, s_c1, d_c1] = H_score(oc1, TH1*ones(numel(oc1.zw),1), dlw);
@@ -124,8 +125,8 @@ fprintf('1. constant mode: axis <3 deg, scatter >=3x tighter, dlam no worse: %s\
 rng(3);
 TH2 = deg2rad(35) + deg2rad(90) * (z / z(end));
 S2 = H_col(z, TH2, DL_Z, Nx, gpd, LEAK_C, LEAK_D, NA);
-of2 = ptt.quadpolFabricLS(S2, z, OPTS);
-oc2 = ptt.quadpolFabricLS(S2, z, setfield(OPTS, 'theta_const', true)); %#ok<SFLD>
+of2 = ptt.estimators.run('quadpolFabricLS', S2, z, OPTS);
+oc2 = ptt.estimators.run('quadpolFabricLS', S2, z, setfield(OPTS, 'theta_const', true)); %#ok<SFLD>
 th2w = interp1(z, TH2, of2.zw, 'linear', 'extrap');
 [~, ~, d_f2] = H_score(of2, th2w, dlw);
 [~, ~, d_c2] = H_score(oc2, th2w, dlw);
@@ -146,7 +147,7 @@ fprintf('   (pooled contrast q, NOT a discriminant: %.3f vs %.3f)\n', ...
   oc1.theta_const_q, oc2.theta_const_q);
 
 %% case 4: off by default changes nothing
-o_def = ptt.quadpolFabricLS(S1, z, OPTS);
+o_def = ptt.estimators.run('quadpolFabricLS', S1, z, OPTS);
 same = isequaln(o_def.theta0, of1.theta0) && isequaln(o_def.dlam, of1.dlam);
 fprintf('4. off by default, outputs unchanged:                    %s\n', H_tick(same));
 

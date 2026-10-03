@@ -34,7 +34,7 @@
 %      (above it, the traces already past their own bed are blanked,
 %      ptt.maskBelowBed).
 %   3. SUPERSET: an empty bed changes nothing, bit for bit.
-%   4. THE HANDOFF: ptt.thetaProfileAt midway between the two held
+%   4. THE HANDOFF: thetaProfileAt midway between the two held
 %      segments, whose beds differ, is ONE axis at every depth, including
 %      the depths below the shallower segment's bed - a block there
 %      interpolates two constants and does not switch to the deeper
@@ -45,6 +45,7 @@ clear;
 t0 = tic;
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
+ptt.estimators.use('quadpol_ls');
 rng(5);
 
 C = ptt.constants();
@@ -96,7 +97,7 @@ held = @(fp) arrayfun(@(k) mod(median(fp.th_seg(isfinite(fp.th_seg(:, k)), k)), 
 
 fails = 0;
 % 1. without the bed
-fp0 = ptt.quadpolFrameTheta(S, z, az_tr, x_along, OPTS);
+fp0 = ptt.estimators.run('quadpolFrameTheta', S, z, az_tr, x_along, OPTS);
 e0 = axis_err(held(fp0));
 fprintf('no bed:   held axis error per segment [%s] deg\n', sprintf(' %.1f', e0));
 ok1 = any(e0 > 5);
@@ -104,7 +105,7 @@ fails = fails + ~ok1;
 fprintf('  1. the synthetic reproduces the capture (some segment > 5 deg): %s\n', H_tick(ok1));
 
 % 2. with the per-trace bed
-fp1 = ptt.quadpolFrameTheta(S, z, az_tr, x_along, setfield(OPTS, 'z_bed', z_bed)); %#ok<SFLD>
+fp1 = ptt.estimators.run('quadpolFrameTheta', S, z, az_tr, x_along, setfield(OPTS, 'z_bed', z_bed)); %#ok<SFLD>
 e1 = axis_err(held(fp1));
 fprintf('with bed: held axis error per segment [%s] deg\n', sprintf(' %.1f', e1));
 ok2 = all(e1 < 3);
@@ -122,14 +123,14 @@ fprintf('  2a. every held axis within 3 deg of the ice: %s\n', H_tick(ok2));
 fprintf('  2b. no sub-bed window carries a contrast, an axis or a weight: %s\n', H_tick(ok2b));
 
 % 3. superset
-fp2 = ptt.quadpolFrameTheta(S, z, az_tr, x_along, setfield(OPTS, 'z_bed', [])); %#ok<SFLD>
+fp2 = ptt.estimators.run('quadpolFrameTheta', S, z, az_tr, x_along, setfield(OPTS, 'z_bed', [])); %#ok<SFLD>
 ok3 = isequaln(fp2.th_seg, fp0.th_seg) && isequaln(fp2.dlam_seg, fp0.dlam_seg) ...
   && isequaln(fp2.ped_ant, fp0.ped_ant);
 fails = fails + ~ok3;
 fprintf('  3. empty bed is bit-identical to no bed: %s\n', H_tick(ok3));
 
 % 4. the handoff between the two held segments
-pg = ptt.thetaProfileAt(fp1, 2000);
+pg = ptt.estimators.run('thetaProfileAt', fp1, 2000);
 dev = max(abs(angle(exp(2i * (pg.theta - pg.theta(1)))))) / 2;
 ok4 = max(pg.z) > BED(1) && dev < 1e-9;
 fails = fails + ~ok4;

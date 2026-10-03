@@ -29,6 +29,7 @@ out_fn = fullfile(scratch, 'stages', 'ridge_a_edge_test.mat');
 
 addpath(code); addpath(fullfile(code,'opr_fabric'));
 addpath(fullfile(code,'opr_fabric','test','stubs'));
+ptt.estimators.use('copol');
 
 want = {'interferogram_mlook','interferogram_coherence','snaphu_out_phase', ...
   'row_offset','Time','Surface','Latitude','Longitude','param_records', ...
@@ -112,7 +113,7 @@ function R = addcase(R, tag, nint, H, cut, map, dtau, info, o0, surf_med, C_ICE)
   [ci, ri] = ptt.surfaceReference(m, o);
   inf2 = info; inf2.coh_mask = ci & isfinite(dtau); inf2.ref_bin = ri;
   blk = ptt.blockAverage(dtau, m, inf2, o);
-  iv = ptt.invertBlocks(blk, m, mkpar(H), o);
+  iv = ptt.estimators.run('invertBlocks', blk, m, mkpar(H), o);
   k = numel(R) + 1;
   R(k).tag = tag; R(k).nint = nint; R(k).H = H; R(k).cut = cut;
   R(k).zc = median((iv.top_depth + iv.bot_depth)/2, 2, 'omitnan').';

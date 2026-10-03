@@ -1,7 +1,7 @@
 function out = polarimetricRatioInverse(obs, z, opts)
 %POLARIMETRICRATIOINVERSE Orientation AND strength from channel power RATIOS.
 %
-% out = ptt.polarimetricRatioInverse(obs, z, opts)
+% out = ptt.estimators.run('polarimetricRatioInverse', obs, z, opts)
 %
 % Inverts the Fujita et al. (2006) model, under a depth-constant fabric
 % orientation, for theta0, the eigenvalue difference profile dlam(z) and
@@ -15,7 +15,7 @@ function out = polarimetricRatioInverse(obs, z, opts)
 % 1. VV/VH CARRIES ORIENTATION AND STRENGTH TOGETHER. With d = theta0 -
 %    gamma the angle from the fabric axis to the antenna, r the scattering
 %    ratio and delta the accumulated two-way phase difference, the model
-%    (see ptt.polarimetricInverse for the reduction) gives
+%    (see polarimetricInverse for the reduction) gives
 %
 %      |s_vv|^2 = r^2 cos^4 d + sin^4 d + 2 r cos^2 d sin^2 d cos(delta)
 %      |s_hv|^2 = (1 + r^2 - 2 r cos delta) cos^2 d sin^2 d
@@ -99,7 +99,7 @@ function out = polarimetricRatioInverse(obs, z, opts)
 %
 %
 % SIGN CONVENTION, PINNED BY TEST. Here d = theta0 - gamma, the SYNTHESIS
-% sense, the same one ptt.quadpolAzimuth and ptt.quadpolFabricLS use, in
+% sense, the same one ptt.quadpolAzimuth and quadpolFabricLS use, in
 % which a fabric at azimuth theta0 puts its features at sweep index
 % +theta0. ptt.fujitaModel deliberately uses the paper's R S R' sense, in
 % which they appear at -theta0. The two agree only with theta negated:
@@ -139,7 +139,7 @@ function out = polarimetricRatioInverse(obs, z, opts)
 %   .alias_unresolved  true when 'phi' was not used, meaning theta0 is
 %   determined only modulo 90 degrees and r may be 1/r
 %
-% See also ptt.polarimetricInverse, ptt.quadpolFabricLS, ptt.fujitaModel,
+% See also polarimetricInverse, quadpolFabricLS, ptt.fujitaModel,
 %   ptt.equaliseChannels.
 
 if nargin < 3, opts = struct(); end
@@ -246,7 +246,7 @@ GtG = Gam.' * Gam;
 % the dB least-squares by w_phi), and the instrument phase offset this file
 % carries as a free constant puts them near the +-pi branch cut routinely.
 % Differencing there scores a true misfit of ~0 as ~2*pi*w_phi and lets
-% those entries drag theta0 - the failure ptt.fabricGLS measured (its
+% those entries drag theta0 - the failure fabricGLS measured (its
 % wrapping took chi2/dof from ~2200 to order 1) and fixes the same way.
 % out.rms already wrapped; now the objective agrees with the diagnostic.
 resid = @(mm) H_resid(d_obs, fwd(mm), is_ph, w_phi);

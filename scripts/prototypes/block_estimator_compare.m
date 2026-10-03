@@ -5,9 +5,9 @@
 %
 % For every along-track block of a dump_block_moments.m file, fits the
 % GEOGRAPHIC-frame moments with
-%   - ptt.quadpolFabricLS  (coherence, per-window free axis, frame pedestal)
-%   - ptt.quadpolFabricLS  in constant-orientation mode (held axis)
-%   - ptt.quadpolFabricPower (power extinction: axis mod 90/180, |dlam|,
+%   - quadpolFabricLS  (coherence, per-window free axis, frame pedestal)
+%   - quadpolFabricLS  in constant-orientation mode (held axis)
+%   - quadpolFabricPower (power extinction: axis mod 90/180, |dlam|,
 %     reflection ratio, node visibility kappa)
 % and returns them side by side on the LS window grid, with the axis
 % comparison done on the doubled angle (never unwrapped) and the power
@@ -41,9 +41,11 @@ for b = 1:nb
     M = double(squeeze(D.M_geo(:, :, :, b)));
   end
   t0 = tic;
-  of = ptt.quadpolFabricLS(struct('M', M), z, LSO);
-  oc = ptt.quadpolFabricLS(struct('M', M), z, setfield(LSO, 'theta_const', true)); %#ok<SFLD>
-  op = ptt.quadpolFabricPower(struct('M', M), z, setfield(PWO, 'ped_az', deg2rad(D.blk.az(b)))); %#ok<SFLD>
+  ptt.estimators.use('quadpol_ls');   % this prototype compares two methods
+  of = ptt.estimators.run('quadpolFabricLS', struct('M', M), z, LSO);
+  oc = ptt.estimators.run('quadpolFabricLS', struct('M', M), z, setfield(LSO, 'theta_const', true)); %#ok<SFLD>
+  ptt.estimators.use('power');
+  op = ptt.estimators.run('quadpolFabricPower', struct('M', M), z, setfield(PWO, 'ped_az', deg2rad(D.blk.az(b)))); %#ok<SFLD>
   if first
     Nw = numel(of.zw);
     out.zw = of.zw;

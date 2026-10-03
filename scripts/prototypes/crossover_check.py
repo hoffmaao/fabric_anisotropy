@@ -72,7 +72,7 @@ FC = 750e6                 # our system centre frequency
 EPS_BAR, DEPS = 3.15, 0.034
 N_ICE = np.sqrt(EPS_BAR)
 C0 = 299792458.0
-# rad/m per unit dlam - the same constant ptt.quadpolFabricLS uses
+# rad/m per unit dlam - the same constant quadpolFabricLS uses
 GRAD_PER_DLAM = 2 * np.pi * FC * DEPS / (N_ICE * C0)
 BIN_M = 150.0              # depth bin for the correlation
 OVERSAMPLE = 3

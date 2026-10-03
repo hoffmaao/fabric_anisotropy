@@ -5,13 +5,13 @@ function [dlam, out] = invertHorizontalFabricJoint(obs, par, opts)
 %   lam_y over all reflector intervals SIMULTANEOUSLY, minimizing
 %       sum_k w_k (dtau_model_k - dtau_obs_k)^2 + alpha ||D dlam||^2
 %   where D takes first differences between adjacent intervals. Unlike the
-%   exact layer stripping of ptt.invertHorizontalFabric, the smoothness
+%   exact layer stripping of invertHorizontalFabric, the smoothness
 %   penalty suppresses the noise-amplified oscillation (and eigenvalue
 %   bound-pegging) that per-interval exact solves suffer when the
 %   traveltime increment across an interval is below the noise level, at
 %   the cost of some depth resolution.
 %
-%   obs fields as in ptt.invertHorizontalFabric (L, z, dtau [ns]), plus
+%   obs fields as in invertHorizontalFabric (L, z, dtau [ns]), plus
 %   optional obs.w: relative misfit weights per node (e.g. coherence);
 %   defaults to equal weights. Optional obs.zref [m above bed]: the height
 %   of the surface-reference depth the dtau observations were zeroed at.
@@ -37,7 +37,7 @@ function [dlam, out] = invertHorizontalFabricJoint(obs, par, opts)
 %                 (only used when obs.zref is given; loose on purpose -
 %                 see the default's comment)
 %
-%   Outputs match ptt.invertHorizontalFabric: dlam per interval (shallowest
+%   Outputs match invertHorizontalFabric: dlam per interval (shallowest
 %   first), out.ztop/zbot [m above bed], out.dtau_fit [ns], plus out.alpha,
 %   out.rms [ns], out.clipped (intervals clipped to the eigenvalue bound),
 %   and with obs.zref: out.ref_offset [ns] and out.ref_degenerate

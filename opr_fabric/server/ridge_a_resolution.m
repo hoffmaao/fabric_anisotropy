@@ -29,6 +29,7 @@ out_fn = fullfile(scratch, 'stages', 'ridge_a_resolution.mat');
 
 addpath(code); addpath(fullfile(code,'opr_fabric'));
 addpath(fullfile(code,'opr_fabric','test','stubs'));
+ptt.estimators.use('copol');
 
 fprintf('Loading %s\n', in_fn);
 want = {'interferogram_mlook','interferogram_coherence','snaphu_out_phase', ...
@@ -105,7 +106,7 @@ for bi = 1:numel(BLOCKS)
       o2.inversion = 'joint';
       o2.reg = REG(ri);
       try
-        iv = ptt.invertBlocks(blk, map, par, o2);
+        iv = ptt.estimators.run('invertBlocks', blk, map, par, o2);
       catch ME
         fprintf('%-7d %-5d %-7g   FAILED: %s\n', BLOCKS(bi), NINT(ni), ...
           REG(ri), ME.message);

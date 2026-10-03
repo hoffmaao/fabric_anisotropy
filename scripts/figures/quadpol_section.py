@@ -1,7 +1,7 @@
 """Quad-pol fabric section along one profile, beside the co-polarized one.
 
 run_quadpol_pipeline.m inverts each ~125 m along-track block of a
-coregistered quad-pol frame with ptt.ershadiFabric and ptt.quadpolFabricLS,
+coregistered quad-pol frame with ershadiFabric and quadpolFabricLS,
 giving dlam and theta as functions of BOTH depth and along-track distance.
 The block is a LENGTH, re-cut per season from the measured trace spacing,
 and 125 m is what run_sections.m's 125 traces span on the co-polarized
@@ -112,7 +112,7 @@ def main():
                   'figure is titled "unknown site" rather than guessing'
                   % (fla, flo))
         # the LS-fit section exists once the pipeline has run with
-        # ptt.quadpolFabricLS wired in; older .mat files draw the old layout
+        # quadpolFabricLS wired in; older .mat files draw the old layout
         has_ls = 'sec_dlam_ls' in res
         dl_ls = np.atleast_2d(a('sec_dlam_ls').T).astype(float) if has_ls \
             else None

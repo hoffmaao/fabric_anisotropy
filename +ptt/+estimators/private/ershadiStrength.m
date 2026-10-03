@@ -1,9 +1,9 @@
 function out = ershadiStrength(fr, z, geom, opts)
 %ERSHADISTRENGTH Infer dlam(z) GIVEN the fitted orientation and scattering.
 %
-% out = ptt.ershadiStrength(fr, z, geom, opts)
+% out = ptt.estimators.run('ershadiStrength', fr, z, geom, opts)
 %
-% PART TWO of the two-part inversion. Part one (ptt.ershadiInverse, their
+% PART TWO of the two-part inversion. Part one (ershadiInverse, their
 % Sect. 3.5) infers the GEOMETRY - the fabric orientation theta and the
 % reflection ratio r - while ACCEPTING a dlam profile it never revisits.
 % This stage closes the loop: with theta and r held at their fitted values,
@@ -35,10 +35,10 @@ function out = ershadiStrength(fr, z, geom, opts)
 % fr.phi is the gated product and is NOT used.
 %
 % Inputs
-%   fr    ptt.ershadiFabric output (needs psi, C_raw, Cmag, and the
+%   fr    ershadiFabric output (needs psi, C_raw, Cmag, and the
 %         recorded constants fc/eps_perp/deps/win_m)
 %   z     depth axis (m)
-%   geom  part-one geometry, i.e. a ptt.ershadiInverse output or any struct
+%   geom  part-one geometry, i.e. a ershadiInverse output or any struct
 %         carrying .edges, .theta_int and .r_db_int
 %   opts  .dlam_max (0.5)      search ceiling, as their bound
 %         .n_grid (61)         coarse grid nodes per interval
@@ -65,7 +65,7 @@ function out = ershadiStrength(fr, z, geom, opts)
 %                quantity whose growth makes deep intervals easier, not
 %                harder, to constrain
 %
-% See also ptt.ershadiInverse, ptt.fujitaModel, ptt.ershadiFabric.
+% See also ershadiInverse, ptt.fujitaModel, ershadiFabric.
 
 if nargin < 4, opts = struct(); end
 dlam_max = H_opt(opts, 'dlam_max', 0.5);
@@ -89,7 +89,7 @@ fwd = struct( ...
 z = z(:);
 if ~isfield(fr, 'C_raw')
   error('ptt:ershadiStrength:noCraw', ...
-    ['fr has no C_raw - it must come from a ptt.ershadiFabric that ' ...
+    ['fr has no C_raw - it must come from a ershadiFabric that ' ...
     'exports the ungated coherence. The gated fr.phi is not usable ' ...
     'here: it is empty exactly where this stage is needed.']);
 end
@@ -301,7 +301,7 @@ if isstruct(o) && isfield(o, f) && ~isempty(o.(f))
   v = o.(f);
   if have_fr && ~isequal(v, fr.(f))
     error('ptt:ershadiStrength:constMismatch', ...
-      ['opts.%s = %g disagrees with the %g recorded by ptt.ershadiFabric. ' ...
+      ['opts.%s = %g disagrees with the %g recorded by ershadiFabric. ' ...
       'The observables were built under the recorded value; overriding it ' ...
       'here rescales every modelled phase with nothing in the misfit to ' ...
       'reveal it.'], f, v, fr.(f));

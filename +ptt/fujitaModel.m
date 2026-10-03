@@ -18,7 +18,7 @@ function out = fujitaModel(layers, z, psi, opts)
 % azimuth, the coherence phase is relative), so only the RELATIVE phase
 % delta_i = gpd*dlam_i*dz and the RATIO r_i = Gamma_y/Gamma_x enter.
 %
-% CONVENTIONS, chosen to match the fields ptt.ershadiFabric extracts from
+% CONVENTIONS, chosen to match the fields ershadiFabric extracts from
 % data so a model evaluated here is directly comparable:
 %   - psi is the SWEEP azimuth of the synthesized antennas, applied in the
 %     paper's R S R' sense (ershadiFabric E1): a fabric at physical
@@ -136,7 +136,7 @@ function out = fujitaModel(layers, z, psi, opts)
 %                      observable can show
 %   gpd1               the one-way phase rate this evaluation used (scalar)
 %
-% See also ptt.ershadiFabric, ptt.ershadiInverse.
+% See also ershadiFabric, ershadiInverse.
 
 if nargin < 4, opts = struct(); end
 fc = H_opt(opts, 'fc', 750e6);
@@ -146,7 +146,7 @@ win_m = H_opt(opts, 'win_m', 30);
 
 % ONE-WAY relative phase per metre per unit dlam; the down+up sandwich
 % doubles it, recovering the two-way gpd the rest of the toolbox uses.
-% ptt.ershadiInverse locates its eq.-(13) anti-phase depths with the same
+% ershadiInverse locates its eq.-(13) anti-phase depths with the same
 % call, so the two cannot drift apart.
 gpd1 = ptt.birefringentPhaseRate(fc, eps_perp, deps);
 win_pow = H_opt(opts, 'win_power_m', 0);

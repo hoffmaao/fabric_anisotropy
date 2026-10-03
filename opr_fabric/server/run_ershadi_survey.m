@@ -1,6 +1,6 @@
 %RUN_ERSHADI_SURVEY Ershadi et al. (2022) fabric inversion, per heading block.
 %
-% Applies ptt.ershadiFabric to every frame of a survey, in BLOCKS of
+% Applies ershadiFabric to every frame of a survey, in BLOCKS of
 % near-constant heading rather than a frame at a time.
 %
 % WHY BLOCKS. Ershadi et al. process a stationary quad-pol sounding: one
@@ -42,6 +42,7 @@ end
 [code, scratch] = fabric_paths();
 out_fn = fullfile(scratch, 'stages', sprintf('ershadi_%s.mat', site));
 addpath(code);
+ptt.estimators.use('ershadi');
 
 CHAN = {'hh','vv','hv','vh'};
 NBLK = 200;             % traces per heading block
@@ -129,7 +130,7 @@ for fi = 1:numel(d)
       az_blk = mod(rad2deg(angle(mean(exp(2i*deg2rad(ab)))))/2, 180);
       blk_spread = diff(prctile(mod(ab - az_blk + 90, 180) - 90, [5 95]));
 
-      o = ptt.ershadiFabric(Sb, z, struct('fc', FC, 'psi_step_deg', 1, ...
+      o = ptt.estimators.run('ershadiFabric', Sb, z, struct('fc', FC, 'psi_step_deg', 1, ...
         'win_m', 30, 'grad_win_m', 25, 'coh_min', 0.4, 'deramped', true));
 
       th = rad2deg(o.theta(zb));

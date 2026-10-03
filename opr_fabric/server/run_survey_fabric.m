@@ -86,6 +86,7 @@ out_fn = fullfile(scratch, 'stages', sprintf('%s_survey.mat', site));
 
 addpath(code); addpath(fullfile(code,'opr_fabric'));
 addpath(fullfile(code,'opr_fabric','test','stubs'));
+ptt.estimators.use('copol');
 
 BLOCK = 125;            % traces per along-track block   (run_sections.m)
 NINT = 25;              % depth intervals                (run_sections.m)
@@ -169,7 +170,7 @@ for fi = 1:numel(d)
       [info2.coh_mask, info2.ref_bin] = ptt.surfaceReference(map, o2);
       info2.coh_mask(~isfinite(dtau)) = false;
       blk = ptt.blockAverage(dtau, map, info2, o2);
-      iv = ptt.invertBlocks(blk, map, par, o2);
+      iv = ptt.estimators.run('invertBlocks', blk, map, par, o2);
       dl = iv.dlam;
       cs = [];
       for b = 1:size(dl,2)-1

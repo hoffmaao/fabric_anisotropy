@@ -10,16 +10,16 @@ function gpd1 = birefringentPhaseRate(fc, eps_perp, deps)
 %
 % from Dn = Deps' dlam / (2 sqrt(eps')) and a one-way phase 2 pi fc Dn / c.
 % A down-and-up sandwich doubles it, which is the two-way gradient
-% ptt.ershadiFabric inverts in its eq. (9)/(10) step - the two are exact
+% ershadiFabric inverts in its eq. (9)/(10) step - the two are exact
 % reciprocals of one another, so they must be computed from the same
 % constants or a retrieval and the model it is compared against land on
 % different depths.
 %
 % SINGLE OWNER. ptt.fujitaModel propagates phase with this, and
-% ptt.ershadiInverse locates the anti-phase depths for its eq. (13)
+% ershadiInverse locates the anti-phase depths for its eq. (13)
 % cross-check with it. Those two must agree exactly or the cross-check is
 % evaluated at depths the model never puts a node at, which is the same
-% class of silent desync that ptt.ershadiInverse's H_const guards for
+% class of silent desync that ershadiInverse's H_const guards for
 % fc/eps_perp/deps themselves - so the constant they feed lives here rather
 % than being written out at each call site.
 %
@@ -28,7 +28,7 @@ function gpd1 = birefringentPhaseRate(fc, eps_perp, deps)
 %   eps_perp  perpendicular permittivity (the paper's 3.15, not eps_bar)
 %   deps      dielectric anisotropy (ptt.constants deps, 0.034)
 %
-% See also ptt.fujitaModel, ptt.ershadiInverse, ptt.ershadiFabric.
+% See also ptt.fujitaModel, ershadiInverse, ershadiFabric.
 
 % Three positional scalars of the same type invite a transposed call, and a
 % transposed call here is silent - it returns a plausible number and shifts

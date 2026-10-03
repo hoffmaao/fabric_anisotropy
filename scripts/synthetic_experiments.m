@@ -12,6 +12,7 @@ t0 = tic;
 
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..')); % make +ptt visible
+ptt.estimators.use('cmp');
 figDir = fullfile(thisDir, '..', 'figs');
 if ~exist(figDir, 'dir'), mkdir(figDir); end
 
@@ -51,7 +52,7 @@ for iexp = 1:numel(exps)
     par0.zhat_bco = 0.5;
     [par0.lam_x_sfc, par0.lam_x_bed, par0.lam_z_sfc, par0.lam_z_bed] = deal(1/3);
 
-    [parF, res] = ptt.invertFabric(obs, par0);
+    [parF, res] = ptt.estimators.run('invertFabric', obs, par0);
 
     fprintf('\n=== Experiment %d: %s ===\n', iexp, exps(iexp).name);
     fprintf('  %d CMP points, misfit J: %.3g -> %.3g ns^2 (noise^2 = %.3g)\n', ...

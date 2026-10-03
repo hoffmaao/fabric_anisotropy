@@ -1,7 +1,7 @@
 function out = traveltimeFabricML(dtau, z, opts)
 %TRAVELTIMEFABRICML Horizontal fabric contrast from travel-time anomalies.
 %
-% out = ptt.traveltimeFabricML(dtau, z, opts)
+% out = ptt.estimators.run('traveltimeFabricML', dtau, z, opts)
 %
 % Step 2 of the Nymand two-step inversion: solves the depth profile of the
 % horizontal fabric contrast dlam(z) = lam_x - lam_y from the two-way
@@ -17,7 +17,7 @@ function out = traveltimeFabricML(dtau, z, opts)
 % and nothing else. The problem is therefore exactly linear, and the
 % Gaussian maximum-likelihood solution is the weighted least-squares one
 % with a posterior that is EXACT rather than linearised. That is the
-% substantive difference from ptt.fabricGLS, whose posterior is a
+% substantive difference from fabricGLS, whose posterior is a
 % linearisation of a strongly non-linear fit and which test_fabric_gls
 % MEASURES to be about 2x optimistic over 16 Monte Carlo realisations.
 % Here the covariance below is the covariance, given the noise model.
@@ -26,7 +26,7 @@ function out = traveltimeFabricML(dtau, z, opts)
 % differentiates, and differentiating noise is how a travel-time profile
 % turns into a spiky dlam that looks like layering. This is an
 % ill-conditioned problem and it is regularised by a prior, not by luck:
-% C_m is the same exponential-correlation Gaussian process ptt.fabricGLS
+% C_m is the same exponential-correlation Gaussian process fabricGLS
 % uses, so "dlam varies smoothly over L metres" is a stated assumption
 % with a length scale rather than an implicit one. Depths where the data
 % did not determine the answer are reported through the RESOLUTION
@@ -58,7 +58,7 @@ function out = traveltimeFabricML(dtau, z, opts)
 % out.C_M         full posterior covariance
 % out.k_ns_per_m  the forward constant actually used
 %
-% See also ptt.nymandTwoStep, ptt.fabricGLS, ptt.invertHorizontalFabric.
+% See also nymandTwoStep, fabricGLS, invertHorizontalFabric.
 if nargin < 3, opts = struct(); end
 z = z(:); dtau = dtau(:);
 if numel(dtau) ~= numel(z)
@@ -72,7 +72,7 @@ nonneg  = H_opt(opts, 'nonneg', false);
 
 C = ptt.constants();
 n_ice = sqrt(C.eps_bar);
-% Same phase convention as ptt.quadpolFabric's grad_per_dlam, converted
+% Same phase convention as quadpolFabric's grad_per_dlam, converted
 % from radians per metre to nanoseconds per metre so the two estimators
 % cannot drift apart: grad_per_dlam = 2*pi*fc*2*(deps/(2*n))/(c*1e9).
 grad_per_dlam = 2*pi*fc * 2 * (C.deps / (2*n_ice)) / (C.c * 1e9);   % rad/m
@@ -150,7 +150,7 @@ out = struct('z', z, 'dlam', nan(numel(z),1), 'sigma_dlam', nan(numel(z),1), ...
 end
 
 function C = H_gp(zc, sigma, L)
-% Exponential-correlation prior, identical in form to ptt.fabricGLS so the
+% Exponential-correlation prior, identical in form to fabricGLS so the
 % two estimators regularise the same way.
 D = abs(zc - zc.');
 C = sigma^2 * exp(-D / max(L, eps));

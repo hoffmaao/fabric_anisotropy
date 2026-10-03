@@ -21,7 +21,7 @@
 %      convention gives (win_power_m = 0) is reported beside it so the
 %      size of that mismatch is on record - measured, 5 dB at the nulls.
 %   2. CHI-SQUARE AT TRUTH. With Gaussian noise at exactly the sigmas
-%      ptt.fabricGLS assigns (the dB variance of an N-look power, the
+%      fabricGLS assigns (the dB variance of an N-look power, the
 %      Cramer-Rao phase variance at the observed |C|), the misfit of the
 %      TRUE column, standardised by those sigmas, has chi2/dof within
 %      0.85-1.15 of one. That is the exit criterion of #29 read at the

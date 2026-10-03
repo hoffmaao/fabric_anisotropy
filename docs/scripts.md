@@ -489,7 +489,7 @@ comparing HDF5 object references, which never match.
     both with "dlam". Its theta panel is drawn as a DIAGNOSTIC and says so:
     on Ridge A the recovered orientation tracks the antenna frame, at 2.0 deg
     circular spread there against 41.7 geographic. When the pipeline output
-    carries the `ptt.quadpolFabricLS` fields it adds a third row - the LS
+    carries the `quadpolFabricLS` fields it adds a third row - the LS
     coherence-field fit above the published direct chain - on a shared
     color scale; older .mat files without them still draw the two-row
     layout.

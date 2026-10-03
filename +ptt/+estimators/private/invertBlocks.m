@@ -4,8 +4,8 @@ function inv = invertBlocks(blk, map, par, opts)
 %   (from ptt.blockAverage) for the piecewise-constant horizontal fabric
 %   contrast dlam = lam_x - lam_y over opts.num_intervals depth intervals,
 %   using the solver selected by opts.inversion (exact per-interval layer
-%   stripping via ptt.invertHorizontalFabric, or the smoothness-regularized
-%   joint solve via ptt.invertHorizontalFabricJoint) with the firn-ice
+%   stripping via invertHorizontalFabric, or the smoothness-regularized
+%   joint solve via invertHorizontalFabricJoint) with the firn-ice
 %   column model par (see ptt.defaultParams; par.H must cover the observed
 %   depth range). Interval bottom edges are spaced equally in twtt over the
 %   contiguous coherent span below the surface reference depth.
@@ -16,7 +16,7 @@ function inv = invertBlocks(blk, map, par, opts)
 %   over - nodes start strictly below it, and its centre is handed to
 %   the joint solve as obs.zref), inversion ('stripping'
 %   for the exact per-interval layer stripping, or 'joint' for the
-%   smoothness-regularized joint solve of ptt.invertHorizontalFabricJoint,
+%   smoothness-regularized joint solve of invertHorizontalFabricJoint,
 %   recommended for noisy data), reg (0.05; joint mode only).
 %
 %   inv fields (num_intervals x Nblk): dlam, top_depth, bot_depth [m below
@@ -33,7 +33,7 @@ function inv = invertBlocks(blk, map, par, opts)
 %   so the flag is how a consumer tells fabricated nodes from measured
 %   ones. ref_degenerate (Nint x Nblk logical): true for the interval
 %   whose dlam shares its information with the reference-offset nuisance
-%   (see ptt.invertHorizontalFabricJoint) - quotable fabric starts below
+%   (see invertHorizontalFabricJoint) - quotable fabric starts below
 %   it; all false where the block was skipped or the reference was not in
 %   play. Per-block fields (1 x Nblk):
 %   rms [ns] (coherence-weighted misfit rms) and alpha (regularization
@@ -148,9 +148,9 @@ for b = 1:Nblk
   try
     if strcmp(opts.inversion, 'joint')
       obs.w = node_coh.^2;
-      [dlam_prof, inv_out] = ptt.invertHorizontalFabricJoint(obs, par, opts);
+      [dlam_prof, inv_out] = invertHorizontalFabricJoint(obs, par, opts);
     else
-      [dlam_prof, inv_out] = ptt.invertHorizontalFabric(obs, par);
+      [dlam_prof, inv_out] = invertHorizontalFabric(obs, par);
     end
   catch ME
     warning('ptt:invertBlocks:failed', ...

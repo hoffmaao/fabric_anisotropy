@@ -1,4 +1,4 @@
-"""The least-squares problem solved by ptt.quadpolFabricLS, as a figure.
+"""The least-squares problem solved by quadpolFabricLS, as a figure.
 
 Every line here is transcribed from the estimator, not restated from the
 literature: the model and the pedestal from the header of

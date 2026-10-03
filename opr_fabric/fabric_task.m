@@ -8,7 +8,7 @@ function [success] = fabric_task(param)
 %                          when available) blended with the coregistration
 %                          row offsets (sign + integer fringe ambiguity)
 %   ptt.blockAverage     - coherence-weighted along-track block averaging
-%   ptt.invertBlocks     - inversion for the horizontal fabric contrast
+%   invertBlocks     - inversion for the horizontal fabric contrast
 %                          dlam = lam_x - lam_y through the Maxwell-Garnett
 %                          firn model (Rathmann 2026), by exact layer
 %                          stripping or the smoothness-regularized joint
@@ -174,7 +174,8 @@ if isfield(par,'bco_depth')
   par = rmfield(par,'bco_depth');
 end
 
-inv = ptt.invertBlocks(blk, map, par, param.fabric);
+ptt.estimators.use('copol');
+inv = ptt.estimators.run('invertBlocks', blk, map, par, param.fabric);
 
 dlam = inv.dlam;
 dlam_top_depth = inv.top_depth;

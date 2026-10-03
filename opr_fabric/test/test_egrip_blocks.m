@@ -42,9 +42,9 @@
 %     The verdict asserts the PAIR, not coverage alone: no rate may
 %     combine a profile the pipeline would hand on with an inaccurate
 %     axis. "Would hand on" is the consumer's own rule, not a threshold
-%     tuned to these numbers - ptt.quadpolFrameTheta keeps a segment's
+%     tuned to these numbers - quadpolFrameTheta keeps a segment's
 %     profile only when at least min_seg_windows (5) theta windows are
-%     live, and ptt.thetaProfileAt then interpolates that profile into
+%     live, and thetaProfileAt then interpolates that profile into
 %     every block of the segment; below it the segment is marked dead and
 %     the blocks fall back. Borrowing that rule means counting the same
 %     POPULATION it gates on, so the LIVENESS COUNT is taken over the
@@ -72,7 +72,7 @@
 %     than blocks handed the true axis (med|err| 0.025 vs 0.002).
 %     Frame-axis quality dominates block dlam accuracy by an order of
 %     magnitude; the laterally-segmented frame pass
-%     (ptt.quadpolFrameTheta) is the fix, and test_quadpol_segmented.m
+%     (quadpolFrameTheta) is the fix, and test_quadpol_segmented.m
 %     asserts its rescue.
 %
 %  3. BLOCK LENGTH HAS MARGIN, AND 125 m IS THE RIGHT TARGET. With the axis
@@ -99,6 +99,7 @@ t0 = tic;
 
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
+ptt.estimators.use('quadpol_ls');
 
 C = ptt.constants();
 fc = 750e6;
@@ -147,8 +148,8 @@ Z_SIG = 800;
 % guard, whichever way it is unified.
 %
 %   IS THIS HANDOFF USABLE? - the consumer's question, so the consumer's
-%   population. ptt.quadpolFrameTheta keeps a segment profile, and
-%   ptt.thetaProfileAt then interpolates it into every block, only when at
+%   population. quadpolFrameTheta keeps a segment profile, and
+%   thetaProfileAt then interpolates it into every block, only when at
 %   least min_seg_windows theta windows are live, gated as
 %   nnz(isfinite(theta0)) < MIN_SEG_W over the solver's FULL window grid.
 %   Counting the band instead would call a profile dead that the pipeline
@@ -243,7 +244,7 @@ fprintf('%-9s %10s %9s %11s %6s %7s %7s %11s\n', 'rate/km', 'frame_ddl', ...
 for k = 1:numel(RATES)
   [S, DL_X] = H_synth(RATES(k), NX, DX, Nz, z, THETA_TRUE, DL0, ...
     gpd, LEAK_C, LEAK_D, NA);
-  fr = ptt.quadpolFabricLS(S, z, OPTS);
+  fr = ptt.estimators.run('quadpolFabricLS', S, z, OPTS);
   ok = isfinite(fr.theta0);
   % nlive is the CONSUMER's population - every window of the profile
   % thetaProfileAt would interpolate - while nband and ang are the deep
@@ -473,7 +474,7 @@ for b = 1:nblk
   j0 = (b-1)*NB + 1; j1 = j0 + NB - 1;
   Sb = struct('hh', S.hh(:, j0:j1), 'vv', S.vv(:, j0:j1), ...
     'hv', S.hv(:, j0:j1), 'vh', S.vh(:, j0:j1));
-  ob = ptt.quadpolFabricLS(Sb, z, o);
+  ob = ptt.estimators.run('quadpolFabricLS', Sb, z, o);
   m = ob.zw > zband(1) & ob.zw < zband(2);
   dl(b) = median(ob.dlam(m), 'omitnan');
   tr(b) = mean(DL_X(j0:j1));
