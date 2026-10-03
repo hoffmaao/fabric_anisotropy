@@ -1,6 +1,6 @@
 """The orientation-and-strength inversion, written in matrix form.
 
-This is ptt.quadpolFabricLS - the solve that returns the fabric DIRECTION
+This is quadpolFabricLS - the solve that returns the fabric DIRECTION
 as well as the contrast - stated as what it is: a SEPARABLE NONLINEAR
 WEIGHTED LEAST SQUARES problem, solved by VARIABLE PROJECTION
 (Golub & Pereyra 1973).
@@ -62,7 +62,7 @@ t(50, 96.6,
   'Separable nonlinear weighted least squares, by variable projection',
   16, INK, weight='bold')
 t(50, 92.8, 'the solve that returns fabric DIRECTION as well as strength '
-  r'($\mathtt{ptt.quadpolFabricLS}$)', 11, MUTED)
+  r'($\mathtt{quadpolFabricLS}$)', 11, MUTED)
 
 # ---------------------------------------------------------------- the split
 box(25, 84.0, 44, 9.5, NL)

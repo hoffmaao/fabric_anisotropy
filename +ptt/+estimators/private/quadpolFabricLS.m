@@ -1,7 +1,7 @@
 function out = quadpolFabricLS(S, z, opts)
 %QUADPOLFABRICLS Fabric from a local least-squares fit of the coherence field.
 %
-% out = ptt.quadpolFabricLS(S, z, opts)
+% out = ptt.estimators.run('quadpolFabricLS', S, z, opts)
 %
 % Fits the measured complex HH-VV coherence C(psi, z), over ALL synthetic
 % azimuths at once, to the exact single-column birefringence model in a
@@ -10,9 +10,9 @@ function out = quadpolFabricLS(S, z, opts)
 % centre, and its local rate ddelta/dz - plus linear nuisances: a scale
 % gamma for the coherence floor, and a three-component antenna-frame
 % PEDESTAL (see below). dlam is ddelta/dz converted by the same constant
-% ptt.quadpolFabric uses.
+% quadpolFabric uses.
 %
-% WHY THIS EXISTS. ptt.ershadiFabric follows the published chain and takes
+% WHY THIS EXISTS. ershadiFabric follows the published chain and takes
 % the fabric axis from the cross-polarized power minimum. On this system
 % the cross-polarized channels sit on a flat instrument pedestal (cross/co
 % ~ -3.6 dB with 0.35 dB of depth ripple, where fabric cross-pol must null
@@ -224,7 +224,7 @@ dz = median(abs(diff(z)));
 
 C = ptt.constants();
 n_ice = sqrt(C.eps_bar);
-% Same constant as ptt.quadpolFabric, cross-checked there against the
+% Same constant as quadpolFabric, cross-checked there against the
 % independent fringe_check.m calibration to 0.7%.
 grad_per_dlam = 2 * pi * fc * C.deps / (n_ice * C.c * 1e9);   % rad/m
 

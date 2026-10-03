@@ -1,6 +1,6 @@
 %TEST_FABRIC_GLS Generalized least squares fabric inversion, and its uncertainty.
 %
-% ptt.fabricGLS inverts the full layered Fujita model for theta(z), dlam(z)
+% fabricGLS inverts the full layered Fujita model for theta(z), dlam(z)
 % and r(z) as PROFILES, with a prior instead of a hard constant-orientation
 % constraint, and returns a linearised posterior covariance.
 %
@@ -43,7 +43,7 @@
 %      short one tracks the true profile. Scored against the true profile
 %      circularly, because theta is an axis and each layer may sit on
 %      either branch. That is the whole point
-%      of moving from ptt.polarimetricRatioInverse to this: the
+%      of moving from polarimetricRatioInverse to this: the
 %      constant-orientation assumption becomes a number the data argues
 %      with, and the test asserts the data can win.
 %
@@ -51,6 +51,7 @@
 clear; t0 = tic;
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
+ptt.estimators.use('gls');
 
 fc = 750e6; z = (10:10:1400).'; psi = (0:10:170)*pi/180;
 nL = 8; top = (0:nL-1).' * (1400/nL);
@@ -64,7 +65,7 @@ obs0 = struct('psi', psi, 'dP_hh', fm.dP_hh, 'dP_hv', fm.dP_hv, ...
   'phi', fm.phi, 'Cmag', fm.Cmag);
 BASE = struct('fc', fc, 'n_layer', nL, 'n_looks', NLOOK, 'max_iter', 30, 'n_start', 3);
 
-o1 = ptt.fabricGLS(obs0, z, BASE);
+o1 = ptt.estimators.run('fabricGLS', obs0, z, BASE);
 e_th = rad2deg(abs(angle(exp(2i*(median(o1.theta_z) - TH)))/2));
 dl_true_z = interp1(top, DLv, z, 'linear', 'extrap');
 e_dl = median(abs(o1.dlam_z - dl_true_z));
@@ -73,7 +74,7 @@ ok1 = e_th < 2 && e_dl < 0.006;
 fprintf('   recovers the profiles:                                %s\n', H_tick(ok1));
 
 rng(11);
-o2 = ptt.fabricGLS(H_noise(obs0, S_DB, NLOOK), z, BASE);
+o2 = ptt.estimators.run('fabricGLS', H_noise(obs0, S_DB, NLOOK), z, BASE);
 fprintf('\n2. with noise at the assumed level: chi2/dof %.2f\n', o2.chi2_dof);
 ok2 = o2.chi2_dof > 0.3 && o2.chi2_dof < 3;
 fprintf('   C_d is the right size:                                %s\n', H_tick(ok2));
@@ -82,7 +83,7 @@ R = 16;
 th_hat = nan(R,1); dl_hat = nan(R,1); s_th = nan(R,1); s_dl = nan(R,1);
 for k = 1:R
   rng(100+k);
-  ok = ptt.fabricGLS(H_noise(obs0, S_DB, NLOOK), z, BASE);
+  ok = ptt.estimators.run('fabricGLS', H_noise(obs0, S_DB, NLOOK), z, BASE);
   th_hat(k) = ok.theta_z(round(end/2));
   dl_hat(k) = ok.dlam_z(round(end/2));
   s_th(k) = ok.sigma_theta_z(round(end/2));
@@ -112,7 +113,7 @@ fm_r = H_fwd(top, DLv, TH_ROT, zeros(nL,1), z, psi, fc);
 obs_r = struct('psi', psi, 'dP_hh', fm_r.dP_hh, 'dP_hv', fm_r.dP_hv, ...
   'phi', fm_r.phi, 'Cmag', fm_r.Cmag);
 th_true_z = interp1(top, TH_ROT, z, 'linear', 'extrap');
-o_f = ptt.fabricGLS(obs_r, z, BASE);
+o_f = ptt.estimators.run('fabricGLS', obs_r, z, BASE);
 % scored against the TRUE profile, circularly. theta is an AXIS, unique
 % only modulo 180 deg, so each layer may sit on either branch: a raw
 % max-minus-min of theta_z reported a 278 deg "swing" for a 50 deg
@@ -134,7 +135,7 @@ gr = deg2rad(0:15:165);
 chi_c = nan(size(gr));
 for k = 1:numel(gr)
   cf = BASE; cf.theta_prior = [gr(k), deg2rad(0.05), 1e8]; cf.n_start = 1;
-  chi_c(k) = ptt.fabricGLS(obs_r, z, cf).chi2_dof;
+  chi_c(k) = ptt.estimators.run('fabricGLS', obs_r, z, cf).chi2_dof;
 end
 chi_rot = min(chi_c);
 
@@ -143,7 +144,7 @@ chi_rot = min(chi_c);
 chi_c0 = nan(size(gr));
 for k = 1:numel(gr)
   cf = BASE; cf.theta_prior = [gr(k), deg2rad(0.05), 1e8]; cf.n_start = 1;
-  chi_c0(k) = ptt.fabricGLS(obs0, z, cf).chi2_dof;
+  chi_c0(k) = ptt.estimators.run('fabricGLS', obs0, z, cf).chi2_dof;
 end
 chi_con = min(chi_c0);
 
@@ -169,8 +170,8 @@ CORR = BASE; CORR.n_indep_psi = 4;
 for k = 1:R5
   rng(500+k);
   on = H_noise_corr(obs0, S_DB, NLOOK, psi);
-  a = ptt.fabricGLS(on, z, BASE);
-  b = ptt.fabricGLS(on, z, CORR);
+  a = ptt.estimators.run('fabricGLS', on, z, BASE);
+  b = ptt.estimators.run('fabricGLS', on, z, CORR);
   d_naive(k) = a.dlam_z(round(end/2)); s_naive(k) = a.sigma_dlam_z(round(end/2));
   d_corr(k)  = b.dlam_z(round(end/2)); s_corr(k)  = b.sigma_dlam_z(round(end/2));
 end

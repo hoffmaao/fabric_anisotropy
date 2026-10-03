@@ -4,7 +4,7 @@
 % inversion, to get honest joint uncertainty on direction and strength.
 %
 % THE FINDING: for the per-window problem, HMC is the wrong tool because
-% the posterior is already being computed. ptt.quadpolFabricLS evaluates a
+% the posterior is already being computed. quadpolFabricLS evaluates a
 % 60 x 26 x 24 grid over the three non-linear parameters and eliminates the
 % four linear ones exactly at every node. Normalising exp(-cost/2 sigma^2)
 % over that grid IS the joint posterior of (theta_0, delta_0, delta') -
@@ -28,7 +28,7 @@
 % sampler, is the work standing between here and a defensible interval.
 %
 % WHERE HMC WOULD EARN ITS PLACE: the full-profile problem in
-% ptt.fabricGLS, which carries 3 x n_layer parameters where a grid is
+% fabricGLS, which carries 3 x n_layer parameters where a grid is
 % impossible, and whose linearised posterior test_fabric_gls MEASURES to be
 % about 2x optimistic. That is a real gap and a real use for a sampler.
 %

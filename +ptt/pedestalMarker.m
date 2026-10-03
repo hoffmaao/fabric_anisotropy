@@ -11,7 +11,7 @@ function p = pedestalMarker()
 % it - so it lives here once instead of as a literal in each writer, and
 % ptt.pedestalFailed is the matching test.
 %
-% See also ptt.pedestalFailed, ptt.quadpolFrameTheta.
+% See also ptt.pedestalFailed, quadpolFrameTheta.
 
 p = [0 0 0];
 

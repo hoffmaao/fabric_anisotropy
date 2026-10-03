@@ -41,6 +41,7 @@ end
 [code, scratch] = fabric_paths();
 out_fn = fullfile(scratch, 'stages', sprintf('quadpol_%s.mat', site));
 addpath(code);
+ptt.estimators.use('direct');
 
 CHAN = {'hh','vv','hv','vh'};
 NR = 9;                 % range looks for the moment matrix
@@ -167,10 +168,10 @@ for fi = 1:numel(d)
     clear S;
     psi = (0:PSI_STEP_DEG:180-PSI_STEP_DEG) * pi/180;
     A = ptt.quadpolAzimuth(M, psi);
-    out = ptt.quadpolFabric(A, z, struct('fc', FC, 'win_m', 50, ...
+    out = ptt.estimators.run('quadpolFabric', A, z, struct('fc', FC, 'win_m', 50, ...
       'grad_win_m', 200));
     Ag = ptt.quadpolAzimuth(Mg, psi);
-    outg = ptt.quadpolFabric(Ag, z, struct('fc', FC, 'win_m', 50, ...
+    outg = ptt.estimators.run('quadpolFabric', Ag, z, struct('fc', FC, 'win_m', 50, ...
       'grad_win_m', 200));
 
     p0 = deg2rad(la(1)); p1 = deg2rad(la(end));

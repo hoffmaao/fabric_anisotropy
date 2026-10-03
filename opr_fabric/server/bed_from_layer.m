@@ -17,7 +17,7 @@ function [z_bed, info] = bed_from_layer(site_root, day_seg, frm, la, lo, surf_t)
 % unmatched traces between two matched ones takes the bed interpolated
 % linearly in along-track distance from them, when the gap spans at most
 % MAX_GAP_M. Left NaN, those traces stay unmasked, and where they are more
-% than half a pass the pass's median bed is infinite (ptt.quadpolFrameTheta
+% than half a pass the pass's median bed is infinite (quadpolFrameTheta
 % counts an unpicked trace as ice), so a frame whose picks stop for a
 % stretch would let that stretch's coherent sub-bed return vote on the
 % held axis again. The cap bounds how far a straight line is trusted
@@ -62,7 +62,7 @@ function [z_bed, info] = bed_from_layer(site_root, day_seg, frm, la, lo, surf_t)
 %   given an interpolated bed across a gap), n_bad (non-positive picks
 %   dropped), reason (why there is no bed; '' when there is one)
 %
-% See also ptt.maskBelowBed, ptt.quadpolFrameTheta.
+% See also ptt.maskBelowBed, quadpolFrameTheta.
 
 MAX_MATCH_M = 62.5;      % the bed producer's radius, scripts/make_bed_by_block.py
 MAX_GAP_M = 1000;        % longest gap along track bridged by interpolation

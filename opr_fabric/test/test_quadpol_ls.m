@@ -1,4 +1,4 @@
-%TEST_QUADPOL_LS Round-trip and leakage-immunity test of ptt.quadpolFabricLS.
+%TEST_QUADPOL_LS Round-trip and leakage-immunity test of quadpolFabricLS.
 %
 % Same synthetic column as test_ershadi (known axis, known contrast, seen
 % from several antenna azimuths), plus the failure mode that motivated the
@@ -11,7 +11,7 @@
 % birefringent crossings - which is what produced the "regular jumps"
 % (crossing-depth dlam overshoots, gamma ~0.2, resid ~0.6) in the Ridge A
 % validation before the CRB weighting. The spike assertion below guards
-% that failure mode. ptt.ershadiFabric takes its axis from the
+% that failure mode. ershadiFabric takes its axis from the
 % cross-polarized minimum, which the leakage owns, so it locks; the LS fit
 % never touches cross-polarized power and must not.
 %
@@ -29,6 +29,7 @@ t0 = tic;
 
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
+ptt.estimators.use('quadpol_ls');
 
 C = ptt.constants();
 fc = 750e6;
@@ -85,7 +86,7 @@ for ci = 1:size(cases, 1)
     S.hv = xc + na*(randn(Nz,Nx)+1i*randn(Nz,Nx));
     S.vh = xc + na*(randn(Nz,Nx)+1i*randn(Nz,Nx));
 
-    out = ptt.quadpolFabricLS(S, z, OPTS);
+    out = ptt.estimators.run('quadpolFabricLS', S, z, OPTS);
 
     mid = out.zw > 300 & out.zw < 1300;
     dl_got = median(out.dlam(mid), 'omitnan');
@@ -130,7 +131,7 @@ for ci = 1:size(cases, 1)
     if DL > 0 && isfinite(tol_t)
       okw = isfinite(out.theta0);
       if nnz(okw) >= 2
-        o2 = ptt.quadpolFabricLS(S, z, setfield(OPTS, 'theta0', ...
+        o2 = ptt.estimators.run('quadpolFabricLS', S, z, setfield(OPTS, 'theta0', ...
           struct('z', out.zw(okw), 'theta', out.theta0(okw)))); %#ok<SFLD>
         dl2 = median(o2.dlam(mid), 'omitnan');
         ok2 = abs(dl2 - DL) < tol_d;
@@ -142,8 +143,11 @@ for ci = 1:size(cases, 1)
     % the motivating comparison, reported not asserted: where does the
     % published chain put the axis under the same leakage?
     if leak && DL > 0 && alpha_deg == alphas(1)
-      oe = ptt.ershadiFabric(S, z, struct('fc', fc, 'psi_step_deg', 2, ...
+      % a deliberate switch to the reference method, and back
+      prev = ptt.estimators.use('ershadi');
+      oe = ptt.estimators.run('ershadiFabric', S, z, struct('fc', fc, 'psi_step_deg', 2, ...
         'win_m', 30, 'grad_win_m', 25, 'coh_min', 0.4, 'deramped', false));
+      ptt.estimators.use(prev);
       me = z > 300 & z < 1300;
       the = rad2deg(oe.theta(me)); the = the(isfinite(the));
       ge = mod(rad2deg(angle(mean(exp(2i*deg2rad(2*the)))))/4, 90);

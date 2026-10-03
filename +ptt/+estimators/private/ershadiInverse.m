@@ -1,10 +1,10 @@
 function out = ershadiInverse(fr, z, opts)
 %ERSHADIINVERSE Ershadi et al. (2022) Sect. 3.5 inversion for theta and r.
 %
-% out = ptt.ershadiInverse(fr, z, opts)
+% out = ptt.estimators.run('ershadiInverse', fr, z, opts)
 %
 % The constrained non-linear least-squares step of Ershadi et al. (2022,
-% The Cryosphere 16, 1719-1739): given the observables ptt.ershadiFabric
+% The Cryosphere 16, 1719-1739): given the observables ershadiFabric
 % extracts - the power anomalies dP_HH and dP_HV (their eq. 12), the
 % coherence phase phi_HHVV (eqs. 7-8) - fit the layered Fujita forward
 % model (ptt.fujitaModel, their eq. 5) for a piecewise-constant profile of
@@ -29,7 +29,7 @@ function out = ershadiInverse(fr, z, opts)
 %     depth before trusting a fine parameterization; a short interval is
 %     safe for r (which is local to the layer) long before it is safe for
 %     theta.
-%   - Initial guess (3.5.3): theta0 from ptt.ershadiFabric's theta output,
+%   - Initial guess (3.5.3): theta0 from ershadiFabric's theta output,
 %     which is exactly their recipe (dP_HV minima, disambiguated by the
 %     phase polarity and the sign of Psi); r0 = 0 dB.
 %   - Cost (3.5.4, eqs. 15-18): J = l1*J_phi + l2*J_dPHH + l3*J_dPHV with
@@ -73,7 +73,7 @@ function out = ershadiInverse(fr, z, opts)
 % OPTIMIZER-INDEPENDENT but DATA-CHAIN-CONDITIONED - not "optimization
 % free", because it needs an axis to resolve eq. (13)'s arc ambiguity and
 % an accumulated phase to find the anti-phase depths. Both are taken from
-% ptt.ershadiFabric: the initial-guess theta (th0_int, their 3.5.3 recipe
+% ershadiFabric: the initial-guess theta (th0_int, their 3.5.3 recipe
 % of dP_HV minima disambiguated by phase polarity) and the accepted dlam.
 % Neither is ever taken from the FITTED theta, and that is the whole point:
 %   CAN catch - a theta stage that flips 90 deg or drifts from its initial
@@ -89,7 +89,7 @@ function out = ershadiInverse(fr, z, opts)
 % all three gates and the measurements behind them.
 %
 % Inputs
-%   fr    output struct of ptt.ershadiFabric (needs psi, dP_hh, dP_hv,
+%   fr    output struct of ershadiFabric (needs psi, dP_hh, dP_hv,
 %         phi, Cmag, theta, dlam; fc/eps_perp/deps/win_m are read from it
 %         when present - see below)
 %   z     depth axis (m), same rows as the fields in fr
@@ -102,7 +102,7 @@ function out = ershadiInverse(fr, z, opts)
 %         .fit_decim (4)      depth-row decimation inside the cost
 %         .fit_psi_decim (4)  azimuth-column decimation inside the cost
 %         .fc, .eps_perp, .deps, .win_m   passed to ptt.fujitaModel, and
-%              DEFAULTED from the values ptt.ershadiFabric recorded in fr.
+%              DEFAULTED from the values ershadiFabric recorded in fr.
 %              These constants are already burned into the accepted dlam,
 %              so restating one differently in opts is an error, not an
 %              override: it would rescale every modelled phase with nothing
@@ -165,7 +165,7 @@ function out = ershadiInverse(fr, z, opts)
 %   .cycle_worsened                 true if any cycle raised the combined
 %                                   staged cost
 %
-% See also ptt.fujitaModel, ptt.ershadiFabric.
+% See also ptt.fujitaModel, ershadiFabric.
 
 if nargin < 3, opts = struct(); end
 int_m = H_opt(opts, 'interval_m', 50);
@@ -194,7 +194,7 @@ r13_neg_frac = H_opt(opts, 'r13_neg_frac', 0.2);
 r13_axis_res_min = H_opt(opts, 'r13_axis_res_min', 0.5);
 
 % The forward constants are NOT free here: fr.dlam was produced by
-% ptt.ershadiFabric under a particular fc/eps_perp/deps and is accepted
+% ershadiFabric under a particular fc/eps_perp/deps and is accepted
 % rather than re-fit, so the model must propagate phase under the same
 % ones. H_const takes them from fr and rejects a disagreeing opts value.
 fwd = struct('fc', H_const(opts, fr, 'fc', 750e6), ...
@@ -255,7 +255,7 @@ for k = 1:Nint
   t = fr.theta(m); t = t(isfinite(t));
   if ~isempty(t)
     % the doubled-angle resultant LENGTH is the direct measure of whether
-    % this interval has an axis at all: ptt.ershadiFabric resolves theta's
+    % this interval has an axis at all: ershadiFabric resolves theta's
     % 90 deg polarity branch row by row from sign(psi_grad), so an interval
     % whose rows split between the branches cancels to a near-zero
     % resultant at an essentially arbitrary angle
@@ -295,7 +295,7 @@ fitset = fitset(dlam_known(fitset));
 if isempty(fitset)
   error('ptt:ershadiInverse:noDlam', ...
     ['no interval in the fit band has an accepted dlam - every one was ' ...
-    'gated out upstream (ptt.ershadiFabric NaNs dlam below its coh_min, ' ...
+    'gated out upstream (ershadiFabric NaNs dlam below its coh_min, ' ...
     'default 0.4). Lower coh_min, lengthen interval_m so each interval ' ...
     'catches usable rows, or narrow z_fit to the depths the coherence ' ...
     'actually supports.']);
@@ -354,7 +354,7 @@ R_GRID = (-30:1.5:30);
 % chain's cross-polarized argmin is antenna-locked by a flat pedestal
 % (88.8 +- 2.0 deg over 36 Ridge A frames, 0.1 +- 0.7 at Thwaites - axes
 % pinned to the antenna frame across sites with different ice), which is
-% why ptt.quadpolFabricLS exists. Where a trusted axis profile is
+% why quadpolFabricLS exists. Where a trusted axis profile is
 % available, handing it in is both more faithful to what is known and
 % better conditioned: the theta stage needs an interval to carry a large
 % share of the phase reaching its rows (see the leverage note above), a
@@ -493,7 +493,7 @@ J0 = J0(1:n_used, :); J = J(1:n_used, :); ex = ex(1:n_used, :);
 % the axis says which arc is which, since the nodes straddle it.
 %
 % CONDITIONED ON th0_int, NEVER ON THE FITTED theta. Both the arc below and
-% the phase accumulation use the initial-guess axis, which ptt.ershadiFabric
+% the phase accumulation use the initial-guess axis, which ershadiFabric
 % derived from the data alone. Using the fitted theta would make this agree
 % with the fit by construction in exactly the case worth catching: theta is
 % bounded [0, pi] and the EDML w_theta = [0 1 0] configuration fits it
@@ -520,7 +520,7 @@ J0 = J0(1:n_used, :); J = J(1:n_used, :); ex = ex(1:n_used, :);
 % 0.7 dB at +10 dB). This is also the faithful reading - Ershadi measure AD
 % at the co-pol nodes, which is where the anti-phase depths are.
 %
-% Accumulating delta needs a COMMON FRAME. ptt.ershadiFabric reports dlam
+% Accumulating delta needs a COMMON FRAME. ershadiFabric reports dlam
 % as a magnitude (eq. 10 is evaluated at whichever principal axis carries
 % lam_max), so an interval whose axis lies 90 deg from the reference one
 % has its fast and slow axes swapped and contributes with the OPPOSITE
@@ -733,7 +733,7 @@ if isstruct(o) && isfield(o, f) && ~isempty(o.(f)), v = o.(f); else, v = d; end
 end
 
 function v = H_const(o, fr, f, d)
-%H_CONST Resolve a forward constant that ptt.ershadiFabric already burned
+%H_CONST Resolve a forward constant that ershadiFabric already burned
 % into the accepted dlam. fr records what that call used, so fr wins and an
 % opts value that disagrees is a hard error rather than a silent override:
 % dlam is never re-fit, so running the fabric step at fc = 300 MHz and
@@ -744,7 +744,7 @@ has_o = isstruct(o) && isfield(o, f) && ~isempty(o.(f));
 has_f = isstruct(fr) && isfield(fr, f) && ~isempty(fr.(f));
 if has_o && has_f && abs(o.(f) - fr.(f)) > 1e-9 * max(abs(fr.(f)), 1)
   error('ptt:ershadiInverse:constMismatch', ...
-    ['opts.%s = %g disagrees with the %g that ptt.ershadiFabric used; ' ...
+    ['opts.%s = %g disagrees with the %g that ershadiFabric used; ' ...
      'the accepted dlam carries that constant, so the two calls must ' ...
      'agree - drop the opts override or re-run the fabric step'], ...
     f, o.(f), fr.(f));

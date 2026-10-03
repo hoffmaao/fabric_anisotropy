@@ -1,6 +1,6 @@
 %TEST_POLARIMETRIC_RATIO Orientation and strength from channel power ratios.
 %
-% ptt.polarimetricRatioInverse solves the Fujita model, at a depth-constant
+% polarimetricRatioInverse solves the Fujita model, at a depth-constant
 % orientation, for theta0, dlam(z) and the scattering ratio r(z) from the
 % RATIOS between measured channels, with each ratio carrying a free
 % additive offset so that unknown H-versus-V channel gains drop out.
@@ -48,7 +48,7 @@
 %      Differenced instead, a datum at +3.1 rad and a model at -3.1 scores
 %      ~2*pi where the true misfit is ~0, and because those entries sit
 %      where the phase is near the cut rather than where the model is
-%      wrong, they drag theta0 - the failure ptt.fabricGLS measured and
+%      wrong, they drag theta0 - the failure fabricGLS measured and
 %      wrapped away. Case 1 injects no offset, so nothing else here covers
 %      the wrap. Verdict: an offset of 3.0 rad leaves case 1's answers
 %      inside case 1's own tolerances.
@@ -68,6 +68,7 @@
 clear; t0 = tic;
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
+ptt.estimators.use('nymand');
 
 fc = 750e6; C = ptt.constants();
 gpd = 2*pi*fc*C.deps / (sqrt(C.eps_bar)*C.c*1e9);
@@ -189,7 +190,7 @@ end
 
 function o = H_fit(obs, z, OPT, use)
 OPT.use = use;
-o = ptt.polarimetricRatioInverse(obs, z, OPT);
+o = ptt.estimators.run('polarimetricRatioInverse', obs, z, OPT);
 end
 
 function [e, d, r] = H_err(o, TH, DL, RR)

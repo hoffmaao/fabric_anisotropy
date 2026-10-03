@@ -53,7 +53,7 @@ function [Me, G] = equaliseChannels(M, z, opts)
 %         VV/HH before, firn_db the VV anchor applied, seam_db the
 %         range-dependence span of the V-receive gain over the record
 %
-% See also ptt.quadpolMoments, ptt.quadpolFabricPower.
+% See also ptt.quadpolMoments, quadpolFabricPower.
 
 if nargin < 3, opts = struct(); end
 firn = H_opt(opts, 'firn_m', [160 500]);

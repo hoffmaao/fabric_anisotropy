@@ -1,11 +1,11 @@
 function prof = thetaProfileAt(fp, x)
 %THETAPROFILEAT Geographic theta0 handoff profile at an along-track position.
 %
-% prof = ptt.thetaProfileAt(fp, x)
+% prof = ptt.estimators.run('thetaProfileAt', fp, x)
 %
-% Interpolates the segmented frame pass (ptt.quadpolFrameTheta) at
+% Interpolates the segmented frame pass (quadpolFrameTheta) at
 % along-track position x [m], returning the struct('z', 'theta') form
-% that ptt.quadpolFabricLS accepts as opts.theta0 (the caller subtracts
+% that quadpolFabricLS accepts as opts.theta0 (the caller subtracts
 % the block heading to reach the block's antenna frame). Returns [] when
 % the frame pass produced nothing usable, which tells the block fit to
 % estimate its own axis - the same convention the unsegmented pipeline

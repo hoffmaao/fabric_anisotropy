@@ -12,7 +12,7 @@ is measured well: MEASURED here, a delay with a signal-to-noise of 71
 gives a naive-derivative contrast whose error (0.104) is LARGER than the
 contrast being measured (0.02-0.09).
 
-Panels are computed with ptt.traveltimeFabricML itself, not sketched, so
+Panels are computed with traveltimeFabricML itself, not sketched, so
 the error bars and the resolution are the ones the estimator reports.
 
 Usage: python inverse_intuition.py [out_dir]
@@ -96,7 +96,7 @@ ax[3].fill_betweenx(zz[ok], (dl - sg)[ok], (dl + sg)[ok],
                     color=SOLVE, alpha=0.22, lw=0)
 ax[3].plot(dl[ok], zz[ok], color=SOLVE, lw=2.0)
 ax[3].plot(dl_true, z, color=TRUE, lw=1.6, ls='--')
-ax[3].set_title('inverted with a prior\n(ptt.traveltimeFabricML)',
+ax[3].set_title('inverted with a prior\n(traveltimeFabricML)',
                 fontsize=11.5, color=INK)
 ax[3].set_xlabel(r'$\Delta\lambda$')
 ax[3].set_xlim(0, 0.10)

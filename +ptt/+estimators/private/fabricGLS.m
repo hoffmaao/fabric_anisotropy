@@ -1,7 +1,7 @@
 function out = fabricGLS(obs, z, opts)
 %FABRICGLS Generalized least squares inversion of the Fujita model, with uncertainty.
 %
-% out = ptt.fabricGLS(obs, z, opts)
+% out = ptt.estimators.run('fabricGLS', obs, z, opts)
 %
 % Estimates the fabric orientation theta(z), the horizontal eigenvalue
 % difference dlam(z) and the anisotropic scattering ratio r(z) as DEPTH
@@ -9,8 +9,8 @@ function out = fabricGLS(obs, z, opts)
 % Fujita et al. (2006) forward model (ptt.fujitaModel), and returns a
 % posterior covariance rather than a point estimate alone.
 %
-% WHAT THIS CHANGES RELATIVE TO ptt.polarimetricRatioInverse AND
-% ptt.polarimetricInverse. Both of those impose theta(z) = theta0 as a
+% WHAT THIS CHANGES RELATIVE TO polarimetricRatioInverse AND
+% polarimetricInverse. Both of those impose theta(z) = theta0 as a
 % HARD constraint, which is what buys their analytic forward model. That
 % is a strong assumption dressed as a method: where the axis does rotate -
 % a shear margin, the deep part of an ice stream - they cannot say so,
@@ -46,7 +46,7 @@ function out = fabricGLS(obs, z, opts)
 % magnitude down a column as the coherence decays. Ordinary least squares
 % would weight a decohered deep phase sample as heavily as a clean shallow
 % one. C_d is where that belongs - and it also removes the arbitrary
-% observable weight that ptt.polarimetricRatioInverse has to tune by hand
+% observable weight that polarimetricRatioInverse has to tune by hand
 % (its w_phi, fixed at 2 dB per radian by experiment rather than by
 % measurement uncertainty).
 %
@@ -109,8 +109,8 @@ function out = fabricGLS(obs, z, opts)
 %   .chi2_dof       reduced chi-square; far from 1 means C_d is wrong
 %   .loss, .converged, .n_iter, .z_layer, .pred, .m, .ip
 %
-% See also ptt.fujitaModel, ptt.polarimetricRatioInverse,
-%   ptt.quadpolJackknife (the resampling uncertainty used elsewhere here).
+% See also ptt.fujitaModel, polarimetricRatioInverse,
+%   quadpolJackknife (the resampling uncertainty used elsewhere here).
 
 if nargin < 3, opts = struct(); end
 z = z(:); Nz = numel(z);
@@ -254,7 +254,7 @@ m = best.m;
 % the ordinary cost of linearising a non-linear, multi-modal problem.
 % sigma_theta_z and sigma_dlam_z are therefore LOWER BOUNDS: useful for
 % ranking depths and comparing frames, not for a quoted confidence
-% interval. For an interval, resample - ptt.quadpolJackknife.
+% interval. For an interval, resample - quadpolJackknife.
 G = H_jac(fwd, m, numel(d_obs), hstep);
 A = G.' * (Cdi .* G) + Cmi;
 C_M = H_inv(A);
@@ -324,8 +324,8 @@ lay = struct('top_m', num2cell(z_layer), ...
 % NOTE the sign: ptt.fujitaModel follows the paper's R S R' sense, where a
 % fabric at physical azimuth theta appears at sweep index -theta. theta is
 % carried here in the SAME sense as that model, so out.theta_z is directly
-% comparable with ptt.fujitaModel and with ptt.ershadiFabric, and is the
-% NEGATIVE of the synthesis-sense angle used by ptt.quadpolFabricLS.
+% comparable with ptt.fujitaModel and with ershadiFabric, and is the
+% NEGATIVE of the synthesis-sense angle used by quadpolFabricLS.
 M = ptt.fujitaModel(lay, z, psi, fwd_opts);
 end
 

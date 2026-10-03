@@ -23,9 +23,9 @@ function T = maskBelowBed(T, z, z_bed, margin)
 % polarised (measured 23 Sep 2026: HV-VH coherence 0.97 and HH-VV |C|
 % 0.5-0.6 up to 150 m below the pick at Taylor Dome; the Eastwind shelf
 % base 17 dB above the ice). The fabric model reads that as fabric with an
-% axis of its own. See SUB-BED WINDOWS in ptt.quadpolFabricLS.
+% axis of its own. See SUB-BED WINDOWS in quadpolFabricLS.
 %
-% See also ptt.quadpolFrameTheta, ptt.quadpolMoments.
+% See also quadpolFrameTheta, ptt.quadpolMoments.
 
 if nargin < 4 || isempty(margin), margin = 20; end
 z = z(:);

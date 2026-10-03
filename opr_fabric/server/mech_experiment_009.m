@@ -28,6 +28,7 @@
 % fabric_paths
 [fabric_code, scratch] = fabric_paths();
 addpath(fabric_code);
+ptt.estimators.use('quadpol_ls');
 cq = load(fullfile(scratch, 'stages', 'quadpol', 'coreg_cache', ...
   'creg_20250108_02_009.mat'));
 T = struct('hh', double(cq.hh), 'vv', double(cq.vv), ...
@@ -56,7 +57,7 @@ for k = 1:numel(runs)
     for c = 1:4, Sk.(CH{c}) = T.(CH{c})(:, 2:2:end); end
   end
   t0 = tic;
-  o = ptt.quadpolFabricLS(Sk, z, runs(k).opts);
+  o = ptt.estimators.run('quadpolFabricLS', Sk, z, runs(k).opts);
   fprintf('%s: %.1f min, dlam med %.3f, pedestal [%.3f %+.3f %.3f]\n', ...
     runs(k).name, toc(t0)/60, median(o.dlam, 'omitnan'), ...
     o.pedestal(1), o.pedestal(2), o.pedestal(3));

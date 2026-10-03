@@ -14,7 +14,7 @@ The through-line is that the wrapped phase on the previous slide is never
 unwrapped. Everything here works on the fringe RATE and on the azimuthal
 SHAPE of the coherence, both of which survive wrapping.
 
-Every equation is transcribed from ptt.quadpolFabricLS.
+Every equation is transcribed from quadpolFabricLS.
 
 Usage: python inversion_full.py [out_dir]
 """

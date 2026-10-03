@@ -1,7 +1,7 @@
 function out = quadpolFabric(A, z, opts)
 %QUADPOLFABRIC Horizontal fabric orientation and contrast from a quad-pol sweep.
 %
-% out = ptt.quadpolFabric(A, z, opts)
+% out = ptt.estimators.run('quadpolFabric', A, z, opts)
 %
 % Inverts the synthetic azimuth sweep from ptt.quadpolAzimuth for
 %

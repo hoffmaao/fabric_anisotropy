@@ -9,7 +9,7 @@
 % copying nine products.
 %
 % This is the path that carries AMPLITUDE: fabric_task was run with
-% inversion = 'joint', i.e. ptt.invertHorizontalFabricJoint, which fits the
+% inversion = 'joint', i.e. invertHorizontalFabricJoint, which fits the
 % returned power alongside dtau. That is the distinction being tested in
 % scripts/figures/egrip_method_compare.py against the Zeising et al. (2023)
 % phase-only estimator, so the two must come from the same lines, the same

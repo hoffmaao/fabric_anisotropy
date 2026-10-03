@@ -1,7 +1,7 @@
 function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 %QUADPOLFRAMETHETA Frame pass of the quad-pol chain, laterally segmented.
 %
-% fp = ptt.quadpolFrameTheta(T, z, az_tr, x_along, opts)
+% fp = ptt.estimators.run('quadpolFrameTheta', T, z, az_tr, x_along, opts)
 %
 % Estimates the frame-level pedestal and the GEOGRAPHIC fabric-axis
 % profile theta0(z) that the per-block section fits inherit - the "first
@@ -70,14 +70,14 @@ function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 %            theta_const (false; true holds ONE axis per segment, constant
 %            in depth - see below),
 %            jackknife (false; true adds sub-block jackknife standard
-%            errors per segment, see ptt.quadpolJackknife),
+%            errors per segment, see quadpolJackknife),
 %            z_bed ([] = no bed known; else [Nx] per-trace bed depth [m],
 %            NaN where unpicked) and bed_margin_m (20): every trace is
 %            blanked below its own bed less the margin (ptt.maskBelowBed),
 %            so each moment averages only traces still in ice at that
 %            depth, and a window is fitted only where at least HALF the
 %            traces of its pass (the frame, or the segment) are still in
-%            ice at the window's bottom edge (ptt.quadpolFabricLS z_valid
+%            ice at the window's bottom edge (quadpolFabricLS z_valid
 %            at the median bed). The two together follow a bed that varies
 %            along the line - 567-996 m inside one Taylor Dome frame, 42-
 %            300 m on one Eastwind line - which no single depth cut can:
@@ -85,7 +85,7 @@ function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 %            window at all (p5 79 m against a 224 m median). Without a bed
 %            the record's coherent sub-bed returns vote on the held axis
 %            and feed the pedestal median as if they were ice - see
-%            SUB-BED WINDOWS in ptt.quadpolFabricLS.
+%            SUB-BED WINDOWS in quadpolFabricLS.
 %            A pass's windows at or below its own z_valid are NOT ice and
 %            are never filled: th_seg stays NaN and q_seg 0 there in both
 %            modes, neither borrowed from a live neighbouring segment nor
@@ -138,11 +138,11 @@ function fp = quadpolFrameTheta(T, z, az_tr, x_along, opts)
 %             being too few). se_theta_seg must not be read bare - see
 %             ptt.circAxisSE
 %
-% The per-block handoff belongs to ptt.thetaProfileAt(fp, x), which
+% The per-block handoff belongs to ptt.estimators.run('thetaProfileAt', fp, x), which
 % interpolates th_seg across segments on the doubled-angle phasor and
-% returns the struct('z','theta') form ptt.quadpolFabricLS accepts.
+% returns the struct('z','theta') form quadpolFabricLS accepts.
 %
-% See also ptt.quadpolFabricLS, ptt.thetaProfileAt, ptt.rotateMoments.
+% See also quadpolFabricLS, thetaProfileAt, ptt.rotateMoments.
 
 if nargin < 5, opts = struct(); end
 FC = H_opt(opts, 'fc', 750e6);
@@ -165,7 +165,7 @@ MIN_SEG_W = H_opt(opts, 'min_seg_windows', 5);
 % out.theta_const_q and the residual profile before adopting it.
 TH_CONST = H_opt(opts, 'theta_const', false);
 % STANDARD ERRORS by delete-one jackknife over the heading sub-blocks
-% (ptt.quadpolJackknife), per segment - and for the frame when it is the
+% (quadpolJackknife), per segment - and for the frame when it is the
 % one segment. Off by default because it costs ~n_sub reduced-grid refits
 % per segment; the pipeline turns it on.
 JACK = H_opt(opts, 'jackknife', false);
@@ -225,7 +225,7 @@ curved = hspread > CURV_P95;
 % frame-pooled geographic profile. Identical to the unsegmented pipeline.
 PSI_FIT = (0:PSI_STEP_SEG:180-PSI_STEP_SEG) * pi/180;
 if ~curved
-  lsq = ptt.quadpolFabricLS(T, z, fbase);
+  lsq = quadpolFabricLS(T, z, fbase);
   ped_ant = lsq.pedestal;
   % The frame-mode pedestal is NaN whenever fewer than five windows gave a
   % finite coefficient - and quadpolFabricLS still returns a populated
@@ -250,13 +250,13 @@ else
   % pedestal estimate is CLEANER than on a straight line (fabric smears,
   % instrument adds coherently)
   oa = base; oa.pedestal = 'window';
-  lsa = ptt.quadpolFabricLS(T, z, oa);
+  lsa = quadpolFabricLS(T, z, oa);
   ped_ant = lsa.pedestal;
   if ptt.pedestalFailed(ped_ant), ped_ant = ptt.pedestalMarker(); end
   Mg = H_geo_moments(T, az_tr, 1:Nx, NBLK_ROT, CHAN);
   og = segbase;
   og.pedestal = H_ped_field(ped_ant, az_tr, 1:Nx, PSI_FIT);
-  lsq = ptt.quadpolFabricLS(struct('M', Mg), z, og);
+  lsq = quadpolFabricLS(struct('M', Mg), z, og);
   th_geo_raw = lsq.theta0;   % the geographic fit reports geographically
 end
 zw = lsq.zw;
@@ -315,7 +315,7 @@ if nseg == 1
   end
   % Same floor as the per-segment loop below: a delete-one jackknife needs
   % at least three sub-blocks to have a variance at all, and with fewer
-  % ptt.quadpolJackknife either indexes an empty cell or spends a full
+  % quadpolJackknife either indexes an empty cell or spends a full
   % estimator pass on a degenerate replicate to return all-NaN. A short
   % frame reaches this branch now that the pipeline asks for a jackknife
   % unconditionally, so it must decline rather than fail.
@@ -325,7 +325,7 @@ if nseg == 1
     ref = lsq;
     ref.theta0 = th_geo_raw(:);
     if isfinite(lsq.theta_const), ref.theta_const = lsq.theta_const + deg2rad(track_az) * ~curved; end
-    J = ptt.quadpolJackknife(Msub, nsub, z, og, ref);
+    J = quadpolJackknife(Msub, nsub, z, og, ref);
     fp.se_theta_seg = J.se_theta; fp.se_dlam_seg = J.se_dlam;
     fp.jack_n = J.n; fp.jack_edge = J.n_edge;
     fp.se_theta_n = J.n_theta; fp.se_theta_r = J.r_theta;
@@ -362,7 +362,7 @@ for s = 1:nseg
   os = segbase;   % carries theta_const: one axis per SEGMENT, constant in depth
   os.z_valid = zv_seg(s);
   os.pedestal = H_ped_field(ped_ant, az_tr, js, PSI_FIT);
-  o = ptt.quadpolFabricLS(struct('M', Mg), z, os);
+  o = quadpolFabricLS(struct('M', Mg), z, os);
   if nnz(isfinite(o.theta0)) < MIN_SEG_W, continue; end
   th_raw(:, s) = o.theta0;
   if isfield(o, 'theta_spread_deg'), th_spread(s) = o.theta_spread_deg; end
@@ -379,7 +379,7 @@ for s = 1:nseg
   dlam_seg(:, s) = o.dlam;
   resid_seg(:, s) = o.resid;
   if JACK && numel(Msub) >= 3
-    J = ptt.quadpolJackknife(Msub, nsub, z, os, o);
+    J = quadpolJackknife(Msub, nsub, z, os, o);
     se_theta_seg(:, s) = J.se_theta;
     se_dlam_seg(:, s) = J.se_dlam;
     se_theta_n(:, s) = J.n_theta;
@@ -396,7 +396,7 @@ end
 % traces, and any lateral kernel drags a pure segment toward its
 % neighbour - measured 7 deg of pull on a 45 deg margin step, exactly
 % where lateral resolution is the point. Continuity in the handoff comes
-% from the weighted phasor interpolation in ptt.thetaProfileAt.
+% from the weighted phasor interpolation in thetaProfileAt.
 th_seg = nan(Nw, nseg);
 q_seg = zeros(Nw, nseg);
 for s = 1:nseg

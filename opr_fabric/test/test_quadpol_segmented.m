@@ -1,6 +1,6 @@
 %TEST_QUADPOL_SEGMENTED The laterally-segmented first pass: superset + rescue.
 %
-% Validates ptt.quadpolFrameTheta + ptt.thetaProfileAt - the segmented
+% Validates quadpolFrameTheta + thetaProfileAt - the segmented
 % frame pass the pipeline hands to its per-block section fits - against
 % the two properties the design must have:
 %
@@ -32,7 +32,7 @@
 %     reaches the single-segment branch. A delete-one jackknife needs at
 %     least three sub-blocks to have a variance at all; the per-segment
 %     loop has always guarded on that, the nseg == 1 branch did not.
-%     Under 16 traces there are NO sub-blocks and ptt.quadpolJackknife
+%     Under 16 traces there are NO sub-blocks and quadpolJackknife
 %     indexed Msub{1} straight into "Index exceeds array bounds"; with
 %     one or two it ran a degenerate replicate - a moment matrix of
 %     essentially zero, since Mtot - Msub{1}*nsub(1) cancels - and spent
@@ -54,6 +54,7 @@ rng(7);
 t0 = tic;
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
+ptt.estimators.use('quadpol_ls');
 
 C = ptt.constants();
 fc = 750e6;
@@ -107,7 +108,7 @@ for ci = 1:size(cases, 1)
   end
 
   % --- the segmented frame pass
-  fp = ptt.quadpolFrameTheta(S, z, az_tr, x, FOPTS);
+  fp = ptt.estimators.run('quadpolFrameTheta', S, z, az_tr, x, FOPTS);
 
   % segment-axis recovery against the segment-mean truth
   seg_err = nan(1, fp.nseg);
@@ -146,13 +147,13 @@ for ci = 1:size(cases, 1)
     o = BOPTS;
     if all(isfinite(ped_old)), o.pedestal = ped_old; end
     o.theta0 = th_prof_old;
-    ob = ptt.quadpolFabricLS(Sb, z, o);
+    ob = ptt.estimators.run('quadpolFabricLS', Sb, z, o);
     m = ob.zw > 300 & ob.zw < 1100;
     dl_old(b) = median(ob.dlam(m), 'omitnan');
     o = BOPTS;
     if ~ptt.pedestalFailed(ped_new), o.pedestal = ped_new; end
-    o.theta0 = ptt.thetaProfileAt(fp, xb);   % geographic; heading 0
-    ob = ptt.quadpolFabricLS(Sb, z, o);
+    o.theta0 = ptt.estimators.run('thetaProfileAt', fp, xb);   % geographic; heading 0
+    ob = ptt.estimators.run('quadpolFabricLS', Sb, z, o);
     dl_new(b) = median(ob.dlam(m), 'omitnan');
     tr_blk(b) = mean(dlx(j0:j1));
   end
@@ -200,7 +201,7 @@ end
 SOPTS = FOPTS; SOPTS.jackknife = true;
 okd = false;
 try
-  fps = ptt.quadpolFrameTheta(Ss, z, zeros(1,Nxs), (0:Nxs-1)*9, SOPTS);
+  fps = ptt.estimators.run('quadpolFrameTheta', Ss, z, zeros(1,Nxs), (0:Nxs-1)*9, SOPTS);
   okd = fps.nseg == 1 && all(fps.jack_n == 0) && ...
     all(isnan(fps.se_theta_seg(:))) && all(isnan(fps.se_dlam_seg(:)));
   fprintf('\nshort frame (%d traces): nseg %d, jack_n %s, se all NaN %d\n', ...

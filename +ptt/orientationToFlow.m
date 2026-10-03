@@ -48,7 +48,7 @@ function out = orientationToFlow(theta0, flow, opts)
 % out.aligned     logical, angle < 45 (closer to along-flow than across)
 % out.speed       flow speed where vx/vy were supplied, else []
 %
-% See also ptt.orientationToStrain, ptt.strainRateAxes, ptt.nymandTwoStep.
+% See also ptt.orientationToStrain, ptt.strainRateAxes, nymandTwoStep.
 if nargin < 3, opts = struct(); end
 tf = H_req(opts, 'theta_frame', 'ptt:orientationToFlow:frame', ...
   'opts.theta_frame must be ''true'' or ''grid'' - see the header on grid vs true north');

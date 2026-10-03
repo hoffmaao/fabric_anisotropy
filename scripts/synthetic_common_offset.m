@@ -13,6 +13,7 @@ t0 = tic;
 
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..'));
+ptt.estimators.use('copol');
 figDir = fullfile(thisDir, '..', 'figs');
 if ~exist(figDir, 'dir'), mkdir(figDir); end
 
@@ -32,12 +33,12 @@ obs.dtau  = dtau_true + sigma * randn(size(dtau_true));
 
 % Inversion 1: correct assumed lam_z profile
 parA = parT;
-[dlamA, outA] = ptt.invertHorizontalFabric(obs, parA);
+[dlamA, outA] = ptt.estimators.run('invertHorizontalFabric', obs, parA);
 
 % Inversion 2: naive lam_z = 1/3 everywhere
 parB = parT;
 parB.lam_z_sfc = 1/3; parB.lam_z_bed = 1/3;
-[dlamB, outB] = ptt.invertHorizontalFabric(obs, parB);
+[dlamB, outB] = ptt.estimators.run('invertHorizontalFabric', obs, parB);
 
 % True contrast at interval midpoints for comparison
 zmid = (outA.ztop + outA.zbot) / (2 * parT.H);

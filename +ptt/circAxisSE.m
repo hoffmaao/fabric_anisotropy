@@ -105,7 +105,7 @@ function [s, m, Rbar, sat] = circAxisSE(th, min_rep)
 % strength without controlling for the sub-block count m, which is reported
 % per cell for exactly this reason.
 %
-% See also ptt.quadpolJackknife.
+% See also quadpolJackknife.
 
 if nargin < 2 || isempty(min_rep), min_rep = 3; end
 

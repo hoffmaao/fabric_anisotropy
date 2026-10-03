@@ -4,7 +4,7 @@
 %   co-polarized channels (or repeat passes with rotated antennas) give the
 %   TWTT difference t_x - t_y of tracked reflectors. Layer stripping then
 %   yields the horizontal fabric contrast dlam(z) = lam_x - lam_y per
-%   interval (ptt.invertHorizontalFabric).
+%   interval (invertHorizontalFabric).
 %
 %   Conventions and assumptions:
 %   - x is horizontal along the polarization/survey plane, y perpendicular;
@@ -17,11 +17,12 @@
 %     density/bubble model and a lam_z profile are ASSUMED (defaults or a
 %     nearby core). At small L the inferred dlam is insensitive to these
 %     (see scripts/synthetic_common_offset.m). Extending to varying-offset
-%     CMP acquisitions later unlocks the full inversion (ptt.invertFabric).
+%     CMP acquisitions later unlocks the full inversion (invertFabric).
 
 clear;
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..'));
+ptt.estimators.use('copol');
 
 %% ---- 1. Load picks (EDIT THIS) -----------------------------------------
 H     = 2000;                % standing default; only needs to exceed the
@@ -44,7 +45,7 @@ par.lam_z_sfc = 1/3;
 par.lam_z_bed = 1/3;
 
 %% ---- 3. Invert by layer stripping --------------------------------------
-[dlam, out] = ptt.invertHorizontalFabric(obs, par);
+[dlam, out] = ptt.estimators.run('invertHorizontalFabric', obs, par);
 
 fprintf('Interval (m a.b.)   dlam = lam_x - lam_y\n');
 for k = 1:numel(dlam)

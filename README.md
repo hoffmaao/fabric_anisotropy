@@ -6,7 +6,8 @@ To Infer ice crystal orientation fabric from polarimetric radar traveltime and r
 
 | path | what it holds |
 |---|---|
-| `+ptt/` | the method: column physics, CMP and common-offset inversions, and interferometric and quad-pol estimator chain |
+| `+ptt/` | the method's physics and data handling: column model, forward models, coregistration, moments and rotations |
+| `+ptt/+estimators/` | every fabric estimator, callable only through `ptt.estimators.run` under one method chosen with `ptt.estimators.use` (see `docs/method.md`) |
 | `opr_fabric/` | a drop-in OPR processing module plus the server drivers and the MATLAB test suite |
 | `scripts/` | synthetic validations, batch drivers, and the figure scripts |
 | `docs/` | reference detail (below) |

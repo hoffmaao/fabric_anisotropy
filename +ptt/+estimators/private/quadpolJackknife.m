@@ -1,10 +1,10 @@
 function J = quadpolJackknife(Msub, nsub, z, os, ref, opts)
 %QUADPOLJACKKNIFE Standard errors of a pooled quad-pol fit by sub-block jackknife.
 %
-% J = ptt.quadpolJackknife(Msub, nsub, z, os, ref, opts)
+% J = ptt.estimators.run('quadpolJackknife', Msub, nsub, z, os, ref, opts)
 %
 % The frame pass pools a segment's traces into one moment matrix as a
-% trace-weighted sum of SUB-BLOCK moments (ptt.quadpolFrameTheta's heading
+% trace-weighted sum of SUB-BLOCK moments (quadpolFrameTheta's heading
 % sub-blocks, ~200 traces each). Those sub-blocks are the natural
 % resampling unit: far enough apart that speckle, coregistration residual
 % and small real lateral variation are all independent between them, so a
@@ -62,7 +62,7 @@ function J = quadpolJackknife(Msub, nsub, z, os, ref, opts)
 %   os     the estimator options the FULL fit used (pedestal field,
 %          theta_const, grids, ...); theta_grid and window_ok are
 %          overridden here
-%   ref    the full-data ptt.quadpolFabricLS output (for the axis to
+%   ref    the full-data quadpolFabricLS output (for the axis to
 %          search around, the window grid, and the per-window verdict
 %          ref.window_ok the replicates inherit)
 %   opts   theta_half_deg (15), theta_step_deg (3), min_rep (3; fewer
@@ -103,7 +103,7 @@ function J = quadpolJackknife(Msub, nsub, z, os, ref, opts)
 % ptt.circAxisSE derives it from a bounded resultant instead and abstains
 % where the replicates are indistinguishable from a uniform spread.
 %
-% See also ptt.quadpolFabricLS, ptt.quadpolFrameTheta.
+% See also quadpolFabricLS, quadpolFrameTheta.
 
 if nargin < 6, opts = struct(); end
 HALF = deg2rad(H_opt(opts, 'theta_half_deg', 15));
@@ -167,7 +167,7 @@ for i = 1:n
   wi = wtot - W(:, i);
   Mi = (Mtot - Mz{i} .* W(:, i)) ./ max(wi, eps);
   Mi(wi <= 0, :, :) = NaN;
-  o = ptt.quadpolFabricLS(struct('M', Mi), z, os);
+  o = quadpolFabricLS(struct('M', Mi), z, os);
   if numel(o.zw) ~= Nw
     error('ptt:quadpolJackknife:windows', ...
       'replicate %d produced %d windows, full fit has %d', i, numel(o.zw), Nw);

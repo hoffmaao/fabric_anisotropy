@@ -42,7 +42,7 @@ def ref_degenerate_intervals(d):
 
     dlam_ref_degenerate flags the interval whose dlam shares its
     information with the reference-offset nuisance of
-    ptt.invertHorizontalFabricJoint (the shallowest interval when
+    invertHorizontalFabricJoint (the shallowest interval when
     obs.zref is in play): quotable fabric starts below it. All false on
     the layer-stripping chain, so the predicate is safe on both chains.
 

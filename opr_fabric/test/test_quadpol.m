@@ -21,6 +21,7 @@ t0 = tic;
 thisDir = fileparts(mfilename('fullpath'));
 projRoot = fullfile(thisDir, '..', '..');
 addpath(projRoot);
+ptt.estimators.use('direct');
 
 C = ptt.constants();
 fc = 750e6;
@@ -69,7 +70,7 @@ for alpha_deg = [0 20 35 55 80 125]
   M = ptt.quadpolMoments(S, [9 Nx]);
   psi = (0:2:178) * pi/180;
   A = ptt.quadpolAzimuth(M, psi);
-  out = ptt.quadpolFabric(A, z, struct('fc', fc, 'win_m', 50, ...
+  out = ptt.estimators.run('quadpolFabric', A, z, struct('fc', fc, 'win_m', 50, ...
     'grad_win_m', 200));
 
   % theta is recovered in the ANTENNA frame, so the truth for this pass is

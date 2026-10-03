@@ -1,7 +1,7 @@
 function out = quadpolFabricPower(S, z, opts)
 %QUADPOLFABRICPOWER Fabric from the co-polarized POWER extinction pattern.
 %
-% out = ptt.quadpolFabricPower(S, z, opts)
+% out = ptt.estimators.run('quadpolFabricPower', S, z, opts)
 %
 % Fits the azimuthal pattern of the synthesized co-polarized power
 % P(psi, z) in a sliding depth window to the single-column birefringence
@@ -46,7 +46,7 @@ function out = quadpolFabricPower(S, z, opts)
 % WHAT IT CAN AND CANNOT DETERMINE. P depends on delta only through
 % cos delta, so the SIGN of ddelta is not observable: dlam is returned as
 % a magnitude, and theta0 cannot be assigned to the growing-phase axis
-% the way ptt.quadpolFabricLS does. What breaks the 90-deg pair
+% the way quadpolFabricLS does. What breaks the 90-deg pair
 % {theta0, theta0+90} is the reflection ratio: g0 sits at psi = theta0
 % and g2 at theta0 + 90, so with r1 ~= r2 the axis IS unique, and the
 % ratio itself comes out (out.r_db). With r1 = r2 the two are degenerate
@@ -54,7 +54,7 @@ function out = quadpolFabricPower(S, z, opts)
 % silently modulo 180.
 %
 % THE PEDESTAL. The antenna-fixed cross-pol leakage that pedestals the
-% coherence (see ptt.quadpolFabricLS) enters the synthesized co-pol power
+% coherence (see quadpolFabricLS) enters the synthesized co-pol power
 % as an odd sin 2psi term and an even sin^2 2psi term in the ANTENNA
 % frame. Both are linear and are solved with g0, g1, g2 at every node.
 % They are collinear with the fabric term when theta0 sits at 0, 45 or 90
@@ -75,7 +75,7 @@ function out = quadpolFabricPower(S, z, opts)
 %
 % Inputs
 %   S     struct of complex [Nt x Nx] channels hh, vv, hv, vh; OR a struct
-%         with field M ([Nt x 4 x 4] moments), as ptt.quadpolFabricLS
+%         with field M ([Nt x 4 x 4] moments), as quadpolFabricLS
 %   z     [Nt x 1] depth [m]
 %   opts  fc (750e6), psi_step_deg (2), win_short_m (10, power multilook),
 %         win_fit_m (150), step_m (30), dlam_max (0.25),
@@ -107,7 +107,7 @@ function out = quadpolFabricPower(S, z, opts)
 %   q_theta (cost contrast a quarter turn away, on the window's power),
 %   gg_ok, ped_coef [Nw x 2], theta0_z / dlam_z on z, grad_per_dlam, psi
 %
-% See also ptt.quadpolFabricLS, ptt.quadpolAzimuth, ptt.fujitaModel.
+% See also quadpolFabricLS, ptt.quadpolAzimuth, ptt.fujitaModel.
 
 if nargin < 3, opts = struct(); end
 fc = H_opt(opts, 'fc', 750e6);
@@ -262,7 +262,7 @@ if nnz(okw) >= 2
   ph = interp1(zw(okw), exp(2i*th(okw)), z, 'linear');
   theta0_z = mod(angle(ph)/2, pi);
 end
-% dlam keeps its abstention NaNs, as ptt.quadpolFabricLS does: interpolating
+% dlam keeps its abstention NaNs, as quadpolFabricLS does: interpolating
 % over the FULL window grid fills between measured neighbours but never
 % bridges across an abstained window (the r2_min null test abstains by
 % design), so the section - and the figure, which paints NaN white - can

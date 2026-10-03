@@ -1,6 +1,6 @@
 %TEST_POLARIMETRIC_INVERSE Nymand Ch.6 joint inversion for theta0 and r(z).
 %
-% ptt.polarimetricInverse solves for one fabric orientation and a depth
+% polarimetricInverse solves for one fabric orientation and a depth
 % profile of the anisotropic scattering ratio from azimuthal POWER
 % anomalies, by iterative linearisation of an analytic forward model that
 % assumes a depth-constant orientation.
@@ -26,7 +26,7 @@
 %      (theta0, r(z)) is recovered - but only to within a quarter turn,
 %      because the co-pol power anomaly cannot separate (theta0, r) from
 %      (theta0 + 90, 1/r). That alias is a property of the observable, not
-%      of the solver, and ptt.polarimetricRatioInverse breaks it by adding
+%      of the solver, and polarimetricRatioInverse breaks it by adding
 %      the coherence phase. Scored on the doubled-doubled angle.
 %   3. NOISE. With 1 dB of noise on the anomalies the same tolerances
 %      hold at 3x, i.e. the solver is not fitting noise into r(z).
@@ -61,6 +61,7 @@ clear;
 t0 = tic;
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
+ptt.estimators.use('nymand');
 
 fc = 750e6;
 C = ptt.constants();
@@ -84,7 +85,7 @@ dP_hv_fm = anom2(fm.s_hv);
 
 % Evaluated at -theta to match ptt.fujitaModel's convention, and at +theta
 % to show the mismatch is real and not a tolerance choice.
-sc = @(th) H_score(dP_hh_fm, ptt.polarimetricInverse( ...
+sc = @(th) H_score(dP_hh_fm, ptt.estimators.run('polarimetricInverse',  ...
   struct('psi', psi, 'dP_hh', dP_hh_fm), z, struct('fc', fc, ...
   'dlam', DL_TRUE, 'theta0', th, 'r0', 1, 'n_r', 2, 'max_iter', 0, ...
   'theta0_scan', false, 'use', {{'hh'}})).pred.dP_hh);
@@ -98,7 +99,7 @@ fprintf('   agrees with the matrix-product model, sign pinned:    %s\n', H_tick(
 
 %% ---- verdict 2: self-recovery, noise free
 obs = H_gen(TH_TRUE, R_TRUE, z, psi, DL_TRUE, gpd, 0);
-o1 = ptt.polarimetricInverse(obs, z, struct('fc', fc, 'dlam', DL_TRUE, ...
+o1 = ptt.estimators.run('polarimetricInverse', obs, z, struct('fc', fc, 'dlam', DL_TRUE, ...
   'theta0', deg2rad(20), 'n_r', 8, 'eta', 1e-3, 'azimuth_source', 'physical'));
 % scored modulo 90 deg: the alias is in the observable (see the header)
 eth = rad2deg(abs(angle(exp(4i*(o1.theta0 - TH_TRUE)))/4));
@@ -112,7 +113,7 @@ fprintf('   recovers theta0 mod 90 and r(z):                      %s\n', H_tick(
 %% ---- verdict 3: with noise
 rng(4);
 obs_n = H_gen(TH_TRUE, R_TRUE, z, psi, DL_TRUE, gpd, 1.0);
-o2 = ptt.polarimetricInverse(obs_n, z, struct('fc', fc, 'dlam', DL_TRUE, ...
+o2 = ptt.estimators.run('polarimetricInverse', obs_n, z, struct('fc', fc, 'dlam', DL_TRUE, ...
   'theta0', deg2rad(20), 'n_r', 8, 'eta', 1e-2, 'azimuth_source', 'physical'));
 eth2 = rad2deg(abs(angle(exp(4i*(o2.theta0 - TH_TRUE)))/4));
 er2 = min(max(abs(o2.r_z - R_TRUE)), max(abs(1./o2.r_z - R_TRUE)));
@@ -127,8 +128,8 @@ fprintf('   degrades gracefully rather than fitting noise:        %s\n', H_tick(
 % it. What the scan has to earn is a lower misfit from an arbitrary start.
 base4 = struct('fc', fc, 'dlam', DL_TRUE, 'theta0', TH_TRUE + deg2rad(43), ...
   'n_r', 8, 'eta', 1e-3, 'azimuth_source', 'physical');
-o3 = ptt.polarimetricInverse(obs, z, setfield(base4, 'theta0_scan', false)); %#ok<SFLD>
-o4 = ptt.polarimetricInverse(obs, z, setfield(base4, 'theta0_scan', true));  %#ok<SFLD>
+o3 = ptt.estimators.run('polarimetricInverse', obs, z, setfield(base4, 'theta0_scan', false)); %#ok<SFLD>
+o4 = ptt.estimators.run('polarimetricInverse', obs, z, setfield(base4, 'theta0_scan', true));  %#ok<SFLD>
 fprintf('\n4. from a 43 deg-off start: final loss scan OFF %.4g, scan ON %.4g\n', ...
   o3.loss(end), o4.loss(end));
 ok4 = o4.loss(end) <= o3.loss(end) * 1.0001;
@@ -140,7 +141,7 @@ d5 = TH_TRUE - psi; t2 = tan(d5).^2; t4 = t2.^2;
 dpsi5 = cumsum(DL_TRUE * [0; diff(z)]) * gpd;
 obs5.phi = atan2(R_TRUE .* sin(dpsi5) .* (1 - t4), ...
   R_TRUE .* cos(dpsi5) .* (1 + t4) + t2 .* (1 + R_TRUE.^2));
-o5 = ptt.polarimetricInverse(obs5, z, struct('fc', fc, 'dlam', DL_TRUE, ...
+o5 = ptt.estimators.run('polarimetricInverse', obs5, z, struct('fc', fc, 'dlam', DL_TRUE, ...
   'theta0', deg2rad(20), 'n_r', 8, 'eta', 1e-3, 'azimuth_source', 'physical'));
 % modulo 180, not 90: phi is what resolves the quarter-turn alias
 eth5 = rad2deg(abs(angle(exp(2i*(o5.theta0 - TH_TRUE)))/2));
@@ -153,7 +154,7 @@ ok5a = eth5 < 2 && er5 < 0.05 && any(strcmp(o5.used, 'phi'));
 fprintf('   phi is fitted, and it resolves the quarter turn:      %s\n', H_tick(ok5a));
 
 % (b) objective vs reported residual, away from the solution
-o5b = ptt.polarimetricInverse(obs5, z, struct('fc', fc, 'dlam', DL_TRUE, ...
+o5b = ptt.estimators.run('polarimetricInverse', obs5, z, struct('fc', fc, 'dlam', DL_TRUE, ...
   'theta0', TH_TRUE + deg2rad(70), 'n_r', 8, 'eta', 1e-3, ...
   'azimuth_source', 'physical', 'theta0_scan', false));
 ss5 = 0;

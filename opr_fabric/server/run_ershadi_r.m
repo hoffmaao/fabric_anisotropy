@@ -1,7 +1,7 @@
 %RUN_ERSHADI_R Reflection-ratio retrieval for one frame, from its cache.
 %
-% The Ershadi et al. (2022) Sect.-3.5 chain (ptt.ershadiFabric ->
-% ptt.ershadiInverse) applied to the COREGISTERED channels of one frame,
+% The Ershadi et al. (2022) Sect.-3.5 chain (ershadiFabric ->
+% ershadiInverse) applied to the COREGISTERED channels of one frame,
 % read from the coreg cache the quad-pol pipeline already built - so a
 % frame costs minutes, not a coregistration. Products land in
 % <work>/stages/ershadi_r/ershadi_r_<tag>.mat and never touch the
@@ -30,6 +30,7 @@ day_seg = char(day_seg);
 % fabric_paths. No username is baked in.
 [fabric_code, fabric_work] = fabric_paths();
 addpath(fabric_code);
+ptt.estimators.use('ershadi');
 
 tag = sprintf('%s_%03d', day_seg, frm);
 cache_fn = fullfile(fabric_work, 'stages', 'quadpol', 'coreg_cache', ...
@@ -56,7 +57,7 @@ clear cq
 fprintf('=== %s: %d x %d coregistered samples\n', tag, size(S.hh));
 
 % Real CReSIS data is deramped (ershadiFabric E2 applies the conjugate).
-fr = ptt.ershadiFabric(S, z, struct('fc', 750e6, 'psi_step_deg', 1, ...
+fr = ptt.estimators.run('ershadiFabric', S, z, struct('fc', 750e6, 'psi_step_deg', 1, ...
   'deramped', true));
 
 % The LS axis profile for this frame, in the ANTENNA frame the model works
@@ -82,7 +83,7 @@ end
 % reasons, both on this site:
 %   - the axis Ershadi's direct chain returns here is antenna-locked
 %     (88.8 +- 2.0 deg over 36 Ridge A frames, i.e. pinned to 90 deg
-%     regardless of heading or ice), which is why ptt.quadpolFabricLS
+%     regardless of heading or ice), which is why quadpolFabricLS
 %     exists and why its axis is the one to trust;
 %   - the Sect.-3.5 theta stage is ill-conditioned at this site whatever
 %     the interval length. It needs an interval to carry a large share of
@@ -110,7 +111,7 @@ if exist('ls_theta_z', 'var') && ~isempty(ls_theta_z)
     end
   end
 end
-inv = ptt.ershadiInverse(fr, z, struct('interval_m', INT_M, ...
+inv = ptt.estimators.run('ershadiInverse', fr, z, struct('interval_m', INT_M, ...
   'z_fit', Z_FIT, 'w_theta', [1 0 0], 'w_r', [0 1 0], ...
   'theta_int_fixed', th_fix));
 

@@ -1,7 +1,7 @@
 function out = ershadiFabric(S, z, opts)
 %ERSHADIFABRIC Ershadi et al. (2022) polarimetric fabric algorithm.
 %
-% out = ptt.ershadiFabric(S, z, opts)
+% out = ptt.estimators.run('ershadiFabric', S, z, opts)
 %
 % Ershadi, M. R., Drews, R., Martin, C., Eisen, O., Ritz, C., Corr, H.,
 % Christmann, J., Zeising, O., Humbert, A. and Mulvaney, R. (2022),
@@ -9,7 +9,7 @@ function out = ershadiFabric(S, z, opts)
 % domes and divides in East Antarctica", The Cryosphere 16, 1719-1739.
 %
 % A faithful implementation of the published chain, kept SEPARATE from
-% ptt.quadpolFabric so the two can be run on the same data and compared.
+% quadpolFabric so the two can be run on the same data and compared.
 % Where this file departs from that one it is because the paper does, and
 % each departure is marked (E1)-(E5) below.
 %
@@ -77,7 +77,7 @@ function out = ershadiFabric(S, z, opts)
 %   deramped, fc, eps_perp, deps, win_m. The last four are RECORDED rather
 %   than merely defaulted because dlam is derived from them (eq. 9): any
 %   downstream step that accepts dlam without re-fitting it, such as
-%   ptt.ershadiInverse, has to propagate phase under the same constants,
+%   ershadiInverse, has to propagate phase under the same constants,
 %   and a mismatch there is a silent rescale with nothing to reveal it.
 
 if nargin < 3, opts = struct(); end
@@ -169,7 +169,7 @@ psi_grad = (c0 * sqrt(eps_perp) / (2*pi*fc*deps)) * dphi;
 % --- (E5) quality gate.
 % The gate is DESTRUCTIVE and it is applied to the direct chain's own
 % products only. Cn is kept ungated in the output as C_raw, because the
-% strength stage (ptt.ershadiStrength) fits the complex coherence WEIGHTED
+% strength stage (ershadiStrength) fits the complex coherence WEIGHTED
 % by |C| rather than thresholded on it: a hard cut at 0.4 removes rows that
 % still carry usable phase - at Ridge A, whose median |C| is 0.47, it voids
 % 61% of deep intervals and leaves the strength profile with nothing to be

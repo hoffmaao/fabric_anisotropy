@@ -14,13 +14,13 @@ different things.
 |---|---|---|
 | Input | an OPR `CSARP_polarimetric` product (HH and a rotated VV, coregistered, SNAPHU-unwrapped phase) | the four raw channels `CSARP_standardphase_{HH,VV,HV,VH}` |
 | Measures | the traveltime difference between the two polarizations, dtau(depth) | the complex HH-VV coherence at every synthesized antenna azimuth |
-| Method | dtau from the unwrapped interferogram phase, with the coregistration offsets fixing the sign and the whole-fringe ambiguity (`ptt.blendTraveltime`), averaged over blocks of 1000 traces (`ptt.blockAverage`). It is then inverted for dlam in one smoothness-regularized joint solve through the Maxwell-Garnett firn column of Rathmann (2026) (`ptt.invertBlocks`). | a least-squares fit of the whole coherence field to the exact single-column birefringence model (`ptt.quadpolFabricLS`). It uses CRB coherence weights, fits a nuisance for the antenna-frame pedestal, and never unwraps; where the data cannot decide, it returns NaN. The fabric axis comes from a frame pass over ~2 km segments (`ptt.quadpolFrameTheta`), and each ~125 m block is fitted on that axis. |
+| Method | dtau from the unwrapped interferogram phase, with the coregistration offsets fixing the sign and the whole-fringe ambiguity (`ptt.blendTraveltime`), averaged over blocks of 1000 traces (`ptt.blockAverage`). It is then inverted for dlam in one smoothness-regularized joint solve through the Maxwell-Garnett firn column of Rathmann (2026) (`invertBlocks`). | a least-squares fit of the whole coherence field to the exact single-column birefringence model (`quadpolFabricLS`). It uses CRB coherence weights, fits a nuisance for the antenna-frame pedestal, and never unwraps; where the data cannot decide, it returns NaN. The fabric axis comes from a frame pass over ~2 km segments (`quadpolFrameTheta`), and each ~125 m block is fitted on that axis. |
 | Gives | dlam = lam_sec - lam_ref, the horizontal fabric contrast between the product's two FIXED synthesized axes, per depth interval and block. It does NOT estimate orientation. | the fabric orientation theta0 (geographic, mod 180) AND the contrast dlam, per depth window and block |
 | Output | `CSARP_fabric_joint/<day_seg>/Data_<frame>.mat` plus `_dlam.jpg` and `_dtau.jpg`, in the OPR season tree | `stages/quadpol/quadpol_section_<frame>.mat` under your work root |
 | Cost | ~15 s per frame (debug); a few minutes under slurm, including the ~3 min compile on every launch | ~1 h per Ridge A frame from its coregistration cache, plus ~50 min to build the cache the first time |
 
 The quad-pol pipeline also runs the published Ershadi et al. (2022) chain
-(`ptt.ershadiFabric`) on the same data and saves it alongside, **for
+(`ershadiFabric`) on the same data and saves it alongside, **for
 comparison only**. On this radar a flat ~-3.6 dB cross-pol pedestal locks its
 cross-pol minimum to the antenna, so do not report its orientation.
 

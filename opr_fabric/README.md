@@ -22,7 +22,7 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
    OPR adapter (file discovery, product loading, output/figure
    conventions) around the pure numerical chain in `+ptt` -
    `ptt.blendTraveltime` (or `ptt.deltakTraveltime`) -> `ptt.blockAverage`
-   -> `ptt.invertBlocks` - which reads its options directly from the
+   -> `invertBlocks` - which reads its options directly from the
    `param.fabric` struct and is equally callable from standalone scripts
    and tests. Per frame,
    - traveltime differences dtau(twtt, x) = t_sec - t_ref from one of
@@ -54,9 +54,9 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
    - inversion through the Maxwell-Garnett firn model for
      piecewise-constant dlam over `num_intervals` depth intervals:
      smoothness-regularized joint solve
-     (ptt.invertHorizontalFabricJoint, `inversion = 'joint'`, the module
+     (invertHorizontalFabricJoint, `inversion = 'joint'`, the module
      default, robust to noisy data) or exact layer stripping
-     (ptt.invertHorizontalFabric, `inversion = 'stripping'`); the joint
+     (invertHorizontalFabric, `inversion = 'stripping'`); the joint
      solve differences its forward model against the same reference and
      carries the residual reference error as an explicit offset nuisance,
      so the first interval is reference-degenerate and quotable fabric
@@ -240,7 +240,7 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     than the images they describe, and carry nothing finer than the tiling
     could resolve.
   - `run_quadpol_pipeline.m` - coregistration and both inversions
-    (`ptt.ershadiFabric` and `ptt.quadpolFabricLS`, the second as a
+    (`ershadiFabric` and `quadpolFabricLS`, the second as a
     laterally-segmented frame theta0 pass and a per-block section with
     theta0 pinned to the block's segment profile)
     for one profile in a single pass. Deliberately one script: the
@@ -263,7 +263,7 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     antenna-frame moment averaging smears it; the p95 heading-spread
     dispatch trips on GPS jitter by design, so most frames take the
     geographic path, and `test/test_quadpol_curved.m` is its
-    regression) - lives in `ptt.quadpolFrameTheta`, whose header owns
+    regression) - lives in `quadpolFrameTheta`, whose header owns
     the detail. It re-fits theta0 per ~2 km along-track segment
     (`seg_len_m` overridable, default 2000 m; frames shorter than two
     segments keep the single frame fit) so lateral fabric variation is
@@ -272,7 +272,7 @@ using the theory of Rathmann (2026) implemented in the `+ptt` package
     frames (`test/test_egrip_blocks.m` pins what the pooled handoff
     costs, `test/test_quadpol_segmented.m` the rescue). Each section block
     inherits its segment's geographic profile through
-    `ptt.thetaProfileAt` and converts it through its OWN heading; the
+    `thetaProfileAt` and converts it through its OWN heading; the
     per-segment fits are saved beside the frame fields as
     `ls_theta_seg`/`ls_q_seg`/`ls_dlam_seg`/`ls_resid_seg`/`ls_seg_x`/
     `ls_nseg`.
@@ -478,7 +478,7 @@ Season/data caveats to check before interpreting results:
   to a fractional one - a quarter fringe is enough to move the result.
   This is the likely mechanism behind the weak Thwaites result, where
   coregistration is poorest; correcting it means changing how
-  `ptt.invertBlocks` anchors the level, which has not been done.
+  `invertBlocks` anchors the level, which has not been done.
 - Exact layer stripping (`inversion = 'stripping'`) amplifies noise
   between depth intervals; the default joint solve suppresses this with
   its smoothness penalty at the cost of some depth resolution. If
@@ -503,6 +503,13 @@ bash opr_fabric/test/run_all_tests.sh test_fabric_task test_quadpol
 gate's test command in `.no-mistakes.yaml`. Run the full suite by hand
 before merging a change to that code. On a shared CReSIS node, prefix
 `MATLAB_THREADS=8 nice`: uncapped, one test took ~65 of mem1's 112 cores.
+
+`test/test_estimators.m` holds the estimator folder to its contract: no
+estimator can be called around `ptt.estimators.run`, the door refuses an
+estimator outside the method selected with `ptt.estimators.use`, outputs
+carry the `.estimator` stamp, and the registry and the private folder name
+the same estimators. The runner deselects before every test, so each test
+selects its own method.
 
 `test/test_fabric_task.m` builds a synthetic CSARP_polarimetric frame from
 a known fabric (with noise, wrong-sign convention, unwrapping constant,
@@ -529,12 +536,12 @@ the same way:
   have: orientation recovered from a SINGLE antenna azimuth, and a contrast
   that is the true lam_max - lam_min rather than the projection, so it does
   not vary with the azimuth it was measured from.
-- `test_ershadi.m` - `ptt.ershadiFabric` on that same synthetic and the same
+- `test_ershadi.m` - `ershadiFabric` on that same synthetic and the same
   truth, so any difference between the two implementations is theirs rather
   than the test's. Passes `deramped = false` because the synthetic is a model
   and not radar data, which is the distinction the paper itself draws.
 - `test_ershadi_r.m` - the paper's Sect.-3.5 stage, `ptt.fujitaModel` +
-  `ptt.ershadiInverse` (its header carries the `matlab -batch` line; the
+  `ershadiInverse` (its header carries the `matlab -batch` line; the
   fit is `fmincon`, so this one is not an Octave run), on a three-zone
   EDML-shaped truth (an isotropic lid over two anisotropic-scattering
   zones of opposite sign and perpendicular axes). The forward model is
@@ -554,7 +561,7 @@ the same way:
   are written out independently, so a transcription slip would rotate the
   survey's geographic average by the wrong angle and surface only as an
   inflated circular spread - the very quantity the heading test keys on.
-- `test_quadpol_ls.m` - `ptt.quadpolFabricLS` on the same truth, PLUS the
+- `test_quadpol_ls.m` - `quadpolFabricLS` on the same truth, PLUS the
   failure mode that motivated it: an antenna-fixed reciprocal leakage term
   added to the cross-polarized channels at the level the real system shows.
   Under that leakage ershadiFabric locks (theta error ~40 deg, dlam
@@ -598,7 +605,7 @@ the same way:
   3.2-5.5 deg - and the test asserts the pair, so no rate may combine a
   profile the pipeline would hand on with an inaccurate axis. The two
   halves deliberately take different window populations: liveness over
-  the full grid, because that is what `ptt.quadpolFrameTheta` gates its
+  the full grid, because that is what `quadpolFrameTheta` gates its
   `min_seg_windows` on, and the axis error over the 300-1100 m band,
   because `sigma = gpd*ddlam*z` grows with depth and shallow windows
   would dilute a deep-only lie below the bound. A rate whose band holds
@@ -609,7 +616,7 @@ the same way:
   dlam/km the frame axis is only ~3 deg off over that same 300-1100 m
   band, yet blocks handed it recover dlam ~12x worse than blocks handed
   the true axis - which is what the segmented frame pass
-  (`ptt.quadpolFrameTheta`) exists to fix. And block length has margin:
+  (`quadpolFrameTheta`) exists to fix. And block length has margin:
   with the axis held true the collapse is governed by
   `sigma = gpd*ddlam*z` alone, so `L_max` scales as 1/L and the 125 m
   re-cut buys exactly the length ratio 354/125 = 2.83x - 14.5x headroom
@@ -617,7 +624,7 @@ the same way:
   records why it was rebuilt on the real geometry, which invalidated the
   block-size premise it was written for rather than just rescaling it.
 - `test_quadpol_segmented.m` - the segmented frame pass
-  (`ptt.quadpolFrameTheta` + `ptt.thetaProfileAt`) against the two
+  (`quadpolFrameTheta` + `thetaProfileAt`) against the two
   properties the design must have: a SUPERSET (a laterally-uniform frame
   reproduces the pooled architecture's block dlam) and the RESCUE (its
   own killer ramp - 0.10 dlam along the frame, enough to kill the pooled

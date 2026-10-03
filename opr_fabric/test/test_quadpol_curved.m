@@ -32,6 +32,7 @@ t0 = tic;
 
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
+ptt.estimators.use('quadpol_ls');
 
 C = ptt.constants();
 fc = 750e6;
@@ -63,7 +64,7 @@ cmed = @(th) mod(rad2deg(angle(mean(exp(2i*th(isfinite(th))))))/2, 180);
 % --- control: straight line, standard path; calibrates the pedestal
 h_straight = 20 * ones(1, Ntr);
 S = H_synth(h_straight, TH_GEO, ex, ey, Nz, Ntr, NA, LEAK_C, LEAK_D);
-oc = ptt.quadpolFabricLS(S, z, OPTS);
+oc = ptt.estimators.run('quadpolFabricLS', S, z, OPTS);
 m = mid(oc);
 th_ant = cmed(oc.theta0(m));
 dlc = median(oc.dlam(m), 'omitnan');
@@ -81,7 +82,7 @@ S = H_synth(h_curve, TH_GEO, ex, ey, Nz, Ntr, NA, LEAK_C, LEAK_D);
 % naive: standard antenna-frame path on the smeared moments. The fabric
 % signature must largely cancel; assert the suppression so this test
 % keeps documenting WHY the adaptation exists.
-on = ptt.quadpolFabricLS(S, z, OPTS);
+on = ptt.estimators.run('quadpolFabricLS', S, z, OPTS);
 dln = median(on.dlam(mid(on)), 'omitnan');
 % Frame-level smearing suppresses partially (the hard per-block zeros in
 % production come from pinning the frame theta0 to blocks whose heading
@@ -94,7 +95,7 @@ fprintf('naive  (curved, antenna frame): dlam %.3f (truth %.2f, suppressed) %s\n
 % adapted, no pedestal in the synthetic: rotation correctness alone
 Snl = H_synth(h_curve, TH_GEO, ex, ey, Nz, Ntr, NA, 0, 0);
 Mg = H_geo_moments(Snl, h_curve, NSUB);
-oa = ptt.quadpolFabricLS(struct('M', Mg), z, ...
+oa = ptt.estimators.run('quadpolFabricLS', struct('M', Mg), z, ...
   setfield(OPTS, 'pedestal', 'window')); %#ok<SFLD>
 m = mid(oa);
 tha = cmed(oa.theta0(m));
@@ -111,7 +112,7 @@ c2 = mean(cosd(2*h_curve)); s2 = mean(sind(2*h_curve));
 c4 = mean(cosd(4*h_curve)); s4 = mean(sind(4*h_curve));
 pf = (ped_cal(1) + 1i*ped_cal(2)) * (c2*sin(2*psi(:)) - s2*cos(2*psi(:))) ...
   + ped_cal(3) * (0.5 - 0.5*(c4*cos(4*psi(:)) + s4*sin(4*psi(:))));
-ob = ptt.quadpolFabricLS(struct('M', Mg), z, ...
+ob = ptt.estimators.run('quadpolFabricLS', struct('M', Mg), z, ...
   setfield(OPTS, 'pedestal', pf)); %#ok<SFLD>
 m = mid(ob);
 thb = cmed(ob.theta0(m));

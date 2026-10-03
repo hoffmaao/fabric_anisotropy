@@ -165,7 +165,7 @@ end
 
 % ref_band_twtt: width of the band below ref_twtt_offset that the
 % reference is AVERAGED over (ptt.blendTraveltime), and that the inversion
-% nodes must sit below (ptt.invertBlocks). A single-bin reference injects
+% nodes must sit below (invertBlocks). A single-bin reference injects
 % its own error as a constant into every node, and a constant can only
 % land in the shallowest interval's dlam - the mechanism behind the
 % spurious non-zero near-surface fabric. The residual after band
