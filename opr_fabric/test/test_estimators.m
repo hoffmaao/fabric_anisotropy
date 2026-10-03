@@ -50,8 +50,9 @@ fprintf('2. nothing selected, the door refuses (%s): %s\n', id, H_tick(ok));
 fails = fails + ~ok;
 
 prev = ptt.estimators.use('quadpol_ls');
-ok = isempty(prev) && strcmp(ptt.estimators.current(), 'quadpol_ls');
-fprintf('   use returns the previous selection and current reports the new: %s\n', H_tick(ok));
+again = ptt.estimators.use('quadpol_ls');
+ok = isempty(prev) && strcmp(again, 'quadpol_ls');
+fprintf('   use returns the previous selection: %s\n', H_tick(ok));
 fails = fails + ~ok;
 id = H_err(@() ptt.estimators.run('ershadiFabric', 1, 1));
 ok = strcmp(id, 'ptt:estimators:notInMethod');

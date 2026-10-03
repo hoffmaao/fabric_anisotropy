@@ -22,7 +22,7 @@ constants, coregistration, moments and rotations, which anything may call.
   the code. `use('none')` deselects, and the test runner does that before
   every test.
 - `ptt.estimators.registry()` lists the methods, their members and the
-  conventions; `ptt.estimators.current()` reports the selection.
+  conventions.
   `opr_fabric/test/test_estimators.m` holds the folder to the registry.
 
 | method | status | estimators | run by |

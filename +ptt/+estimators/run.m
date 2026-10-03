@@ -26,8 +26,7 @@ function varargout = run(name, varargin)
 %   ptt.estimators.use('quadpol_ls');
 %   out = ptt.estimators.run('quadpolFabricLS', S, z, opts);
 %
-% See also ptt.estimators.use, ptt.estimators.current,
-%   ptt.estimators.registry.
+% See also ptt.estimators.use, ptt.estimators.registry.
 
 if nargin < 1 || ~((ischar(name) && isrow(name)) || (isstring(name) && isscalar(name)))
   error('ptt:estimators:name', ...

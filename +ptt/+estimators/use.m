@@ -19,8 +19,7 @@ function previous = use(method)
 % method is selected again - a reset can make a call fail, never silently
 % change which method answers.
 %
-% See also ptt.estimators.run, ptt.estimators.current,
-%   ptt.estimators.registry.
+% See also ptt.estimators.run, ptt.estimators.registry.
 
 if nargin < 1 || ~((ischar(method) && isrow(method)) || (isstring(method) && isscalar(method)))
   error('ptt:estimators:method', ...
