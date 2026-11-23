@@ -1,15 +1,16 @@
 %RUN_NODE_FRAME The node method on one frame: a slow axis and dlam(z) for every ~2 km block.
 %
-%   bash <code>/opr_fabric/server/coreg_one.sh <site_root> 20250108_02 3 firn
+%   bash <code>/opr_fabric/server/coreg_one.sh <site_root> 20250108_02 3
 %   matlab -batch "addpath('<code>/opr_fabric/server'); day_seg='20250108_02'; frm=3; run_node_frame"
 %
-% The first line builds the frame's coregistered channels once (about a
-% minute); node_survey.sh runs the second over a whole survey.
+% The first line coregisters the frame's channels once (run_coreg_frame,
+% 1-3 min); node_survey.sh runs the second over a whole survey.
 %
-% Reads the frame's channels from cache_dir (default the firn-coregistered
-% caches, stages/quadpol_cf/coreg_cache: one constant delay per channel,
-% which is what the node method needs - a depth-varying coregistration
-% removes the delay it measures), cuts the frame into blocks of blk_m
+% Reads the frame's channels from cache_dir (default
+% stages/quadpol_cf/coreg_cache, where run_coreg_frame writes them: one
+% constant delay per channel, which is what the node method needs - a
+% depth-varying coregistration removes the delay it measures), cuts the
+% frame into blocks of blk_m
 % (2000 m) with quadpol_frame_blocks, and runs nodeFabric on each block:
 % channel gains from the block itself (reciprocity + firn), the slow axis
 % from the azimuth scan of the strength read, dlam(z) from the node
@@ -68,7 +69,7 @@ out_fn = fullfile(out_dir, sprintf('node_%s_B%d%s.mat', tag, round(blk_m), tagx)
 cache_fn = fullfile(cache_dir, ['creg_' tag '.mat']);
 if exist(cache_fn, 'file') ~= 2
   error('run_node_frame:noCache', ['no coregistered channels for %s (%s). Build them first:\n' ...
-    '  bash %s %s %s %d firn'], tag, cache_fn, fullfile(fabric_code, 'opr_fabric', 'server', 'coreg_one.sh'), ...
+    '  bash %s %s %s %d'], tag, cache_fn, fullfile(fabric_code, 'opr_fabric', 'server', 'coreg_one.sh'), ...
     site_root, day_seg, frm);
 end
 [Dc, meta, z] = quadpol_frame_blocks(day_seg, frm, cache_dir, site_root, blk_m, z_max, 100);

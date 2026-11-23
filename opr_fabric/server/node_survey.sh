@@ -1,6 +1,6 @@
 #!/bin/bash
 # NODE_SURVEY The node method over a survey: run_node_frame on every
-# firn-coregistered frame of a site, a few at a time.
+# coregistered frame of a site, a few at a time.
 #
 #   nohup bash node_survey.sh <site> [max_jobs] [threads] [pattern] [blk_m] [tagx] [extra] [cache_dir] > node_<site>.log 2>&1 &
 #
@@ -15,7 +15,7 @@
 #   extra      MATLAB code run before run_node_frame, e.g. "psi_step_deg=2.5;"
 #   cache_dir  where the creg_<tag>.mat caches are; default
 #              <work>/stages/quadpol_cf/coreg_cache, which
-#              `coreg_batch.sh <site> <K> firn` builds
+#              `coreg_batch.sh <site>` builds
 #
 # An empty argument ("") takes its default, so a later one can be given
 # without the ones before it.
@@ -65,7 +65,7 @@ for v in "$maxj" "$thr" "$BLK"; do
 done
 if [ ! -d "$CACHE" ]; then
   echo "no cache directory $CACHE - build the caches first:"
-  echo "  bash $FAB_DIR/coreg_batch.sh $site 3 firn"
+  echo "  bash $FAB_DIR/coreg_batch.sh $site"
   exit 1
 fi
 run=$tagx
