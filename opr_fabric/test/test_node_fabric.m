@@ -1,8 +1,8 @@
 %TEST_NODE_FABRIC The node method: one slow axis per column, dlam(z) from nodes plus carrier phase.
 %
 % nodeFabric is the NEGIS poster's two-step scheme (orientation first, then
-% a linear solve for dlam(z) from travel-time differences; the `nymand`
-% method holds its original estimators) with the measurements this
+% a linear solve for dlam(z) from travel-time differences) with the
+% measurements this
 % radar can carry: the half-wave node ladder of the 45-deg cross-pol power
 % (the fringe integer, no tracking) and the eigen-pair carrier phase
 % between windows (the local slope), in one linear Gaussian solve whose
@@ -14,9 +14,9 @@
 %
 % The verdicts, in the order that matters:
 %
-%   1. ONE DELAY SCALE. The ns-per-metre constant equals
-%      traveltimeFabricML's, so this strength is on the same scale as
-%      the rest of the project.
+%   1. THE DELAY SCALE. The ns-per-metre constant is Rathmann's nadir
+%      value, deps / (sqrt(eps_bar) c) = 0.06369 ns per metre of ice per
+%      unit dlam, two-way.
 %   2. ORIENTATION AND SLOW AXIS, CLEAN COLUMN. Axes at 35 and at 125 deg
 %      from the antenna frame (the 90-deg alias pair) both come back
 %      within a few degrees WITH the slow one named.
@@ -65,7 +65,6 @@ clear; t0 = tic;
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
 addpath(thisDir);
-ptt.estimators.use('node');
 rng(11);
 
 fs = 300e6; dt = 1e9 / fs; fc = 750e6; f_off = -13e6;
@@ -80,21 +79,18 @@ opts = struct('fc', fc, 'psi_step_deg', 5);
 % the poster's model as it ran before the depth model existed
 poster = struct('prior', [0 0.05 150], 'node_fc', fc);
 
-%% ---- verdict 1: one delay scale
-% traveltimeFabricML belongs to another method, so the switch is explicit
-ptt.estimators.use('nymand');
-o0 = ptt.estimators.run('traveltimeFabricML', zeros(10, 1), (1:10).' * 100, struct('fc', fc));
-ptt.estimators.use('node');
+%% ---- verdict 1: the delay scale
 [S, tau_true] = synth_quadpol_column(z, dl_true, deg2rad(35), dt, p);
-o = ptt.estimators.run('nodeFabric', S, z, dt, opts);
-fprintf('1. k: nodeFabric %.6f ns/m, traveltimeFabricML %.6f ns/m\n', o.k_ns_per_m, o0.k_ns_per_m);
-ok1 = abs(o.k_ns_per_m - o0.k_ns_per_m) < 1e-12;
-fprintf('   one delay scale across the project:                      %s\n', H_tick(ok1));
+o = ptt.nodeFabric(S, z, dt, opts);
+k_ref = C.deps / (sqrt(C.eps_bar) * C.c);
+fprintf('1. k: nodeFabric %.6f ns/m, deps / (sqrt(eps_bar) c) %.6f ns/m\n', o.k_ns_per_m, k_ref);
+ok1 = abs(o.k_ns_per_m - k_ref) < 1e-12 && abs(k_ref - 0.063688) < 1e-6;
+fprintf('   the delay scale is Rathmann''s nadir constant:             %s\n', H_tick(ok1));
 
 %% ---- verdict 2: orientation and slow axis, both aliases
 th35 = rad2deg(o.psi0);
 S2 = synth_quadpol_column(z, dl_true, deg2rad(125), dt, p);
-o2 = ptt.estimators.run('nodeFabric', S2, z, dt, opts);
+o2 = ptt.nodeFabric(S2, z, dt, opts);
 th125 = rad2deg(o2.psi0);
 e35 = abs(angle(exp(2i * deg2rad(th35 - 35)))) / 2 * 180 / pi;
 e125 = abs(angle(exp(2i * deg2rad(th125 - 125)))) / 2 * 180 / pi;
@@ -122,7 +118,7 @@ fprintf('   nodes and strength on the clean column:                  %s\n', H_ti
 gr = 0.8 * exp(-1i * deg2rad(33)); gt = 0.9 * exp(1i * deg2rad(78));   % arg(gr gt) = 45, arg(gr/gt) = -111
 p4 = p; p4.depol = 0.5; p4.gr = gr; p4.gt = gt; p4.snr_db = 12;
 [S4, tau4] = synth_quadpol_column(z, dl_true, deg2rad(35), dt, p4);
-o4 = ptt.estimators.run('nodeFabric', S4, z, dt, opts);
+o4 = ptt.nodeFabric(S4, z, dt, opts);
 th4 = rad2deg(o4.psi0);
 e4 = abs(angle(exp(2i * deg2rad(th4 - 35)))) / 2 * 180 / pi;
 N4 = o4.nodes;
@@ -138,7 +134,7 @@ fprintf('   slow axis %.1f (err %.1f), fine_ref %.3f ns, nodes %d, depth err max
 fprintf('   found %s\n   true  %s\n', sprintf('%5.0f ', N4.z), sprintf('%5.0f ', zn4));
 fprintf('   dlam median |err| %.4f, z rms %.2f, chi2/dof %.2f, abstain below %g m, gamma median %.2f\n', ...
   median(abs(o4.dlam(ok4m) - dl_t(ok4m))), rms(zsc4), o4.chi2_dof, o4.abstain_below_m, median(o4.windows.gamma, 'omitnan'));
-o4u = ptt.estimators.run('nodeFabric', S4, z, dt, struct('fc', fc, 'calibrate', false));
+o4u = ptt.nodeFabric(S4, z, dt, struct('fc', fc, 'calibrate', false));
 ok4u = isfinite(o4u.dlam) & o4u.zm > 100;
 fprintf('   for the record, WITHOUT calibration: slow axis %.1f, dlam median |err| %.4f\n', ...
   rad2deg(o4u.psi0), median(abs(o4u.dlam(ok4u) - dl_t(ok4u))));
@@ -154,7 +150,7 @@ fprintf('   survives uncalibrated channels and depolarisation:       %s\n', H_ti
 dl_weak = 0.003 + 0.004 * (z / 1400);
 p5 = p; p5.depol = 0.3;
 [S5, tau5] = synth_quadpol_column(z, dl_weak, deg2rad(60), dt, p5);
-o5 = ptt.estimators.run('nodeFabric', S5, z, dt, struct('fc', fc, 'psi0', deg2rad(60)));
+o5 = ptt.nodeFabric(S5, z, dt, struct('fc', fc, 'psi0', deg2rad(60)));
 dl_w = interp1(z, dl_weak, o5.zm + 5, 'linear', 'extrap');
 ok5m = isfinite(o5.dlam) & o5.zm > 100;
 fprintf('\n5. weak fabric (delay at the bottom %.2f ns): nodes %d, dlam median |err| %.4f, abstain below %g m, inc %d\n', ...
@@ -171,7 +167,7 @@ fprintf('   weak fabric from the increments alone:                   %s\n', H_ti
 S6 = S4;
 for ch = {'hh', 'vv', 'hv', 'vh'}, S6.(ch{1})(:, 137) = NaN; end   % the real case: one trace gone in every channel
 S6.hv(2000:2100, 251) = NaN;                                        % and a gap in one channel only
-o6 = ptt.estimators.run('nodeFabric', S6, z, dt, opts);
+o6 = ptt.nodeFabric(S6, z, dt, opts);
 ok6m = isfinite(o6.dlam) & isfinite(o4.dlam) & o6.zm > 100;
 dth6 = abs(angle(exp(2i * (o6.psi0 - o4.psi0)))) / 2 * 180 / pi;
 ddl6 = median(abs(o6.dlam(ok6m) - o4.dlam(ok6m)));
@@ -185,14 +181,14 @@ fprintf('   a missing trace changes nothing:                         %s\n', H_ti
 th7 = deg2rad(35);
 o7 = struct('fc', fc, 'psi0', th7);
 [S7, tau7] = synth_quadpol_column(z, 2 * dl_true, th7, dt, p);
-on = ptt.estimators.run('nodeFabric', S7, z, dt, o7);
+on = ptt.nodeFabric(S7, z, dt, o7);
 N7 = on.nodes;
 t_at = interp1(z, tau7, N7.z);                          % the true delay where the nodes were found
 e_band = rms(t_at - N7.n ./ (2 * N7.fc_hz * 1e-9));
 e_lo = rms(t_at - N7.n * fringe / 2);
 p7 = p; p7.f_off = 13e6;
 S7b = synth_quadpol_column(z, 2 * dl_true, th7, dt, p7);
-onb = ptt.estimators.run('nodeFabric', S7b, z, dt, o7);
+onb = ptt.nodeFabric(S7b, z, dt, o7);
 fprintf('\n7. nine-node column: %d nodes, node frequency %.1f MHz (band centre %.1f, LO %.1f)\n', ...
   numel(N7.z), median(N7.fc_hz) / 1e6, (fc + f_off) / 1e6, fc / 1e6);
 fprintf('   true delay at the nodes less n half waves: band %.3f ns rms, LO %.3f ns rms; band moved to +13 MHz -> %.1f MHz\n', ...
@@ -204,8 +200,8 @@ fprintf('   the nodes count in the band''s frequency:                 %s\n', H_t
 %% ---- verdict 8: a reflection phase is not fabric
 p8 = p; p8.refl_phase_deg = 4.5; p8.refl_len_m = 25;
 [S8, ~, alpha8] = synth_quadpol_column(z, dl_true, th7, dt, p8);
-o8 = ptt.estimators.run('nodeFabric', S8, z, dt, o7);
-o8p = ptt.estimators.run('nodeFabric', S8, z, dt, H_merge(o7, poster));
+o8 = ptt.nodeFabric(S8, z, dt, o7);
+o8p = ptt.nodeFabric(S8, z, dt, H_merge(o7, poster));
 in8 = o8.zm > 100 & o8.zm < 1380;
 dl8 = interp1(z, dl_true, o8.zm + 5);                   % cell centres
 fine = @(o) rms(o.dlam_raw(in8) - H_pick(movmean(o.dlam_raw, 15), in8));
@@ -233,8 +229,8 @@ fprintf('   a reflection phase is not returned as fabric:            %s\n', H_ti
 
 %% ---- verdict 9: the answer does not move with the window
 wide = struct('win_m', 100, 'step_m', 50);
-o9 = ptt.estimators.run('nodeFabric', S8, z, dt, H_merge(o7, wide));
-o9p = ptt.estimators.run('nodeFabric', S8, z, dt, H_merge(H_merge(o7, poster), wide));
+o9 = ptt.nodeFabric(S8, z, dt, H_merge(o7, wide));
+o9p = ptt.nodeFabric(S8, z, dt, H_merge(H_merge(o7, poster), wide));
 mv = rms(o8.dlam_raw(in8) - o9.dlam_raw(in8));
 mvp = rms(o8p.dlam_raw(in8) - o9p.dlam_raw(in8));
 fprintf('\n9. window 50 -> 100 m: the 10 m profile moves %.4f under the depth model (posterior sd %.4f), %.4f under the poster''s\n', ...

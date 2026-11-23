@@ -4,10 +4,10 @@ function [Dc, meta, z] = quadpol_frame_blocks(day_seg, frm, cache_dir, site_root
 % [Dc, meta, z] = quadpol_frame_blocks(day_seg, frm, cache_dir, site_root, blk_m, z_max, nsub)
 %
 % Reads the frame's coregistered channels (creg_<tag>.mat in cache_dir, as
-% run_quadpol_pipeline caches them) down to z_max, rebuilds the per-trace
-% heading the way the pipeline does (great-circle azimuth over SMH traces,
-% smoothed on the doubled-angle phasor) from the season's polarimetric
-% product positions, and cuts the frame into blocks of ~blk_m metres. Dc
+% run_coreg_frame writes them) down to z_max, builds the per-trace heading
+% (great-circle azimuth over SMH traces, smoothed on the doubled-angle
+% phasor, never unwrapped) from the season's polarimetric product
+% positions, and cuts the frame into blocks of ~blk_m metres. Dc
 % is a cell of channel structs (hh, vv, hv, vh, heading in rad), the form
 % run_node_frame hands to nodeFabric; blocks of fewer than 2 nsub traces
 % are left out. meta has per block x (along-track centre, m), lat, lon,

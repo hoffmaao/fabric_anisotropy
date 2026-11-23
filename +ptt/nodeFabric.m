@@ -1,12 +1,11 @@
 function out = nodeFabric(S, z, dt, opts)
 %NODEFABRIC One slow axis from the eigen-pair delay against azimuth, dlam(z) from the node ladder and the carrier phase, by linear ML.
 %
-% out = ptt.estimators.run('nodeFabric', S, z, dt, opts)
+% out = ptt.nodeFabric(S, z, dt, opts)
 %
 % The two steps of the NEGIS poster scheme ("the poster" below: orientation
 % first, then one linear maximum-likelihood solve for dlam(z) from
-% travel-time differences; the `nymand` method holds its original
-% estimators), with the measurements this radar can carry:
+% travel-time differences), with the measurements this radar can carry:
 %
 %   ORIENTATION. The strength read from the eigen-pair carrier phase
 %   (below) is not a cosine of the synthesis azimuth but a PLATEAU: a

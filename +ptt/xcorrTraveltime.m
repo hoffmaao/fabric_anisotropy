@@ -3,16 +3,17 @@ function out = xcorrTraveltime(a, b, dt, opts)
 %
 % out = ptt.xcorrTraveltime(a, b, dt, opts)
 %
-% Step 2's measurement in the Nymand two-step scheme (the poster's Figure
+% The delay measurement of the NEGIS two-step scheme (the poster's Figure
 % 2, after Zeising et al. 2023): in successive fast-time windows the two
 % complex signals are cross-correlated over a fine grid of lags, and the
 % lag of best correlation is the two-way travel-time difference
 %
 %   dtau = t_a - t_b   [ns]   (positive: a arrives LATER, a is the slow axis)
 %
-% between them at that depth. Fed to traveltimeFabricML, with a and b the
-% eigen-polarisations of the column, dtau(z) gives dlam(z) by linear
-% maximum likelihood.
+% between them at that depth. With a and b the eigen-polarisations of the
+% column, the slope of dtau(z) is dlam(z) times a constant;
+% ptt.nodeFabric turns the windows this returns into dlam(z) by one
+% linear solve.
 %
 % HOW THE LAG IS FOUND. The signals are complex baseband, so a delay tau
 % shows up twice: the ENVELOPE of the cross-correlation peaks at tau with
@@ -30,7 +31,7 @@ function out = xcorrTraveltime(a, b, dt, opts)
 %
 % WHAT THE SIGNALS MUST BE. a and b must be the SAME scattering seen
 % through the two eigen-polarisations - synthesise them with
-% ptt.rotatePolarization at the orientation step 1 returns, and give it
+% ptt.rotatePolarization at the slow axis nodeFabric finds, and give it
 % channels whose coregistration did not already remove the birefringent
 % delay (one constant delay per channel from the firn, not a per-tile
 % offset field that tracks the lag). A pair rotated by dth from the

@@ -1,6 +1,6 @@
-%TEST_XCORR_TRAVELTIME The cross-correlation travel-time difference, step 2's measurement.
+%TEST_XCORR_TRAVELTIME The cross-correlation travel-time difference, the node method's delay measurement.
 %
-% ptt.xcorrTraveltime is the poster's Figure 2: windowed cross-correlation
+% ptt.xcorrTraveltime is the NEGIS poster's Figure 2: windowed cross-correlation
 % of the two eigen-polarisation signals, the lag of best correlation
 % tracked down the column, the envelope as the fringe check. It is tested
 % on a synthetic that has what the accumulation radar has - a 160 MHz
@@ -19,15 +19,16 @@
 %      power Ridge A shows (coherence ~0.5), the same holds.
 %   3. THE UNCERTAINTY IS CALIBRATED. Over noise realisations the z-score
 %      of the delay error against out.sigma has rms near one.
-%   4. CHAINED INTO STEP 2, dlam(z) COMES BACK. traveltimeFabricML on the
-%      measured dtau, with its posterior sigma from verdict 3, recovers
-%      the known profile within its stated uncertainty.
+%   4. THE SLOPE OF THE DELAY IS THE STRENGTH. The measured delay,
+%      differenced over 200 m spans and divided by the ns-per-metre
+%      constant, gives the known mean dlam of each span. No model, no
+%      prior: this is the relation nodeFabric's linear solve rests on.
 %   5. THE WRONG FRAME DEGRADES THE PAIR, AND AT 45 DEG LOSES IT. A pair
 %      rotated dth from the eigenframe mixes each signal with the other's
 %      delayed copy, so the cross-correlation splits into peaks at 0 and
 %      at +-tau. The tracked delay shortens by LESS than cos(2*dth) - the
-%      small-phase rule that phase methods obey, and which the step-2
-%      docstrings quote, does not hold for a fringe-scale correlation
+%      small-phase rule that phase methods obey does not hold for a
+%      fringe-scale correlation
 %      lag - and at 45 deg the two rotated signals are the same mixture
 %      and carry no delay at all. The coherence does NOT fall: the
 %      rotated pair correlates as well as the aligned one (perfectly at
@@ -40,7 +41,6 @@
 clear; t0 = tic;
 thisDir = fileparts(mfilename('fullpath'));
 addpath(fullfile(thisDir, '..', '..'));
-ptt.estimators.use('nymand');
 rng(7);
 
 fs = 300e6; dt = 1e9 / fs;                 % ns
@@ -49,7 +49,7 @@ C = ptt.constants(); n_ice = sqrt(C.eps_bar);
 dz = dt * C.c / (2 * n_ice);              % m per sample, two-way
 Nt = 5000; Nx = 125;
 z = (0:Nt-1).' * dz;                       % ~1400 m
-k_ns = C.deps / (n_ice * C.c);             % ns per m per unit dlam (traveltimeFabricML's k)
+k_ns = C.deps / (n_ice * C.c);             % ns per m per unit dlam, two-way (nodeFabric's k)
 dl_true = 0.012 + 0.055 * (z / 1400) .^ 1.5 + 0.015 * exp(-((z - 650) / 60) .^ 2);
 tau_true = k_ns * cumtrapz(z, dl_true);    % ns, positive: a (slow) arrives later
 
@@ -87,18 +87,19 @@ fprintf('\n3. z-score rms over %d realisations: %.2f (sigma median %.3f ns)\n', 
 ok3 = zr > 0.6 && zr < 1.6;
 fprintf('   uncertainty calibrated:                                  %s\n', H_tick(ok3));
 
-% --- verdict 4: chained into the linear ML
+% --- verdict 4: the slope of the delay is the strength
 zw = (o2.idx - 1) * dz;
-use = isfinite(o2.dtau) & zw > 30;
-ml = ptt.estimators.run('traveltimeFabricML', o2.dtau(use), zw(use), ...
-  struct('fc', 750e6, 'sigma_ns', o2.sigma(use), 'prior', [0 0.05 150], 'res_min', 0));
-dl_t = interp1(z, dl_true, zw(use));
-zsc = (ml.dlam - dl_t) ./ ml.sigma_dlam;
-deep = zw(use) > 300;
-fprintf('\n4. step 2 on the measured delays: median |dlam err| %.4f (deep %.4f), z-score rms %.2f, chi2/dof %.2f\n', ...
-  median(abs(ml.dlam - dl_t)), median(abs(ml.dlam(deep) - dl_t(deep))), rms(zsc(deep)), ml.chi2_dof);
-ok4 = median(abs(ml.dlam(deep) - dl_t(deep))) < 0.006 && rms(zsc(deep)) < 2.0;
-fprintf('   dlam(z) recovered within its posterior:                  %s\n', H_tick(ok4));
+use = isfinite(o2.dtau);
+span = 200;                                 % m
+edges = (300:span:1300).';
+t_edge = interp1(zw(use), o2.dtau(use), edges);
+dl_meas = diff(t_edge) / (k_ns * span);
+dl_mean = arrayfun(@(i) mean(dl_true(z >= edges(i) & z <= edges(i + 1))), (1:numel(edges) - 1).');
+fprintf('\n4. delay differenced over %d m spans from %d to %d m: dlam %s\n', span, edges(1), edges(end), ...
+  sprintf('%.4f ', dl_meas));
+fprintf('   truth %s, max |err| %.4f\n', sprintf('%.4f ', dl_mean), max(abs(dl_meas - dl_mean)));
+ok4 = max(abs(dl_meas - dl_mean)) < 0.004;
+fprintf('   the slope of the delay gives the strength:               %s\n', H_tick(ok4));
 
 % --- verdict 5: the wrong frame degrades the pair, and at 45 deg loses it
 [a, b] = H_pair(z, tau_true, dt, fc, f_off, B, Nx, 0, 15, 3);

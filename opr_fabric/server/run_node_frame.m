@@ -46,7 +46,6 @@
 addpath(fabric_code);
 if ~exist('threads', 'var'), threads = 4; end
 maxNumCompThreads(threads);
-ptt.estimators.use('node');
 if ~exist('day_seg', 'var'), error('set day_seg'); end
 if ~exist('frm', 'var'), error('set frm'); end
 day_seg = char(day_seg);
@@ -104,7 +103,7 @@ for b = 1:numel(Dc)
       if ~isempty(copol_db)
         ob.gains = H_copol_gains(rmfield(S, 'heading'), z, copol_db);
       end
-      o = ptt.estimators.run('nodeFabric', rmfield(S, 'heading'), z, dt, ob);
+      o = ptt.nodeFabric(rmfield(S, 'heading'), z, dt, ob);
       o.windows = rmfield(o.windows, 'corr');
       o.theta_geo_deg = mod(meta.az(b) + rad2deg(o.psi0), 180);
       N = o.nodes;

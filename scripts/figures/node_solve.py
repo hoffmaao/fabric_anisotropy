@@ -5,7 +5,7 @@ increments between windows, the accepted nodes and the firn reference.
 So the posterior can be recomputed here under any depth model without
 the radar data, which is how a model is compared over a whole survey
 before a single frame is rerun. The functions mirror the helpers of
-+ptt/+estimators/private/nodeFabric.m (H_kernel, H_cd, H_solve,
++ptt/nodeFabric.m (H_kernel, H_cd, H_solve,
 H_psi_auto, H_intervals) and reproduce its numbers to rounding: the
 poster's model gives back a stored product's dlam to 1e-14, the depth
 model gives MATLAB's on the same block to 1e-10.
