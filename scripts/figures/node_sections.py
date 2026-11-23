@@ -26,10 +26,6 @@ is written on the panels; these are the captions:
                            ride up where dlam is high and sink where it is
                            low.
 
-node_representation.py draws the same sections under the depth model
-(node_sections_resolved.png: smooth fabric plus a bounded window phase,
-each value a mean over about 130 m) by calling draw() with re-solved
-profiles.
 """
 import glob
 import os

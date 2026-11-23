@@ -12,11 +12,14 @@ and answers three questions with numbers that do not pass through the
 prior:
 
   DEPTH    How many numbers does a column carry, and at what vertical
-           scale does the answer stop depending on the model? The stored
-           profile, the depth model and the same model at half and twice
-           its correlation length are compared after running means of
-           increasing length; the prior-free interval means (summed
-           phase increments, node_solve.intervals) are the reference.
+           scale does the answer stop depending on the model? The plain
+           model (node_solve.POSTER: every phase increment taken as a
+           delay, no window phase, which hands the reflectors' phase
+           back as 10 m stripes), the depth model and the same model at
+           half and twice its correlation length are compared after
+           running means of increasing length; the prior-free interval
+           means (summed phase increments, node_solve.intervals) are the
+           reference.
   STRIPES  Is the 10 m structure a delay? A delay accumulates down the
            column; a phase the reflectors put between the polarisations
            does not. The increment residuals' autocorrelation and the
@@ -33,24 +36,23 @@ prior:
            survey it is decisive, and here each block's ramp depth and
            step are found with the smooth model's own noise level.
 
-Writes node_depth_model.png, node_lateral_field.png,
-node_sections_resolved.png (the sections of node_sections.py under the
-depth model), node_resolved.npz (profiles, errors, resolution, interval
-means per block) and node_table_resolved.mat (the same profiles as one
-flat table, a row per block and 25 m of depth, for gridding in 3D).
+Writes node_depth_model.png, node_lateral_field.png and
+node_resolved.npz (profiles, errors, resolution, interval means, horizon
+depth and step per block).
 
 Nothing is written on the panels but their letters; the numbers are
 printed, and these are the captions.
 
 node_depth_model.png
   A  One block (the one nearest the survey's centre, named in the
-     output). Grey: the profile the product stores. Black with its
-     one-sigma band: the depth model. Blue: the prior-free means over
-     125 m, from the summed phase increments. Orange stairs: dlam from
-     the spacing of the nodes alone.
+     output). Grey: the plain model, every phase increment taken as a
+     delay. Black with its one-sigma band: the depth model, which is
+     what the product stores. Blue: the prior-free means over 125 m,
+     from the summed phase increments. Orange stairs: dlam from the
+     spacing of the nodes alone.
   B  How much the answer depends on the model, against the vertical
      averaging length. Blue: the spread between blocks, which is the
-     signal. Grey: stored profile minus depth model. Black: the depth
+     signal. Grey: plain model minus depth model. Black: the depth
      model at half (squares) and twice (triangles) its correlation
      length. Orange dashed: what the window phase leaves on a mean.
   C  Black: the residual delay the depth model leaves on the phase,
@@ -92,7 +94,6 @@ ROOT = os.path.join(HERE, "..", "..")
 sys.path.insert(0, HERE)
 import morrow_style as ms  # noqa: E402
 import node_export as ne  # noqa: E402
-import node_sections as nsec  # noqa: E402
 import node_solve as ns  # noqa: E402
 
 R_E = 6371.0
@@ -140,7 +141,7 @@ def running_mean(v, n):
 
 # ------------------------------------------------------------- depth
 def survey_evidence(rows):
-    """log evidence summed over the blocks, relative to the stored model"""
+    """log evidence summed over the blocks, relative to the plain model"""
     def total(model, fc):
         return sum(ns.resolve(r, model, node_fc=fc)["logev"] for r in rows)
     ref = total(ns.POSTER, ns.FC)
@@ -181,24 +182,24 @@ def residual_statistics(rows, outs):
                 spans=step * spans, sf=np.array(sf), res=res)
 
 
-def model_dependence(rows, outs, zm):
+def model_dependence(rows, outs, plain, zm):
     """rms difference between solutions after a running mean of each
-    length: the stored profile and the depth model at half and twice its
+    length: the plain model and the depth model at half and twice its
     correlation length, against the depth model; and the survey's own
     lateral spread at that averaging."""
     sel = (zm >= BAND[0]) & (zm <= BAND[1])
     base = np.array([o["m"] for o in outs])
-    stored = np.array([r["dlam_raw"] for r in rows])
+    stored = np.array([o["m"] for o in plain])
     alt = {}
     for length in (250.0, 1000.0):
         mdl = dict(ns.SMOOTH, len_m=length)
         alt[length] = np.array([ns.resolve(r, mdl)["m"] for r in rows])
     lengths = np.array([1, 3, 5, 7, 11, 15, 21, 31])
-    out = dict(lengths=lengths * ns.MODEL_DZ, stored=[], half=[], twice=[],
+    out = dict(lengths=lengths * ns.MODEL_DZ, plain=[], half=[], twice=[],
                lateral=[])
     for n in lengths:
         b = running_mean(base, n)
-        out["stored"].append(rms((running_mean(stored, n) - b)[:, sel]))
+        out["plain"].append(rms((running_mean(stored, n) - b)[:, sel]))
         out["half"].append(rms((running_mean(alt[250.0], n) - b)[:, sel]))
         out["twice"].append(rms((running_mean(alt[1000.0], n) - b)[:, sel]))
         out["lateral"].append(np.sqrt(np.mean(np.var(b[:, sel], axis=0))))
@@ -352,13 +353,13 @@ def variance_budget(im):
 
 
 # ----------------------------------------------------------- figures
-def fig_depth(rows, outs, ev, rs, md, pick, out_png):
+def fig_depth(rows, outs, plain, ev, rs, md, pick, out_png):
     fig, ax = plt.subplots(2, 2, figsize=(12.8, 10.4),
                            constrained_layout=True)
     r, o = rows[pick], outs[pick]
     zm = r["zm"] + ns.MODEL_DZ / 2
     a = ax[0, 0]
-    a.plot(r["dlam_raw"], zm, "-", color="0.6", lw=1.0)
+    a.plot(plain[pick]["m"], zm, "-", color="0.6", lw=1.0)
     a.fill_betweenx(zm, o["m"] - o["sigma"], o["m"] + o["sigma"],
                     color="0.2", alpha=0.25, lw=0)
     a.plot(o["m"], zm, "-", color="k", lw=2.0)
@@ -375,7 +376,7 @@ def fig_depth(rows, outs, ev, rs, md, pick, out_png):
 
     a = ax[0, 1]
     a.loglog(md["lengths"], md["lateral"], "-", color=C_NS, lw=2.2)
-    a.loglog(md["lengths"], md["stored"], "o-", color="0.5", lw=1.6, ms=5)
+    a.loglog(md["lengths"], md["plain"], "o-", color="0.5", lw=1.6, ms=5)
     a.loglog(md["lengths"], md["half"], "s-", color="k", lw=1.6, ms=5)
     a.loglog(md["lengths"], md["twice"], "^-", color="k", lw=1.6, ms=5,
              mfc="w")
@@ -502,35 +503,36 @@ def main():
 
     # ---- depth
     outs = [ns.resolve(r) for r in rows]
-    stored = [ns.resolve(r, ns.POSTER, node_fc=ns.FC) for r in rows]
+    plain = [ns.resolve(r, ns.POSTER, node_fc=ns.FC) for r in rows]
     sel = (zm >= BAND[0]) & (zm <= BAND[1])
     med = lambda k, oo: np.median([np.nanmedian(o[k][sel])  # noqa: E731
                                    for o in oo])
     print("DEPTH")
-    print("  numbers per column: stored %.1f, depth model %.1f (of %d cells,"
-          " %d data rows)" % (np.median([o["n_eff"] for o in stored]),
-                              np.median([o["n_eff"] for o in outs]), zm.size,
-                              np.median([r["inc_d"].size + r["node_z"].size
-                                         + 1 for r in rows])))
-    print("  one value averages over: stored %.0f m, depth model %.0f m; "
-          "posterior sd %.4f and %.4f" % (
-              med("resolution_m", stored), med("resolution_m", outs),
-              med("sigma", stored), med("sigma", outs)))
+    print("  numbers per column: plain model %.1f, depth model %.1f (of %d "
+          "cells, %d data rows)" % (
+              np.median([o["n_eff"] for o in plain]),
+              np.median([o["n_eff"] for o in outs]), zm.size,
+              np.median([r["inc_d"].size + r["node_z"].size + 1
+                         for r in rows])))
+    print("  one value averages over: plain model %.0f m, depth model %.0f m;"
+          " posterior sd %.4f and %.4f" % (
+              med("resolution_m", plain), med("resolution_m", outs),
+              med("sigma", plain), med("sigma", outs)))
     psi = np.array([o["psi_sd_ns"] for o in outs])
     print("  window phase by block: median %.4f ns (p10 %.4f, p90 %.4f) = "
           "%.1f deg of carrier" % (np.median(psi), np.percentile(psi, 10),
                                    np.percentile(psi, 90),
                                    np.median(psi) * ns.FC * 1e-9 * 360))
     ev = survey_evidence(rows)
-    print("  log evidence against the stored model: nodes at %.0f MHz %+.0f;"
+    print("  log evidence against the plain model: nodes at %.0f MHz %+.0f;"
           " depth model %+.0f; best node frequency %.0f MHz" % (
               ns.NODE_FC / 1e6, ev["poster_band"], ev["smooth"],
               ev["freqs"][np.argmax(ev["curve"])]))
-    md = model_dependence(rows, outs, zm)
+    md = model_dependence(rows, outs, plain, zm)
     for n, lab in ((0, "10 m"), (5, "150 m")):
-        print("  at %s averaging: stored minus depth model %.4f, half / "
+        print("  at %s averaging: plain minus depth model %.4f, half / "
               "twice the correlation length %.4f / %.4f, spread between "
-              "blocks %.4f" % (lab, md["stored"][n], md["half"][n],
+              "blocks %.4f" % (lab, md["plain"][n], md["half"][n],
                                md["twice"][n], md["lateral"][n]))
     im = interval_matrix(rows, outs)
     mi = np.array([[np.mean(o["m"][(zm >= a) & (zm < b)])
@@ -626,26 +628,18 @@ def main():
     pick = int(np.argmin(np.hypot(x, y)))
     print("node_depth_model.png panel A is %s block %d, the block nearest "
           "the survey's centre" % (rows[pick]["tag"], rows[pick]["block"]))
-    fig_depth(rows, outs, ev, rs, md, pick,
+    fig_depth(rows, outs, plain, ev, rs, md, pick,
               os.path.join(out, "node_depth_model.png"))
     fig_lateral(rows, x, y, deep, im, (pi_, pj_), vg, loo, sc[:, 0], budget,
                 os.path.join(out, "node_lateral_field.png"))
-    resolved = []
-    for r, o in zip(rows, outs):
-        q = dict(r)
-        q["dlam"] = np.where(np.isfinite(r["dlam"]), o["m"], np.nan)
-        resolved.append(q)
-    nsec.draw(nsec.frames_by_segment(resolved),
-              os.path.join(out, "node_sections_resolved.png"), "dlam")
-    ne.write_flow_table(resolved, os.path.join(out, "node_table_resolved.mat"),
-                        solver="half-wave node ladder, depth model",
-                        prefix="node_resolved_flow_ct")
+    resolved = np.array([np.where(np.isfinite(r["dlam"]), o["m"], np.nan)
+                         for r, o in zip(rows, outs)])
     np.savez(os.path.join(out, "node_resolved.npz"), tags=tags,
              block=np.array([r["block"] for r in rows]),
              lat=np.array([r["lat"] for r in rows]),
              lon=np.array([r["lon"] for r in rows]), x_km=x, y_km=y,
              heading=np.array([r["heading"] for r in rows]), theta=theta,
-             zm=zm, dlam=np.array([q["dlam"] for q in resolved]),
+             zm=zm, dlam=resolved,
              sigma=np.array([o["sigma"] for o in outs]),
              resolution_m=np.array([o["resolution_m"] for o in outs]),
              n_eff=np.array([o["n_eff"] for o in outs]), psi_sd_ns=psi,
@@ -653,8 +647,7 @@ def main():
              loo_pred=pred, power_phase_scale=sc[:, 0], horizon_z=hz,
              horizon_step=hs, horizon_logev_gain=hg)
     print("wrote node_depth_model.png, node_lateral_field.png, "
-          "node_sections_resolved.png, node_resolved.npz, "
-          "node_table_resolved.mat in", out)
+          "node_resolved.npz in", out)
 
 
 if __name__ == "__main__":

@@ -51,9 +51,7 @@ import morrow_style as ms  # noqa: E402
 C_NS, C_EW = "#2a6fb0", "#d2691e"
 # ns of two-way delay per m per unit dlam
 K_NS = 0.063688
-# ns between successive half-wave nodes, as the stored products counted
-# them (at the 750 MHz LO; node_solve.NODE_FC has the band's centre)
-HALF_NS = 1e9 / 750e6 / 2
+LO_HZ = 750e6
 BANDS = [(200, 400), (400, 600), (600, 900), (900, 1200), (1200, 1450)]
 
 
@@ -349,20 +347,32 @@ def write_flow_table(good, fn, solver="half-wave node ladder (nodeFabric)",
     savemat(fn, T)
 
 
+def half_wave_ns(row):
+    """ns of delay between successive nodes of a block: half a wave of the
+    frequency its nodes count in, the band's own centre as the product
+    measured it (the LO for a product made before nodes carried one)"""
+    fc = row.get("node_fc")
+    if fc is None or not np.size(fc):
+        return np.full(np.size(row["node_z"]), 0.5e9 / LO_HZ)
+    return 0.5e9 / np.asarray(fc, float)
+
+
 def node_spacing_profile(good):
     """Strength from the node depths alone, no solver: between successive
-    nodes the two-way delay grows by one half fringe, so the mean dlam over
-    the interval is HALF_NS / (K_NS * spacing). Medians over blocks of each
-    interval (surface to node 1, node 1 to 2, ...), returned as stair edges
-    (len n + 1 depths) and values (the last repeated); intervals seen in
-    fewer than 10 blocks are left out."""
+    nodes the two-way delay grows by one half wave, so the mean dlam over
+    the interval is the half wave / (K_NS * spacing). Medians over blocks
+    of each interval (surface to node 1, node 1 to 2, ...), returned as
+    stair edges (len n + 1 depths) and values (the last repeated);
+    intervals seen in fewer than 10 blocks are left out."""
     iv = {}
     for r in good:
         o = np.argsort(r["node_z"])
         z = np.r_[0.0, np.asarray(r["node_z"], float)[o]]
         n = np.r_[0, np.asarray(r["node_n"], int)[o]]
+        half = half_wave_ns(r)[o]
         for a in range(1, len(z)):
-            rate = (n[a] - n[a - 1]) * HALF_NS / (K_NS * (z[a] - z[a - 1]))
+            rate = ((n[a] - n[a - 1]) * half[a - 1]
+                    / (K_NS * (z[a] - z[a - 1])))
             iv.setdefault(n[a], []).append((z[a - 1], z[a], rate))
     zs, ds, z_end = [], [], np.nan
     for n in sorted(iv):
