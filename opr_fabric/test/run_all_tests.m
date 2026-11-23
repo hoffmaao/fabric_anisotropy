@@ -27,10 +27,11 @@ listing = dir(fullfile(here, 'test_*.m'));
 names = sort(erase({listing.name}, '.m'));
 
 % Tests that take over two minutes each on a laptop go here, and 'quick'
-% leaves them out. There are none now: the three tests take about 2 min
-% together on an Apple-silicon laptop (R2025b; test_node_fabric 1.5 min,
-% test_xcorr_traveltime 0.5 min) and about 10 min on mem1 at 8 threads.
-% Update when a test is added or its cost changes, so 'quick' stays quick.
+% leaves them out. There are none now: the three tests take a little over
+% 2 min together on an Apple-silicon laptop (R2025b; test_node_fabric
+% 1.7 min, test_xcorr_traveltime 0.5 min) and about 10 min on mem1 at 8
+% threads. Update when a test is added or its cost changes, so 'quick'
+% stays quick.
 slow = {};
 
 if nargin == 0 || isequal(selection, 'all')

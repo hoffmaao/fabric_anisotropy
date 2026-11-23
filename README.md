@@ -1,90 +1,55 @@
 # fabric_anisotropy
 
-To Infer ice crystal orientation fabric from polarimetric radar traveltime and refelctivity, we implement the theory of Rathmann (2026), "Inferring glacier ice-crystal orientation fabrics from oblique polarimetric radar" (Proc. R. Soc. A, RSPA-2026-0001; reference Python code: https://github.com/nicholasmr/ptt) and Ershadi (2022) and use these methods to interpret polarimetric data from the CReSIS ground-based accumulation radar.
+Ice crystal orientation fabric from the polarimetric data of the CReSIS
+ground-based accumulation radar.
+
+The repo runs one method, the **node method**. From the four channels the
+radar records (HH, VV, HV, VH) it returns, for every 2 km of track, the
+fabric's slow axis and the horizontal eigenvalue difference dlam(z) along
+it, with its uncertainty and its resolution. It counts the whole fringes
+of the birefringent delay from the half-wave nodes of the cross-polarised
+power and takes the slope between them from the carrier phase, so nothing
+is unwrapped.
+
+**Start with [`docs/cresis_tutorial.md`](docs/cresis_tutorial.md).** It
+covers cloning on the CReSIS servers, the test suite, one Ridge A frame
+with the numbers you should get, a whole survey, the figures, and the
+mistakes to avoid. A fresh clone runs as-is under any account.
+
+The relation between delay and fabric is that of Rathmann (2026),
+"Inferring glacier ice-crystal orientation fabrics from oblique
+polarimetric radar" (Proc. R. Soc. A, RSPA-2026-0001; reference Python
+code: https://github.com/nicholasmr/ptt), at nadir.
 
 ## Layout
 
 | path | what it holds |
 |---|---|
-| `+ptt/` | the method's physics and data handling: column model, forward models, coregistration, moments and rotations |
-| `+ptt/+estimators/` | every fabric estimator, callable only through `ptt.estimators.run` under one method chosen with `ptt.estimators.use` (see `docs/method.md`) |
-| `opr_fabric/` | a drop-in OPR processing module plus the server drivers and the MATLAB test suite |
-| `scripts/` | synthetic validations, batch drivers, and the figure scripts |
-| `docs/` | reference detail (below) |
+| `+ptt/` | the method: `nodeFabric` (the estimator) and the six functions it is built from |
+| `opr_fabric/server/` | what runs on the CReSIS machines: `coreg_one.sh` and `run_coreg_frame.m` (step 1), `run_node_frame.m` (step 2), `coreg_batch.sh` and `node_survey.sh` (a whole survey) |
+| `opr_fabric/test/` | the MATLAB test suite |
+| `scripts/figures/` | the figure scripts, Python |
+| `docs/` | the tutorial and two reference pages (below) |
 | `figs/` | figure output, gitignored |
 
-**Running it on the CReSIS servers:** start with
-[`docs/cresis_tutorial.md`](docs/cresis_tutorial.md). It covers cloning,
-running `opr_fabric/run_fabric.m`, pointing it at your data, the quad-pol
-pipeline, and which method each entry point runs. A fresh clone runs as-is
-under any account.
-
-Two reference pages carry the detail that used to live in this file:
-
-- [`docs/method.md`](docs/method.md) - every `+ptt` function, and choice that informed the fabric algorthim. Each function also has a full header of its own (`help ptt.<name>`).
-- [`docs/scripts.md`](docs/scripts.md) - every script and figure, with information on what it validates or produces, and where its inputs come from, plus how to stand up a scratch work root and run the analysis on the CReSIS machines.
+- [`docs/method.md`](docs/method.md) - what each function does and why
+  the method is built the way it is. Each function also has a full header
+  of its own (`help ptt.<name>`).
+- [`docs/scripts.md`](docs/scripts.md) - every script, test and figure,
+  and how the work root on the CReSIS machines is laid out.
 
 ## Data and figures
 
-Neither mirrored products nor figures are committed.
+Neither products nor figures are committed.
 
-- **Input** is staged under `~/data/opr/scar`; override with the
-  `SCAR_DATA` environment variable.
-- **Output** goes to `figs/`, which `.gitignore` excludes. Figure scripts
-  take an `<out_dir>` argument and default to `figs/`, so running one with
-  no arguments puts the figure there from anywhere in the tree.
+- **Products** copied from the server go under `~/data/opr/scar/node`;
+  the `SCAR_DATA` environment variable moves `~/data/opr/scar`.
+- **Figures** go to `figs/`, which `.gitignore` excludes. Each figure
+  script takes an `<out_dir>` argument and defaults to `figs/`.
 
-## OPR toolbox integration (`opr_fabric/`)
+## Requirements
 
-`opr_fabric/` contains a drop-in OPR processing module (`fabric.m`,
-`fabric_task.m`, `run_fabric.m`) that consumes the toolbox's existing
-`CSARP_polarimetric` product (interferogram + coherence + SNAPHU phase +
-coregistration offsets; in delta-k mode the complex ref/sec SLCs instead)
-and produces `CSARP_fabric_joint` profiles of the horizontal fabric
-contrast. See `opr_fabric/README.md` for the pipeline, output naming and
-deployment notes, and `opr_fabric/test/` for its end-to-end test.
-
-To run without a MATLAB license (CI or quick checks), the scripts also work
-in Octave:
-
-```sh
-docker run --rm --platform linux/amd64 \
-  -v "$PWD":/work -w /work/scripts gnuoctave/octave:latest \
-  octave --no-gui synthetic_experiments.m
-```
-
-## MATLAB environment
-
-Local MATLAB for testing before running on the CReSIS servers
-(mem1/mem2/gpu1), using the same browser-based MATLAB (`matlab-proxy`) as
-the OPR hackathon containers:
-
-```sh
-docker compose up -d
-open http://localhost:8888
-```
-
-Sign in with your MathWorks account (online licensing) when prompted; for a
-network license server set `MLM_LICENSE_FILE` in `docker-compose.yml`
-instead. The repository is mounted at `/home/matlab/fabric_anisotropy`, so
-host edits appear in MATLAB immediately and anything MATLAB writes survives
-container restarts. Stop with `docker compose down`.
-
-The image is `fabric-matlab-custom:r2024b`: `mathworks/matlab:r2024b`
-(linux/amd64, emulated via Rosetta on Apple Silicon) with the Optimization
-Toolbox added via `mpm` and committed locally with `docker commit` (see the
-comment in `docker-compose.yml`). On a machine without that committed image,
-or to match the MATLAB release on the CReSIS servers, start from the
-matching `mathworks/matlab` tag, install the toolboxes as below, and
-`docker commit` it under the name in `docker-compose.yml`:
-
-```sh
-docker exec -it --user root fabric-matlab \
-  mpm install --release=r2024b --destination=/opt/matlab/R2024b \
-  Signal_Processing_Toolbox Image_Processing_Toolbox
-docker commit fabric-matlab fabric-matlab-custom:r2024b
-```
-
-The `docker commit` is what persists the toolboxes; without it they are lost
-when the container is removed. If a fixed toolbox set emerges, bake it into
-a Dockerfile.
+MATLAB with the Signal Processing and Statistics toolboxes (R2024b on the
+CReSIS machines, where it is `/opt/sw/matlab/2024b/bin/matlab`; the tests
+also pass on R2025b). The OPR toolbox is not needed. The figure scripts
+need Python 3 with numpy, scipy, h5py and matplotlib.
