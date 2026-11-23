@@ -13,8 +13,9 @@ On the server (`opr_fabric/server/`):
   channels `CSARP_standardphase_{HH,VV,HV,VH}` over it, checks that HH is
   the image the product was built from, fits one range delay per channel
   over the firn (20-150 m) and writes the coregistered channels, down to
-  1500 m, to `stages/quadpol_cf/coreg_cache/creg_<tag>.mat` (0.3-3.2 GB a frame at
-  Ridge A, 1-3 min). A cache made with the same settings is left alone.
+  1500 m, to `stages/quadpol_cf/coreg_cache/creg_<tag>.mat` (0.3-3.2 GB a
+  frame at Ridge A, 1-3 min). A cache made with the same settings is left
+  alone.
 - `coreg_one.sh <site_root> <day_seg> <frm>` - that script under a lock,
   with a log in `coreg_logs/`. `coreg_batch.sh <site> [K]` runs it over
   every frame of a survey, K (3) at a time, and skips frames that have a
