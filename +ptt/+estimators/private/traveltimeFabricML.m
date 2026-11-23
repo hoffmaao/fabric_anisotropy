@@ -37,7 +37,12 @@ function out = traveltimeFabricML(dtau, z, opts)
 % this repo's metre/nanosecond convention (ptt.constants). It must be
 % measured between the two eigen-polarizations, i.e. after synthesis to
 % the theta0 frame that step 1 returns - a dtau measured in the antenna
-% frame answers a different question and will bias dlam low by cos(2*dth).
+% frame answers a different question. Measured (test_xcorr_traveltime
+% verdict 5), a cross-correlation delay from a pair rotated dth off the
+% eigenframe is NOT the eigen delay times cos(2*dth): it stays near the
+% full delay out to ~30 deg, drops to zero at 45 deg, and the pair's
+% coherence does not fall at all, so the wrong frame is invisible to the
+% coherence and only the delay against azimuth locates the eigenframe.
 % NaNs are dropped; the solve needs at least three finite samples.
 %
 % opts (all optional):

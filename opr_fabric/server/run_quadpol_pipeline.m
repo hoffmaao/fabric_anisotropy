@@ -46,8 +46,23 @@ if ~exist('frm', 'var') || isempty(frm), frm = 9; end
 % fabric_paths. The /cresis site_root above stays absolute: that is a real
 % mount point, not part of the work tree.
 [fabric_code, fabric_work] = fabric_paths();
+% COREGISTRATION MODE. 'tiles' (default) is the OPR tile field every shipped
+% product used. 'firn' fits ONE range delay per channel over the firn
+% (coreg_firn_m, default 20-150 m, where the ice is nearly isotropic) and
+% applies it to the whole record: the tile field also follows the
+% birefringent HH-VV lag at depth and removes it, which the fabric fits
+% read as depth bands (see ptt.coregisterChannels). A firn run writes to
+% its own stage directory, stages/quadpol_cf, so its caches and products
+% never replace the tile-coregistered ones.
+if ~exist('coreg_mode', 'var') || isempty(coreg_mode), coreg_mode = 'tiles'; end
+coreg_mode = char(coreg_mode);
+if ~any(strcmpi(coreg_mode, {'tiles', 'firn'}))
+  error('run_quadpol_pipeline:coregMode', 'coreg_mode is ''%s''; it must be ''tiles'' or ''firn''', coreg_mode);
+end
+COREG_FIRN = strcmpi(coreg_mode, 'firn');
+if ~exist('coreg_firn_m', 'var') || isempty(coreg_firn_m), coreg_firn_m = [20 150]; end
 if ~exist('out_dir', 'var') || isempty(out_dir)
-  out_dir = fullfile(fabric_work, 'stages', 'quadpol');
+  out_dir = fullfile(fabric_work, 'stages', H_tag(COREG_FIRN, 'quadpol_cf', 'quadpol'));
 end
 if exist(out_dir, 'dir') ~= 7, mkdir(out_dir); end
 addpath(fabric_code);
@@ -558,7 +573,13 @@ end
 % arrives at coregistration with ~600 - precisely the failure this guard
 % exists to prevent. Outside qlook mode there is no cull and the two counts
 % are the same, which is why the Antarctic run never exposed the gap.
-need_x = 3*(CO.Tx - CO.overlap_x) + CO.Tx;
+if COREG_FIRN
+  % one delay per channel from the firn: no tiles, so no tiling to fit
+  CO = struct('mode', 'constant', 'firn_m', coreg_firn_m, 'search_t', 5, 'oversample', 16);
+  need_x = 0;
+else
+  need_x = 3*(CO.Tx - CO.overlap_x) + CO.Tx;
+end
 if Nx < need_x
   Tx0 = CO.Tx; ov0 = CO.overlap_x;
   while (3*(CO.Tx - CO.overlap_x) + CO.Tx) > Nx && CO.Tx > 16
@@ -574,8 +595,12 @@ if Nx < need_x
     ['%d traces is short for tiling Tx %d ov %d (needs %d); adapted to ' ...
     'Tx %d ov %d'], Nx, Tx0, ov0, need_x, CO.Tx, CO.overlap_x);
 end
-fprintf('tiling Tt %d Tx %d ov %d/%d over %d traces\n', CO.Tt, CO.Tx, ...
-  CO.overlap_t, CO.overlap_x, Nx);
+if COREG_FIRN
+  fprintf('coregistration: one delay per channel from the firn, %g-%g m\n', coreg_firn_m(1), coreg_firn_m(2));
+else
+  fprintf('tiling Tt %d Tx %d ov %d/%d over %d traces\n', CO.Tt, CO.Tx, ...
+    CO.overlap_t, CO.overlap_x, Nx);
+end
 
 %% depth axis
 C0 = 299792458; C_ICE = C0/sqrt(3.171);
@@ -751,7 +776,11 @@ else
     coh_before(p) = H_coh(S.(pairs{p,1}), S.(pairs{p,2}), kr, band);
   end
   t0 = tic;
-  [T, cinfo] = ptt.coregisterChannels(S, 'hh', CO);
+  copts = CO;
+  if COREG_FIRN
+    copts.rows = z >= CO.firn_m(1) & z <= CO.firn_m(2);
+  end
+  [T, cinfo] = ptt.coregisterChannels(S, 'hh', copts);
   t_coreg = toc(t0)/60;
   coh_after = zeros(size(pairs,1),1);
   for p = 1:size(pairs,1)

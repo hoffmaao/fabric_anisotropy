@@ -53,8 +53,12 @@ function out = nymandTwoStep(obs, z, opts)
 %            eigen-polarizations. Optional if .dtau_fn is given.
 %   .dtau_fn @(theta0) -> [Nz x 1], to re-measure the delay in the
 %            eigenframe each outer iteration. Preferred: a dtau measured
-%            once in the antenna frame is biased by cos(2*dtheta) and the
-%            iteration cannot repair it.
+%            once in the antenna frame is wrong by an amount the
+%            iteration cannot repair. Measured (test_xcorr_traveltime
+%            verdict 5), that error is not the cos(2*dtheta) factor one
+%            might expect: a cross-correlation on a pair rotated dtheta
+%            off the eigenframe reads near the full delay out to ~30 deg
+%            and zero at 45 deg, with no loss of coherence.
 %
 % opts: passed through to both steps, plus
 %   .max_outer (4)     outer iterations; 1 gives the strict two-pass form
