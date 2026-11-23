@@ -59,6 +59,10 @@
 %      Under the depth model it moves by less than the posterior; under
 %      the poster's model the 10 m profile moves by its whole stripe
 %      amplitude.
+%  10. THE GRID. dlam is solved on a 10 m grid. On a 20 m, a 5 m and a
+%      2.5 m grid the profile is the same to a small fraction of its
+%      posterior, with the same number of independent values: the grid
+%      sets where the answer is written, not what it resolves.
 %
 % Run: matlab -batch "run('opr_fabric/test/test_node_fabric.m')"
 clear; t0 = tic;
@@ -238,7 +242,23 @@ fprintf('\n9. window 50 -> 100 m: the 10 m profile moves %.4f under the depth mo
 ok9 = mv < 0.003 && mv < 1.5 * median(o8.sigma_dlam(in8)) && mvp > 2 * mv;
 fprintf('   the answer does not move with the window:                %s\n', H_tick(ok9));
 
-allok = ok1 && ok2 && ok3 && ok4 && ok5 && ok6 && ok7 && ok8 && ok9;
+%% ---- verdict 10: the answer does not move with the grid
+held = H_merge(o7, struct('psi0', o8.psi0, 'gains', o8.gains));
+o10 = ptt.nodeFabric(S8, z, dt, held);
+cell10 = @(o) accumarray(floor(o.zm(o.zm < 1400) / 20) + 1, o.dlam_raw(o.zm < 1400), [70 1], @mean);
+ref10 = cell10(o10);
+worst = 0; neff = o10.n_eff;
+for g = [20 5 2.5]
+  og = ptt.nodeFabric(S8, z, dt, H_merge(held, struct('model_dz', g)));
+  worst = max(worst, max(abs(cell10(og) - ref10)));
+  neff(end + 1) = og.n_eff; %#ok<SAGROW>
+end
+fprintf('\n10. grid 10 -> 20, 5, 2.5 m: 20 m means move by at most %.5f (posterior sd %.4f); independent values %s\n', ...
+  worst, median(o10.sigma_dlam(in8)), sprintf('%.1f ', neff));
+ok10 = worst < 0.1 * median(o10.sigma_dlam(in8)) && max(abs(neff - neff(1))) < 0.5;
+fprintf('   the answer does not move with the grid:                  %s\n', H_tick(ok10));
+
+allok = ok1 && ok2 && ok3 && ok4 && ok5 && ok6 && ok7 && ok8 && ok9 && ok10;
 fprintf('\n%s  (%.0f s)\n', H_tick(allok), toc(t0));
 if ~allok, error('test_node_fabric: FAILED'); end
 

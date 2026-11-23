@@ -42,6 +42,15 @@
 % ratio is -3.5 dB at Ridge A, the firn's -4.8; give it a tagx). To remake
 % a product as it was before the depth model existed: depth_model =
 % 'poster'; node_fc = 750e6; and give it a tagx.
+%
+% VERTICAL RESOLUTION. How fine the profile is comes from the depth model's
+% correlation length, not from the grid: depth_model = struct('len_m', 250)
+% gives a value about every 85 m instead of every 130 m, at half again the
+% error (docs/cresis_tutorial.md, "How fine the profile can go"). The
+% sampling itself can be changed to check that the answer does not depend
+% on it: win_m and step_m (50 and 25: the correlation windows), model_dz
+% (10: the grid dlam is solved on) and interval_m (125: the span of the
+% prior-free means). Give every variant a tagx.
 [fabric_code, fabric_work] = fabric_paths();
 addpath(fabric_code);
 if ~exist('threads', 'var'), threads = 4; end
@@ -75,6 +84,10 @@ end
 opts = struct('fc', fc, 'calibrate', true, 'psi_step_deg', psi_step_deg);
 if exist('depth_model', 'var'), opts.depth_model = depth_model; end
 if exist('node_fc', 'var'), opts.node_fc = node_fc; end
+if exist('win_m', 'var'), opts.win_m = win_m; end
+if exist('step_m', 'var'), opts.step_m = step_m; end
+if exist('model_dz', 'var'), opts.model_dz = model_dz; end
+if exist('interval_m', 'var'), opts.interval_m = interval_m; end
 fprintf('%s: %d blocks of ~%d m from %s\n', tag, numel(Dc), round(blk_m), cache_dir);
 t0 = tic;
 R = struct([]);
