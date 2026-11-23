@@ -1,18 +1,24 @@
-"""Node ladders along track: every Ridge A frame as a section, the accepted
+"""Node ladders along track: every frame as a section, the accepted
 half-wave nodes as dots on the data they were picked from.
 
     python scripts/figures/node_sections.py \\
-        [src ~/data/opr/scar/node] [out figs]
+        [<mirror of stages/node>] [out_dir]
 
-Two figures, one row per segment, one panel per frame, panel width
-proportional to the frame's block count, x along track in km:
+Two figures, one row per segment (lettered), one panel per frame (named
+above it: frame number, and N-S or E-W for the direction driven), panel
+width proportional to the frame's block count. x is distance along
+track in km IN RECORDING ORDER, from the frame's first trace: it is not
+turned to a common direction, so read a lateral trend against the block
+positions in node_blocks.csv, not against left and right here. Nothing
+is written on the panels; these are the captions:
 
   node_sections_ratio.png  background: the 45-deg cross-pol ratio (20 m
                            smoothed, each block's 200-1500 m median
                            removed). Odd nodes are its maxima (black dots),
                            even nodes its minima (white dots); candidate
                            extrema the phase test rejected are grey crosses.
-                           The slow axis of each block is printed at the top.
+                           The number at the top of each block is its
+                           slow axis in degrees, geographic.
   node_sections_dlam.png   background: the dlam(z) each product stores, the
                            same dots. A node at depth z says the two-way
                            delay integrated to z is n half waves of the
@@ -21,7 +27,9 @@ proportional to the frame's block count, x along track in km:
                            low.
 
 node_representation.py draws the same sections under the depth model
-(node_sections_resolved.png) by calling draw() with re-solved profiles.
+(node_sections_resolved.png: smooth fabric plus a bounded window phase,
+each value a mean over about 130 m) by calling draw() with re-solved
+profiles.
 """
 import glob
 import os
@@ -105,11 +113,13 @@ def draw_block(ax, r, x_edges, background):
     return mappable
 
 
-def draw(segs, out_png, background, title):
+def draw(segs, out_png, background):
     n_rows = len(segs)
-    fig = plt.figure(figsize=(18, 2.9 * n_rows + 0.9))
-    outer = fig.add_gridspec(n_rows, 1, left=0.06, right=0.93, top=0.93,
-                             bottom=0.05, hspace=0.6)
+    height = 2.9 * n_rows + 0.3
+    fig = plt.figure(figsize=(18, height))
+    outer = fig.add_gridspec(n_rows, 1, left=0.06, right=0.93,
+                             top=1 - 0.4 / height, bottom=0.65 / height,
+                             hspace=0.6)
     mappable = None
     # one along-track scale for every row: each frame's width is its length
     # in blocks, and a row shorter than the longest is padded with an empty
@@ -160,7 +170,6 @@ def draw(segs, out_png, background, title):
         cb.ax.tick_params(labelsize=10)
         cb.set_label("cross-pol ratio anomaly [dB]" if background == "ratio"
                      else r"$\Delta\lambda$", fontsize=12)
-    ms.label(None, title, fig=fig, x=0.06, y=0.975, va="top", fontsize=12)
     fig.savefig(out_png, dpi=170)
     plt.close(fig)
 
@@ -178,13 +187,8 @@ def main():
     segs = frames_by_segment(rows)
     print("%d blocks in %d frames, %d segments" % (
         len(rows), sum(len(v) for v in segs.values()), len(segs)))
-    draw(segs, os.path.join(out, "node_sections_ratio.png"), "ratio",
-         r"half-wave nodes along track on the 45$^\circ$ cross-pol ratio: "
-         r"black = maxima (odd nodes), white = minima (even), "
-         r"grey $\times$ = rejected candidates; "
-         r"number = slow axis [$^\circ$ geographic]")
-    draw(segs, os.path.join(out, "node_sections_dlam.png"), "dlam",
-         r"the same nodes on the stored $\Delta\lambda$(z) of each block")
+    draw(segs, os.path.join(out, "node_sections_ratio.png"), "ratio")
+    draw(segs, os.path.join(out, "node_sections_dlam.png"), "dlam")
     print("wrote node_sections_ratio.png, node_sections_dlam.png in", out)
 
 

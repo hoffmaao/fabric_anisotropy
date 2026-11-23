@@ -1,7 +1,7 @@
 """What the node products can say about fabric with depth, and whether
 the differences between blocks are a field over the survey or the solver.
 
-    /opt/anaconda3/bin/python scripts/figures/node_representation.py \\
+    python scripts/figures/node_representation.py \\
         [<mirror of stages/node>] [out_dir] [pattern]
 
 Reads every node_<tag>_B2000.mat (or the products pattern names, e.g.
@@ -38,6 +38,45 @@ node_sections_resolved.png (the sections of node_sections.py under the
 depth model), node_resolved.npz (profiles, errors, resolution, interval
 means per block) and node_table_resolved.mat (the same profiles as one
 flat table, a row per block and 25 m of depth, for gridding in 3D).
+
+Nothing is written on the panels but their letters; the numbers are
+printed, and these are the captions.
+
+node_depth_model.png
+  A  One block (the one nearest the survey's centre, named in the
+     output). Grey: the profile the product stores. Black with its
+     one-sigma band: the depth model. Blue: the prior-free means over
+     125 m, from the summed phase increments. Orange stairs: dlam from
+     the spacing of the nodes alone.
+  B  How much the answer depends on the model, against the vertical
+     averaging length. Blue: the spread between blocks, which is the
+     signal. Grey: stored profile minus depth model. Black: the depth
+     model at half (squares) and twice (triangles) its correlation
+     length. Orange dashed: what the window phase leaves on a mean.
+  C  Black: the residual delay the depth model leaves on the phase,
+     against span. Dashed: how a delay (fabric) would accumulate. The
+     residuals' autocorrelation at one, two and three window steps is
+     printed; a bounded phase, differenced, gives -0.31, -0.12, -0.04.
+  D  Log evidence over the survey against the frequency the nodes are
+     counted in. Dashed: the LO, where the carrier phase counts. Band:
+     the band's centre as measured on 20250108_02_003, 734-738 MHz.
+
+node_lateral_field.png
+  A  The blocks in map view, coloured by dlam over 500-1450 m; grey
+     lines join the blocks of a frame.
+  B  The same ice on another pass: 125 m means of block pairs under
+     0.6 km apart (colour: depth, dark shallow).
+  C  Rms difference of dlam (500-1450 m) against separation. Black: all
+     pairs of different frames. Orange: pairs separated east-west.
+     Blue: pairs separated north-south.
+  D  Each frame's dlam (500-1450 m) predicted from all the other frames.
+  E  The fringe rate of the cross-polarised POWER over the delay rate of
+     the PHASE, two data types, against strength. Blue: the band's
+     centre over the LO, which is what they should give. Dashed: what
+     the points would follow if every block had the weakest fabric.
+  F  Black: the depth pattern of the one map that carries most of the
+     variance between blocks. Grey: the survey's mean profile. Both
+     relative to their means.
 """
 import glob
 import os
@@ -333,13 +372,6 @@ def fig_depth(rows, outs, ev, rs, md, pick, out_png):
     a.set_xlabel(r"$\Delta\lambda$ along the slow axis")
     a.set_ylabel("depth [m]")
     ms.tag(a, "A", x=0.93)
-    ms.label(a, "%s block %d\ngrey: stored, %.0f numbers\n"
-             "black: depth model, %.0f\n"
-             "blue: summed phase, %g m\n"
-             "orange: node spacing"
-             % (r["tag"], r["block"], ns.resolve(r, ns.POSTER,
-                                                 node_fc=ns.FC)["n_eff"],
-                o["n_eff"], SPAN), x=0.03, y=0.03, fontsize=11)
 
     a = ax[0, 1]
     a.loglog(md["lengths"], md["lateral"], "-", color=C_NS, lw=2.2)
@@ -357,12 +389,6 @@ def fig_depth(rows, outs, ev, rs, md, pick, out_png):
     a.set_xticklabels(["10", "30", "100", "300"])
     a.set_xticks([], minor=True)
     ms.tag(a, "B", x=0.93)
-    ms.label(a, "blue: spread between blocks (the signal)\n"
-             "grey: stored profile minus depth model\n"
-             "black: depth model at half (filled) and\n"
-             "  twice (open) its correlation length\n"
-             "orange: what the window phase leaves on a mean",
-             x=0.03, y=0.03, fontsize=11)
 
     a = ax[1, 0]
     a.plot(rs["spans"], rs["sf"], "o-", color="k", lw=2.0, ms=6)
@@ -372,12 +398,6 @@ def fig_depth(rows, outs, ev, rs, md, pick, out_png):
     a.set_ylabel("rms residual delay over the span [ns]")
     a.set_ylim(0, 0.055)
     ms.tag(a, "C")
-    ms.label(a, "black: what the depth model leaves on the phase\n"
-             "dashed: a delay (fabric) would accumulate\n"
-             "lag-one autocorrelation $%.2f$, then $%.2f$, $%.2f$\n"
-             "(a bounded phase differenced: $-0.31$, $-0.12$, $-0.04$)"
-             % tuple(rs["acf"][:3]), x=0.97, y=0.03, ha="right",
-             fontsize=11)
 
     a = ax[1, 1]
     a.plot(ev["freqs"], ev["curve"], "o-", color="k", lw=2.0, ms=6)
@@ -386,10 +406,6 @@ def fig_depth(rows, outs, ev, rs, md, pick, out_png):
     a.set_xlabel("frequency the nodes are counted in [MHz]")
     a.set_ylabel("log evidence, %d blocks, against 750 MHz" % len(rows))
     ms.tag(a, "D")
-    ms.label(a, "dashed: the LO, where the carrier phase counts\n"
-             "band: the band's centre as measured\n"
-             "  (20250108_02_003, 734-738 MHz)",
-             x=0.03, y=0.03, fontsize=11)
     fig.savefig(out_png, dpi=170)
     plt.close(fig)
 
@@ -423,12 +439,6 @@ def fig_lateral(rows, x, y, deep, im, pairs, vg, loo, scale, budget,
     a.set_xlabel(r"$\Delta\lambda$ over %g m, one pass" % SPAN)
     a.set_ylabel(r"the same ice, another pass")
     ms.tag(a, "B")
-    ms.label(a, "%d block pairs under 0.6 km apart,\n%d on different days\n"
-             "rms difference per block %.4f\n(colour: depth, dark shallow)"
-             % (i.size, np.sum([tags[p][:8] != tags[q][:8]
-                                for p, q in zip(i, j)]),
-                rms(im[i] - im[j]) / np.sqrt(2)),
-             x=0.97, y=0.03, ha="right", fontsize=11)
 
     a = ax[0, 2]
     sep = np.array([(lo + hi) / 2 for lo, hi in SEP_BINS])
@@ -439,9 +449,6 @@ def fig_lateral(rows, x, y, deep, im, pairs, vg, loo, scale, budget,
     a.set_ylabel(r"rms $\Delta\lambda$ difference $/\sqrt{2}$, 500-1450 m")
     a.set_ylim(3e-4, 3e-2)
     ms.tag(a, "C")
-    ms.label(a, "black: all pairs of different frames\n"
-             "orange: separated east-west\nblue: separated north-south",
-             x=0.97, y=0.03, ha="right", fontsize=11)
 
     a = ax[1, 0]
     a.plot(deep, loo["pred"], "o", color="k", ms=4.5, alpha=0.8)
@@ -452,10 +459,6 @@ def fig_lateral(rows, x, y, deep, im, pairs, vg, loo, scale, budget,
     a.set_xlabel(r"$\Delta\lambda$ measured, 500-1450 m")
     a.set_ylabel("predicted from the other frames")
     ms.tag(a, "D")
-    ms.label(a, "each frame left out in turn\nrms error %.4f\n"
-             "(the survey mean: %.4f)\nwhole days left out: %.4f"
-             % (loo["rms"], loo["rms0"], loo["rms_day"]),
-             x=0.97, y=0.03, ha="right", fontsize=11)
 
     a = ax[1, 1]
     a.plot(deep, scale, "o", color="k", ms=4.5, alpha=0.8)
@@ -467,10 +470,6 @@ def fig_lateral(rows, x, y, deep, im, pairs, vg, loo, scale, budget,
     a.set_xlabel(r"$\Delta\lambda$ from the phase, 500-1450 m")
     a.set_ylabel("power fringe rate / phase delay rate")
     ms.tag(a, "E")
-    ms.label(a, "cross-polarised POWER against the PHASE delay\n"
-             "blue: the band's centre over the LO\n"
-             "dashed: if every block had the weakest fabric",
-             x=0.03, y=0.03, fontsize=11)
 
     a = ax[1, 2]
     a.plot(budget["shape"], ZC, "o-", color="k", lw=2.0, ms=6)
@@ -481,13 +480,6 @@ def fig_lateral(rows, x, y, deep, im, pairs, vg, loo, scale, budget,
     a.set_xlabel("depth pattern, relative to its mean")
     a.set_ylabel("depth [m]")
     ms.tag(a, "F")
-    ms.label(a, "variance of $\\Delta\\lambda$(block, depth):\n"
-             "%.0f %% depth, %.0f %% between blocks\n"
-             "%.0f %% of that in one map, whose\ndepth pattern is black\n"
-             "(grey: the survey profile)"
-             % (100 * budget["depth"], 100 * budget["lateral"],
-                100 * budget["modes"][0]), x=0.97, y=0.97, ha="right",
-             va="top", fontsize=11)
     fig.savefig(out_png, dpi=170)
     plt.close(fig)
 
@@ -632,6 +624,8 @@ def main():
 
     # ---- products and figures
     pick = int(np.argmin(np.hypot(x, y)))
+    print("node_depth_model.png panel A is %s block %d, the block nearest "
+          "the survey's centre" % (rows[pick]["tag"], rows[pick]["block"]))
     fig_depth(rows, outs, ev, rs, md, pick,
               os.path.join(out, "node_depth_model.png"))
     fig_lateral(rows, x, y, deep, im, (pi_, pj_), vg, loo, sc[:, 0], budget,
@@ -642,10 +636,7 @@ def main():
         q["dlam"] = np.where(np.isfinite(r["dlam"]), o["m"], np.nan)
         resolved.append(q)
     nsec.draw(nsec.frames_by_segment(resolved),
-              os.path.join(out, "node_sections_resolved.png"), "dlam",
-              r"the same nodes on the depth model's $\Delta\lambda$(z): "
-              "smooth fabric plus a bounded window phase, each value a "
-              "mean over ~%.0f m" % med("resolution_m", outs))
+              os.path.join(out, "node_sections_resolved.png"), "dlam")
     ne.write_flow_table(resolved, os.path.join(out, "node_table_resolved.mat"),
                         solver="half-wave node ladder, depth model",
                         prefix="node_resolved_flow_ct")

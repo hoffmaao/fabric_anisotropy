@@ -1,23 +1,34 @@
 """Table and figures from the node-method products (run_node_frame,
 stages/node).
 
-    /opt/anaconda3/bin/python scripts/figures/node_export.py \\
+    python scripts/figures/node_export.py \\
         [<mirror of stages/node>] [out_dir] [pattern]
 
-Reads every node_<tag>_B2000.mat (MATLAB v7.3, read with h5py), writes
-figs/node_blocks.csv (one row per block: tag, block, lat, lon, heading,
-slow axis geographic, plateau ratio, gains, node count, chi2/dof,
-abstention depth, strength by 200 m band) and figs/node_profiles.npz
-(dlam(z) and sigma per block), then four figures:
+Reads every node_<tag>_B2000.mat (MATLAB v7.3, read with h5py; the
+directory defaults to $SCAR_DATA/node, $SCAR_DATA to ~/data/opr/scar),
+writes figs/node_blocks.csv (one row per block: tag, block, lat, lon,
+heading, slow axis geographic, plateau ratio, gains, node count,
+chi2/dof, abstention depth, strength by 200 m band) and
+figs/node_profiles.npz (dlam(z) and sigma per block), prints the survey's
+numbers, and draws three figures. Nothing is written on the panels but
+their letters; these are the captions. Blocks driven north-south are
+blue and blocks driven east-west orange throughout.
 
-  node_heading_test.png   slow axis per block against heading, N-S and
-                          E-W families marked: a fabric axis does not
-                          turn with the antennas; and dlam(z) per block
-                          by family, with the band medians of each
-  node_ladders.png        node depths per block, by family
-  node_crossings.png      N-S and E-W blocks within 1.5 km of each other:
-                          node depths, band strength and slow axis on the
-                          same ice, which cannot depend on heading
+  node_heading_test.png   A: slow axis of each block against its heading
+                          (marker size: the plateau ratio, the
+                          orientation's quality; dashed: each family's
+                          circular mean). A fabric axis does not turn
+                          with the antennas. B: dlam(z) of each block
+                          (thin) and each family's median (thick); black
+                          stairs: dlam from the spacing of the nodes
+                          alone.
+  node_ladders.png        node depths of every block, in file order
+  node_crossings.png      N-S against E-W blocks within 1.5 km of each
+                          other, the same ice driven in two directions.
+                          A: depths of the nodes both blocks have. B:
+                          strength by 200 m band (colour: depth, dark
+                          shallow). C: slow axis. None of the three can
+                          depend on heading.
 
 read_product also returns what nodeFabric's linear solve was given (the
 phase increments, the node delays, the firn reference), which is what
@@ -271,19 +282,14 @@ def fig_crossings(good, out):
     ax[0].set_xlabel("node depth, N-S block [m]")
     ax[0].set_ylabel("node depth, E-W block [m]")
     ms.tag(ax[0], "A")
-    ms.label(ax[0], "node depths, %d pairs\nmedian %+.0f m, rms %.0f m" % (
-        len(pairs), dz_med, dz_rms), x=0.97, y=0.03, ha="right")
     ax[1].plot([0, 0.12], [0, 0.12], "-", color="0.6", lw=0.8)
     ax[1].set_xlabel(r"$\Delta\lambda$, N-S block")
     ax[1].set_ylabel(r"$\Delta\lambda$, E-W block")
     ms.tag(ax[1], "B")
-    ms.label(ax[1], "band strength\n(colour: depth band)", x=0.97, y=0.03,
-             ha="right")
     ax[2].plot([60, 160], [60, 160], "-", color="0.6", lw=0.8)
     ax[2].set_xlabel(r"slow axis, N-S block [$^\circ$]")
     ax[2].set_ylabel(r"slow axis, E-W block [$^\circ$]")
     ms.tag(ax[2], "C")
-    ms.label(ax[2], "slow axis", x=0.97, y=0.03, ha="right")
     ax[2].set_xlim(60, 160)
     ax[2].set_ylim(60, 160)
     fig.savefig(os.path.join(out, "node_crossings.png"), dpi=170)
@@ -291,8 +297,9 @@ def fig_crossings(good, out):
     da = np.array([b["theta"] - a["theta"] for a, b, d in pairs])
     da = (da + 90) % 180 - 90
     print("crossing pairs: %d; slow-axis E-W minus N-S median %+.1f deg "
-          "(rms %.1f); node depth E-W minus N-S median %+.0f m" % (
-              len(pairs), np.median(da), np.sqrt(np.mean(da ** 2)), dz_med))
+          "(rms %.1f); node depth E-W minus N-S median %+.0f m (rms %.0f)"
+          % (len(pairs), np.median(da), np.sqrt(np.mean(da ** 2)), dz_med,
+             dz_rms))
     for a, b, d in pairs:
         print("  %s b%d (heading %.0f, axis %.1f) with %s b%d (heading "
               "%.0f, axis %.1f): %.2f km apart, %d shared nodes" % (
@@ -306,7 +313,7 @@ def fig_crossings(good, out):
             lo, hi, np.nanmedian(dd), np.isfinite(dd).sum()))
 
 
-# the Jones table's 25 m rows (centres)
+# the flat table's 25 m rows (centres)
 ROW_Z = np.arange(35.0, 1500.0, 25.0)
 
 
@@ -381,14 +388,11 @@ def fig_heading_test(good, out):
     pl = np.array([r["plateau"] for r in good])
     fig, ax = plt.subplots(1, 2, figsize=(12.8, 5.4),
                            constrained_layout=True)
-    for fam, c, lab, dy in ((ns, C_NS, "N-S", 3), (~ns, C_EW, "E-W", -9)):
+    for fam, c in ((ns, C_NS), (~ns, C_EW)):
         ax[0].scatter(hd[fam], th[fam], s=22 + 6 * np.clip(pl[fam], 0, 8),
                       color=c, alpha=0.8, edgecolor="w", lw=0.5)
         if fam.any():
-            cm = circular_mean(th[fam])
-            ax[0].axhline(cm, color=c, lw=0.8, ls="--")
-            ax[0].text(20, cm + dy, r"%s %.1f$^\circ$ (n %d)" % (
-                lab, cm, fam.sum()), color=c, fontsize=12, ha="left")
+            ax[0].axhline(circular_mean(th[fam]), color=c, lw=0.8, ls="--")
     ax[0].set_xlabel(r"block heading [$^\circ$]")
     ax[0].set_ylabel(r"slow axis, geographic [$^\circ$]")
     ax[0].set_xlim(0, 180)
@@ -396,7 +400,6 @@ def fig_heading_test(good, out):
     ax[0].set_xticks([0, 45, 90, 135, 180])
     ax[0].set_yticks([0, 45, 90, 135, 180])
     ms.tag(ax[0], "A")
-    ms.label(ax[0], "slow axis against heading\n(marker size: plateau ratio)")
     zg = np.arange(50, 1500, 10.0)
     for fam, c in ((ns, C_NS), (~ns, C_EW)):
         prof = []
@@ -416,8 +419,6 @@ def fig_heading_test(good, out):
     ax[1].set_xlabel(r"$\Delta\lambda$ along the slow axis")
     ax[1].set_ylabel("depth [m]")
     ms.tag(ax[1], "B", x=0.93)
-    ms.label(ax[1], "thin: each block, thick: family median\n"
-             "black: from node spacing alone", x=0.97, y=0.03, ha="right")
     fig.savefig(os.path.join(out, "node_heading_test.png"), dpi=170)
     plt.close(fig)
 
@@ -454,8 +455,6 @@ def fig_ladders(good, out):
     ax.set_ylim(1500, 0)
     ax.set_xlabel("block (in file order)")
     ax.set_ylabel("node depth [m]")
-    ms.label(ax, "half-wave node depths per block: N-S blue, E-W orange",
-             x=0.98, y=0.97, ha="right", va="top")
     fig.savefig(os.path.join(out, "node_ladders.png"), dpi=170)
     plt.close(fig)
 
