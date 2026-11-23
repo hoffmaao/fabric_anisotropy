@@ -122,6 +122,9 @@ def read_product(fn):
         az = np.asarray(meta["az"]).ravel()
         x = np.asarray(meta["x"]).ravel()
         zfull = np.asarray(f["z"]).ravel()
+        opts = f["opts"] if "opts" in f else {}
+        step_m = (float(np.asarray(opts["step_m"]).ravel()[0])
+                  if "step_m" in opts else None)
         blk = R["block"]
         n = 1 if isinstance(blk, h5py.Group) else np.asarray(blk[()]).size
         for b in range(n):
@@ -137,7 +140,8 @@ def read_product(fn):
                                  err="skipped" if skipped else msg))
                 continue
             try:
-                rows.append(dict(where, **read_block(f, g, zfull)))
+                rows.append(dict(where, step_m=step_m,
+                                 **read_block(f, g, zfull)))
             except Exception as e:  # a block that did not write every field
                 rows.append(dict(where, heading=az[b], ok=False,
                                  err=repr(e)))

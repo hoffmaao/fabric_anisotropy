@@ -12,8 +12,8 @@ On the server (`opr_fabric/server/`):
   the surface from the season's polarimetric product, loads the four
   channels `CSARP_standardphase_{HH,VV,HV,VH}` over it, checks that HH is
   the image the product was built from, fits one range delay per channel
-  over the firn (20-150 m) and writes the coregistered channels to
-  `stages/quadpol_cf/coreg_cache/creg_<tag>.mat` (0.3-3.2 GB a frame at
+  over the firn (20-150 m) and writes the coregistered channels, down to
+  1500 m, to `stages/quadpol_cf/coreg_cache/creg_<tag>.mat` (0.3-3.2 GB a frame at
   Ridge A, 1-3 min). A cache made with the same settings is left alone.
 - `coreg_one.sh <site_root> <day_seg> <frm>` - that script under a lock,
   with a log in `coreg_logs/`. `coreg_batch.sh <site> [K]` runs it over
@@ -26,7 +26,8 @@ On the server (`opr_fabric/server/`):
   `stages/node/node_<tag>_B<blk_m><tagx>.mat`: `R`, one struct per block
   (the estimator's output plus `theta_geo_deg`), and `meta`, the block
   table (along-track position, lat, lon, heading, trace count). Its header
-  lists the optional variables.
+  lists the optional variables; `z_max` can cut the profile shallower than
+  the cache's 1500 m, and a deeper one is an error.
 - `quadpol_frame_blocks.m` - the block cut: channels from the cache,
   positions from the season's polarimetric product, the per-trace heading
   as a great-circle azimuth smoothed on the doubled-angle phasor.

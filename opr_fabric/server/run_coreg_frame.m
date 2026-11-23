@@ -10,7 +10,8 @@
 %      shipped only that) and load the four SAR-focused channels
 %      CSARP_standardphase_{HH,VV,HV,VH} over it
 %   2. check that the HH channel is the image the product was built from
-%   3. depth axis from the product's surface pick, kept down to z_max
+%   3. depth axis from the product's surface pick, kept down to Z_MAX
+%      (1500 m, the one depth every cache reaches)
 %   4. fit ONE range delay per channel over the firn (coreg_firn_m,
 %      20-150 m) and shift the whole channel by it (ptt.coregisterChannels)
 %   5. write the coregistered channels to
@@ -27,9 +28,6 @@
 %   day_seg, frm   the frame (required)
 %   site_root      the season's data root (default Ridge A,
 %                  /cresis/nvme/opr_data/accum/2024_Antarctica_Ground2)
-%   z_max          deepest sample kept [m] (1500). Any other value gets its
-%                  own cache name, creg_<tag>_z<z_max>.mat, so a special
-%                  run never replaces the standard cache.
 %   coreg_firn_m   the firn window the delays are fitted over ([20 150])
 %   out_dir        (<work>/stages/quadpol_cf)
 %
@@ -52,7 +50,6 @@ if ~exist('site_root', 'var') || isempty(site_root)
   site_root = '/cresis/nvme/opr_data/accum/2024_Antarctica_Ground2';
 end
 site_root = char(site_root);
-if ~exist('z_max', 'var') || isempty(z_max), z_max = 1500; end
 if ~exist('coreg_firn_m', 'var') || isempty(coreg_firn_m), coreg_firn_m = [20 150]; end
 % Work root and repo root are DERIVED from this file's location, see
 % fabric_paths. The /cresis site_root stays absolute: it is a real mount
@@ -65,11 +62,7 @@ end
 CHAN = {'hh', 'vv', 'hv', 'vh'};
 NRW = 101;                 % range samples the reported coherence is averaged over
 Z_BAND = [200 1200];       % depths the reported coherence is read over [m]
-if z_max ~= 1500
-  ZTAG = sprintf('_z%d', round(z_max));
-else
-  ZTAG = '';
-end
+Z_MAX = 1500;              % deepest sample kept [m]; run_node_frame reads no deeper
 tag = sprintf('%s_%03d', day_seg, frm);
 name = sprintf('Data_%s.mat', tag);
 t_all = tic;
@@ -154,7 +147,7 @@ C0 = 299792458; C_ICE = C0 / sqrt(3.171);
 st = median(P.Surface(:), 'omitnan');
 clear P
 z = (Tv(:) - st) * C_ICE / 2;
-keep = z >= 0 & z <= z_max;
+keep = z >= 0 & z <= Z_MAX;
 for k = 1:4, S.(CHAN{k}) = S.(CHAN{k})(keep, :); end
 z = z(keep);
 fprintf('depth window %.0f..%.0f m (%d samples)\n', z(1), z(end), numel(z));
@@ -168,7 +161,7 @@ kr = ones(NRW, 1) / NRW;
 %% 4. one delay per channel from the firn, or the cache of a previous run
 CO = struct('mode', 'constant', 'firn_m', coreg_firn_m, 'search_t', 5, 'oversample', 16);
 cache_dir = fullfile(out_dir, 'coreg_cache');
-cache_fn = fullfile(cache_dir, sprintf('creg_%s%s.mat', tag, ZTAG));
+cache_fn = fullfile(cache_dir, sprintf('creg_%s.mat', tag));
 if exist(cache_fn, 'file') == 2
   % the trace count is read from the cached channel itself, the one record
   % of it that cannot drift from the data

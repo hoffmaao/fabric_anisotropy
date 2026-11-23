@@ -31,7 +31,9 @@
 %   meta   quadpol_frame_blocks' block table (x, lat, lon, az, n, used)
 %   tag, blk_m, opts, sec
 %
-% Optional variables: blk_m (2000), z_max (1500), tagx (''), site_root,
+% Optional variables: blk_m (2000), z_max (1500: the depth run_coreg_frame
+% keeps the channels to; a smaller value cuts the profile shallower, a
+% larger one stops with run_node_frame:depth), tagx (''), site_root,
 % cache_dir, threads (4), spread_max_deg (10), min_traces (500 blk_m /
 % 2000), psi_step_deg (5), fc
 % (750e6), depth_model (nodeFabric's default; a struct of its fields, or
@@ -62,6 +64,10 @@ if ~exist('site_root', 'var'), site_root = '/cresis/nvme/opr_data/accum/2024_Ant
 if ~exist('cache_dir', 'var'), cache_dir = fullfile(fabric_work, 'stages', 'quadpol_cf', 'coreg_cache'); end
 if ~exist('blk_m', 'var'), blk_m = 2000; end
 if ~exist('z_max', 'var'), z_max = 1500; end
+if z_max > 1500
+  error('run_node_frame:depth', ['z_max %g m is deeper than the 1500 m run_coreg_frame keeps ' ...
+    'the coregistered channels to; give z_max <= 1500'], z_max);
+end
 if ~exist('tagx', 'var'), tagx = ''; end
 if ~exist('spread_max_deg', 'var'), spread_max_deg = 10; end
 if ~exist('min_traces', 'var'), min_traces = 500 * blk_m / 2000; end

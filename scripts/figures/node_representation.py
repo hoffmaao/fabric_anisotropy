@@ -195,7 +195,8 @@ def model_dependence(rows, outs, plain, zm):
         mdl = dict(ns.SMOOTH, len_m=length)
         alt[length] = np.array([ns.resolve(r, mdl)["m"] for r in rows])
     lengths = np.array([1, 3, 5, 7, 11, 15, 21, 31])
-    out = dict(lengths=lengths * ns.MODEL_DZ, plain=[], half=[], twice=[],
+    out = dict(lengths=lengths * ns.grid_step(rows[0]), plain=[], half=[],
+               twice=[],
                lateral=[])
     for n in lengths:
         b = running_mean(base, n)
@@ -218,7 +219,7 @@ def horizon(rows, outs, z_range=(380.0, 600.0), width=30.0, sd=0.05):
     where the block's evidence is largest in z_range. Returns the depth,
     the step (posterior mean of the ramp's amplitude) and the evidence
     gain with the depth marginalised over the range."""
-    zb = np.arange(z_range[0], z_range[1] + 1e-9, ns.MODEL_DZ)
+    zb = np.arange(z_range[0], z_range[1] + 1e-9, ns.grid_step(rows[0]))
     depth, step, gain = [], [], []
     for r, o in zip(rows, outs):
         zm = r["zm"]
@@ -227,7 +228,7 @@ def horizon(rows, outs, z_range=(380.0, 600.0), width=30.0, sd=0.05):
                          o["psi_sd_ns"], o["model"]["psi_len_m"])
         cm = ns.kernel(zm, o["model"])
         mp = np.zeros(zm.size)
-        ramps = [np.clip((zm + ns.MODEL_DZ / 2 - (z - width / 2)) / width,
+        ramps = [np.clip((zm + ns.grid_step(r) / 2 - (z - width / 2)) / width,
                          0.0, 1.0) for z in zb]
         le = np.array([ns.log_evidence(
             g, d, cd, cm + sd ** 2 * np.outer(q, q), mp) for q in ramps])
@@ -253,9 +254,9 @@ def power_phase_scale(row):
     tau from the PHASE increments alone and f the LO, find the factor s
     on tau that best explains the power: s = f_band / f_LO when the phase
     delay is the delay the power sees, whatever the block's strength."""
-    zm, k = row["zm"], row["k"]
+    zm, k, dz = row["zm"], row["k"], ns.grid_step(row)
     m_inc = ns.resolve(row, ns.POSTER, node_fc=ns.FC, use_nodes=False)["m"]
-    tau_cells = np.cumsum(m_inc * k * ns.MODEL_DZ)
+    tau_cells = np.cumsum(m_inc * k * dz)
     z, v = row["z"], row["ratio45"]
     n = max(1, int(round(20.0 / np.median(np.diff(z)))))
     ok = np.isfinite(v)
@@ -264,7 +265,7 @@ def power_phase_scale(row):
     zz, vv = z[::n // 2], vs[::n // 2]
     m = (zz >= 300) & (zz <= 1450) & np.isfinite(vv)
     zz, vv = zz[m], vv[m]
-    tau = np.interp(zz, zm + ns.MODEL_DZ, tau_cells)
+    tau = np.interp(zz, zm + dz, tau_cells)
     t = (zz - zz.mean()) / 500.0
     a0 = np.c_[np.ones_like(t), t, t ** 2]
     r0 = vv - a0 @ np.linalg.lstsq(a0, vv, rcond=None)[0]
@@ -357,7 +358,7 @@ def fig_depth(rows, outs, plain, ev, rs, md, pick, out_png):
     fig, ax = plt.subplots(2, 2, figsize=(12.8, 10.4),
                            constrained_layout=True)
     r, o = rows[pick], outs[pick]
-    zm = r["zm"] + ns.MODEL_DZ / 2
+    zm = r["zm"] + ns.grid_step(r) / 2
     a = ax[0, 0]
     a.plot(plain[pick]["m"], zm, "-", color="0.6", lw=1.0)
     a.fill_betweenx(zm, o["m"] - o["sigma"], o["m"] + o["sigma"],

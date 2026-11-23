@@ -15,7 +15,12 @@ model gives back the dlam a product stores to 1e-10.
     out = ns.resolve(row, ns.POSTER, node_fc=ns.FC)   # the plain model:
     #   every phase increment taken as a delay, no window phase
 
-`row` is one block as node_export.read_product returns it.
+`row` is one block as node_export.read_product returns it. The grid dlam
+is solved on and the window phase's correlation length are the
+product's own: the spacing of row["zm"] and the window step row["step_m"]
+the product was made with (MODEL_DZ and PSI_LEN_M, nodeFabric's
+defaults, only where a row does not say). A model's psi_len_m of None
+means that window step.
 """
 import numpy as np
 
@@ -25,12 +30,25 @@ NODE_FC = 735e6               # the band's centre on Ridge A: what a node
 #                               20250108_02_003; the survey's evidence
 #                               peaks at 730-735). Products that carry
 #                               nodes.fc_hz use their own.
-MODEL_DZ = 10.0
+MODEL_DZ = 10.0               # nodeFabric's model_dz
+PSI_LEN_M = 25.0              # nodeFabric's step_m
 SMOOTH = dict(kernel="matern32", sd=0.04, len_m=500.0, mean=0.0,
-              level_sd=0.2, psi_sd_ns="auto", psi_len_m=25.0)
+              level_sd=0.2, psi_sd_ns="auto", psi_len_m=None)
 POSTER = dict(kernel="exp", sd=0.05, len_m=150.0, mean=0.0,
-              level_sd=0.0, psi_sd_ns=0.0, psi_len_m=25.0)
+              level_sd=0.0, psi_sd_ns=0.0, psi_len_m=None)
 PSI_GRID = np.logspace(np.log10(0.002), np.log10(0.04), 14)
+
+
+def grid_step(row):
+    """the step [m] of the grid the product solved dlam on"""
+    zm = row["zm"]
+    return float(zm[1] - zm[0]) if zm.size > 1 else MODEL_DZ
+
+
+def window_step(row):
+    """the step [m] between the product's correlation windows"""
+    step = row.get("step_m")
+    return PSI_LEN_M if step is None else float(step)
 
 
 def a_abs(zz, zm, k, dz=MODEL_DZ):
@@ -157,16 +175,17 @@ def node_delays(row, node_fc=None):
 
 def block_rows(row, node_fc=None, use_nodes=True):
     """G, d and the row sigmas of one block: anchor, nodes, increments"""
-    zm, k = row["zm"], row["k"]
-    g = [a_abs(firn_reference_depth(row), zm, k)]
+    zm, k, dz = row["zm"], row["k"], grid_step(row)
+    g = [a_abs(firn_reference_depth(row), zm, k, dz)]
     d = [np.zeros(1)]
     sd_abs = [np.array([0.02])]
     if use_nodes:
         ok = np.isfinite(row["node_n"])
-        g.append(a_abs(row["node_z"][ok], zm, k))
+        g.append(a_abs(row["node_z"][ok], zm, k, dz))
         d.append(node_delays(row, node_fc)[ok])
         sd_abs.append(row["node_sig"][ok])
-    g.append(a_abs(row["inc_z2"], zm, k) - a_abs(row["inc_z1"], zm, k))
+    g.append(a_abs(row["inc_z2"], zm, k, dz)
+             - a_abs(row["inc_z1"], zm, k, dz))
     d.append(row["inc_d"])
     return np.vstack(g), np.concatenate(d), np.concatenate(sd_abs)
 
@@ -182,9 +201,12 @@ def resolution_width(rm, zm):
     return out
 
 
-def intervals(row, psi_sd, psi_len=25.0, span=125.0, edges=None):
+def intervals(row, psi_sd, psi_len=None, span=125.0, edges=None):
     """dlam over fixed spans from the summed increments alone: no prior,
-    no nodes. NaN where increments cover less than 60 % of the span."""
+    no nodes. NaN where increments cover less than 60 % of the span.
+    psi_len None: the product's window step."""
+    if psi_len is None:
+        psi_len = window_step(row)
     zw, k = row["zw"], row["k"]
     z1, z2, inc = row["inc_z1"], row["inc_z2"], row["inc_d"]
     if edges is None:
@@ -213,6 +235,8 @@ def resolve(row, model=None, node_fc=None, use_nodes=True):
     sigma, R, resolution_m, n_eff, psi_sd_ns, psi (window phase), res
     (increment residuals), acf1, chi2_dof, logev, node_res, model."""
     model = dict(SMOOTH if model is None else model)
+    if model["psi_len_m"] is None:
+        model["psi_len_m"] = window_step(row)
     zm = row["zm"]
     g, d, sd_abs = block_rows(row, node_fc, use_nodes)
     iw = window_index(row)
