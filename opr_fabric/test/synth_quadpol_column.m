@@ -10,10 +10,30 @@ function [S, tau, alpha] = synth_quadpol_column(z, dlam, theta, dt, p)
 % frame whose slow axis sits at theta [rad] (ptt.rotatePolarization's
 % sense: rotating S by theta returns hh = a, vv = b):
 %   hh = a c^2 + b s^2,  vv = a s^2 + b c^2,  hv = vh = (a - b) c s.
-% Then an uncorrelated depolarised component (relative power p.depol, one
-% field per co-pol channel and one shared by hv and vh), channel gains
-% (receive gr on vv and hv, transmit gt on vv and vh, hh the reference),
-% and white noise at p.snr_db at the top falling 15 dB to the bottom.
+% Then channel gains (receive gr on vv and hv, transmit gt on vv and vh, hh
+% the reference), and white noise at p.snr_db at the top falling 15 dB to
+% the bottom.
+%
+% DEPOLARISED BACKSCATTER (p.depol > 0). Below the firn real ice does not
+% return one polarised echo per depth: the scatterer is a random symmetric
+% matrix in the fabric's own frame,
+%   [c + d3, d1; d1, c - d3],
+% c the coherent part above and d3, d1 a depolarised part, independent of
+% it and of each other, each of relative power p.depol. Every element goes
+% through the same birefringent column, so in the fabric frame
+%   a = A[c] + A[d3]   (slow-slow: delayed by tau)
+%   b = B[c] - B[d3]   (fast-fast: undelayed)
+%   x = H[d1]          (cross: one leg each, delayed by tau / 2)
+% and the antenna frame is the rotation of [a x; x b]. The eigen-pair
+% coherence falls to (1 - depol) / (1 + depol) and the cross-polarised
+% power in the fabric frame rises to depol / (1 + depol) of the
+% co-polarised, with NO bias on the pair's phase: the depolarised echo
+% carries the column's delay like the coherent one. (Adding independent
+% fields to the antenna-frame channels instead, as this helper once did,
+% leaves a zero-phase term in any rotated frame and a phase error that
+% follows the fringes, which crossing passes over real ice do not show.)
+% depol 0.4 gives the coherence (0.43) and the in-frame cross-polarised
+% power (-5 dB) of Ridge A below the firn.
 %
 % p fields (defaults): fc 750e6, f_off -13e6 (band offset from the LO as
 % stored), B 160e6, Nx 125, depol 0, snr_db 15, tau_x 3 (speckle
@@ -58,6 +78,35 @@ if refl_deg > 0
   alpha = conv(randn(Nt + 6 * n_c, 1), kk, 'valid');
   alpha = deg2rad(refl_deg) * alpha / std(alpha);
 end
+% the coherent echo, and with it the reflectors' phase on the slow axis
+[a, b] = H_through(r, tau, alpha, f, fc, pulse, Nf);
+x = zeros(Nt, Nx);
+if depol > 0
+  % the depolarised part of the scatterer, through the same column
+  [ad, bd] = H_through(H_speckle(Nt, Nx, tau_x) .* amp * sqrt(depol), tau, [], f, fc, pulse, Nf);
+  a = a + ad; b = b - bd;
+  x = H_through(H_speckle(Nt, Nx, tau_x) .* amp * sqrt(depol), tau / 2, [], f, fc, pulse, Nf);
+end
+% the fabric frame [a x; x b] seen from antennas whose slow axis sits at theta
+c = cos(theta); s = sin(theta);
+S.hh = a * c ^ 2 + b * s ^ 2 - 2 * c * s * x;
+S.vv = a * s ^ 2 + b * c ^ 2 + 2 * c * s * x;
+S.hv = (a - b) * c * s + (c ^ 2 - s ^ 2) * x;
+S.vh = S.hv;
+S.vv = S.vv * gr * gt; S.hv = S.hv * gr; S.vh = S.vh * gt;
+nz = sqrt(mean(abs(b(1:min(200, Nt), :)) .^ 2, 'all')) * 10 ^ (-snr_db / 20);
+for ch = {'hh', 'vv', 'hv', 'vh'}
+  S.(ch{1}) = S.(ch{1}) + nz * (randn(Nt, Nx) + 1i * randn(Nt, Nx)) / sqrt(2);
+end
+end
+
+function [a, b] = H_through(r, tau, alpha, f, fc, pulse, Nf)
+% One reflectivity field r [Nt x Nx] as two band-limited echoes: b
+% undelayed, a delayed by tau(z), built in chunks over which tau is
+% constant, each chunk shifted in the frequency domain and given the phase
+% exp(-2 pi i fc tau) that mixing by the LO leaves on a delayed echo. alpha
+% (radians, [Nt x 1], or empty) is a phase on a's reflectivity alone.
+[Nt, Nx] = size(r);
 chunk = 40;
 a = zeros(Nt, Nx); b = zeros(Nt, Nx);
 for s0 = 1:chunk:Nt
@@ -65,25 +114,12 @@ for s0 = 1:chunk:Nt
   ti = mean(tau(i));
   ri = zeros(Nt, Nx); ri(i, :) = r(i, :);
   R = fft(ri, Nf, 1) .* pulse;
-  b = b + H_crop(ifft(R, [], 1), Nt);
-  Ra = R;
-  if refl_deg > 0, ri(i, :) = r(i, :) .* exp(-1i * alpha(i)); Ra = fft(ri, Nf, 1) .* pulse; end
-  a = a + H_crop(ifft(Ra .* exp(-2i * pi * f * ti), [], 1), Nt) * exp(-2i * pi * fc * 1e-9 * ti);
-end
-c = cos(theta); s = sin(theta);
-S.hh = a * c ^ 2 + b * s ^ 2;
-S.vv = a * s ^ 2 + b * c ^ 2;
-S.hv = (a - b) * c * s;
-S.vh = S.hv;
-if depol > 0
-  dp = @() H_crop(ifft(fft(H_speckle(Nt, Nx, tau_x) .* amp, Nf, 1) .* pulse, [], 1), Nt) * sqrt(depol);
-  S.hh = S.hh + dp(); S.vv = S.vv + dp();
-  dx = dp(); S.hv = S.hv + dx; S.vh = S.vh + dx;
-end
-S.vv = S.vv * gr * gt; S.hv = S.hv * gr; S.vh = S.vh * gt;
-nz = sqrt(mean(abs(b(1:min(200, Nt), :)) .^ 2, 'all')) * 10 ^ (-snr_db / 20);
-for ch = {'hh', 'vv', 'hv', 'vh'}
-  S.(ch{1}) = S.(ch{1}) + nz * (randn(Nt, Nx) + 1i * randn(Nt, Nx)) / sqrt(2);
+  if nargout > 1, b = b + H_crop(ifft(R, [], 1), Nt); end
+  if ~isempty(alpha) && any(alpha(i))
+    ri(i, :) = r(i, :) .* exp(-1i * alpha(i));
+    R = fft(ri, Nf, 1) .* pulse;
+  end
+  a = a + H_crop(ifft(R .* exp(-2i * pi * f * ti), [], 1), Nt) * exp(-2i * pi * fc * 1e-9 * ti);
 end
 end
 

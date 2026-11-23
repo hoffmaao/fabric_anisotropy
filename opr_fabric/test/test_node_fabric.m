@@ -24,11 +24,14 @@
 %      the true delay below the firn reference passes n half waves of the
 %      band's centre less the firn phase; dlam(z) within its posterior, no
 %      node disagreement, no abstention.
-%   4. UNCALIBRATED CHANNELS. Receive and transmit gains with a 45-deg
-%      co-pol phase and the -111-deg HV/VH phase this system shows, with
-%      depolarisation 0.5 and noise: orientation still within 5 deg, the
-%      nodes within 30 m of the ladder (the weak contrast pulls the
-%      extrema ~20 m shallow), dlam recovered. This is the verdict that
+%   4. UNCALIBRATED CHANNELS, DEPOLARISED ECHOES. Receive and transmit
+%      gains with a 45-deg co-pol phase and the -111-deg HV/VH phase this
+%      system shows, the depolarised backscatter of Ridge A below the firn
+%      (0.4 of the coherent power: pair coherence 0.43 before noise, 0.3
+%      with it) and noise: orientation within 5 deg, every node counted
+%      right and its delay within the error it is given (with so little
+%      contrast left an extremum is located to tens of metres, and says
+%      so), dlam recovered inside its posterior. This is the verdict that
 %      matters for real data.
 %   5. WEAK FABRIC, NO NODES. A column whose delay never reaches half a
 %      fringe has no node ladder; dlam comes from the increments alone,
@@ -120,34 +123,42 @@ fprintf('   nodes and strength on the clean column:                  %s\n', H_ti
 
 %% ---- verdict 4: uncalibrated channels, depolarised
 gr = 0.8 * exp(-1i * deg2rad(33)); gt = 0.9 * exp(1i * deg2rad(78));   % arg(gr gt) = 45, arg(gr/gt) = -111
-p4 = p; p4.depol = 0.5; p4.gr = gr; p4.gt = gt; p4.snr_db = 12;
+p4 = p; p4.depol = 0.4; p4.gr = gr; p4.gt = gt; p4.snr_db = 12;
 [S4, tau4] = synth_quadpol_column(z, dl_true, deg2rad(35), dt, p4);
 o4 = ptt.nodeFabric(S4, z, dt, opts);
 th4 = rad2deg(o4.psi0);
 e4 = abs(angle(exp(2i * deg2rad(th4 - 35)))) / 2 * 180 / pi;
 N4 = o4.nodes;
 zn4 = H_ladder(o4, z, tau4, half_wave);
-[zerr4, extra4] = H_node_check(N4, zn4, fringe);
+% the true delay below the firn reference where each node was found,
+% against the delay the node was given, in units of its stated error
+zw4 = z(o4.windows.idx); in4 = zw4 >= 30 & zw4 <= 90;
+t4 = interp1(z, tau4, N4.z) - interp1(z, tau4, mean(zw4(in4)));
+nd4 = (t4 - N4.tau_ns) ./ N4.sigma_ns;
+count4 = numel(N4.z) == numel(zn4) && isequal(N4.n(:).', 1:numel(zn4));
 ok4m = isfinite(o4.dlam) & o4.zm > 100;
 zsc4 = (o4.dlam(ok4m) - dl_t(ok4m)) ./ o4.sigma_dlam(ok4m);
 g = o4.gains;
-fprintf('\n4. uncalibrated channels, depol 0.5: gains recovered gr %.2f at %.0f deg (truth %.2f at %.0f), gt %.2f at %.0f (truth %.2f at %.0f); firn coherence %.2f\n', ...
-  abs(g.gr), rad2deg(angle(g.gr)), abs(gr), rad2deg(angle(gr)), abs(g.gt), rad2deg(angle(g.gt)), abs(gt), rad2deg(angle(gt)), o4.gain_info.coh_firn);
-fprintf('   slow axis %.1f (err %.1f), fine_ref %.3f ns, nodes %d, depth err max %.0f m, node resid max %.3f ns\n', ...
-  th4, e4, o4.fine_ref, numel(N4.z), zerr4, max(abs(N4.resid_ns)));
+fprintf('\n4. uncalibrated channels, depol %.1f: gains recovered gr %.2f at %.0f deg (truth %.2f at %.0f), gt %.2f at %.0f (truth %.2f at %.0f); firn coherence %.2f\n', ...
+  p4.depol, abs(g.gr), rad2deg(angle(g.gr)), abs(gr), rad2deg(angle(gr)), abs(g.gt), rad2deg(angle(g.gt)), abs(gt), rad2deg(angle(gt)), o4.gain_info.coh_firn);
+fprintf('   slow axis %.1f (err %.1f), fine_ref %.3f ns, nodes %d (count n = %s), node resid max %.3f ns\n', ...
+  th4, e4, o4.fine_ref, numel(N4.z), sprintf('%d ', N4.n), max(abs(N4.resid_ns)));
 fprintf('   found %s\n   true  %s\n', sprintf('%5.0f ', N4.z), sprintf('%5.0f ', zn4));
+fprintf('   node delay error %s ns, in units of its stated error %s\n', sprintf('%+.3f ', t4 - N4.tau_ns), sprintf('%+.1f ', nd4));
 fprintf('   dlam median |err| %.4f, z rms %.2f, chi2/dof %.2f, abstain below %g m, gamma median %.2f\n', ...
   median(abs(o4.dlam(ok4m) - dl_t(ok4m))), rms(zsc4), o4.chi2_dof, o4.abstain_below_m, median(o4.windows.gamma, 'omitnan'));
 o4u = ptt.nodeFabric(S4, z, dt, struct('fc', fc, 'calibrate', false));
 ok4u = isfinite(o4u.dlam) & o4u.zm > 100;
 fprintf('   for the record, WITHOUT calibration: slow axis %.1f, dlam median |err| %.4f\n', ...
   rad2deg(o4u.psi0), median(abs(o4u.dlam(ok4u) - dl_t(ok4u))));
-% the ladder here is the band-centre one. Against it the first two extrema
-% sit ~20 m shallow in this column (0.04-0.06 ns, about the node sigma):
-% with half the power depolarised the ratio swings little and its extrema
-% are pulled up the contrast gradient. 30 m, not the clean column's 15.
-ok4 = e4 < 5 && N4.first_ok && zerr4 < 30 && extra4 && median(abs(o4.dlam(ok4m) - dl_t(ok4m))) < 0.005 && ...
-  rms(zsc4) < 2.5 && isinf(o4.abstain_below_m);
+% the ladder here is the band-centre one. With 0.4 of the power
+% depolarised the 45-deg ratio swings little, and an extremum of a noisy,
+% slowly turning curve is located to tens of metres (50 m in the worst of
+% six realisations). What the solve needs is not the depth but that the
+% delay given to each node is right within the error given with it: 3 of
+% those errors here, 2.6 at the worst of the six.
+ok4 = e4 < 5 && N4.first_ok && count4 && max(abs(nd4)) < 3 && median(abs(o4.dlam(ok4m) - dl_t(ok4m))) < 0.004 && ...
+  rms(zsc4) < 1.5 && isinf(o4.abstain_below_m);
 fprintf('   survives uncalibrated channels and depolarisation:       %s\n', H_tick(ok4));
 
 %% ---- verdict 5: weak fabric, no nodes
