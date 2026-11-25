@@ -100,7 +100,8 @@ fabric_work_root() {
       "tree holding no products, so every frame would recompute" >&2
     return 1
   fi
-  # absolute, because site_chain.sh and egrip_chain.sh cd away from here.
+  # absolute, because a launcher may cd away from here (node_survey.sh
+  # runs MATLAB from <work>/logs).
   # Captured separately: assigning straight into work would blank it before
   # the failure message could name it.
   abs=$( cd "$work" && pwd ) || {
@@ -114,7 +115,7 @@ fabric_work_root() {
   work=$abs
   if [ ! -d "$work/stages" ]; then
     echo "no stages/ in $work - $origin. Create it (mkdir -p" \
-      "$work/stages/quadpol) or point FABRIC_ROOT at a work root that has" \
+      "$work/stages) or point FABRIC_ROOT at a work root that has" \
       "one. Not searching upwards: an ancestor's stages/ belongs to" \
       "another run." >&2
     return 1

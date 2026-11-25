@@ -7,20 +7,20 @@ function [code_root, work_root] = fabric_paths()
 %
 %   <work>/code      this repo (code_root)
 %   <work>/stages    its products
-%   <work>/invert_logs, locks, ...
+%   <work>/coreg_logs, logs, locks
 %
 % and every server script needs those two directories. They are DERIVED
 % from this file's own location rather than named, so the same tree runs
 % from any user's scratch and from a second checkout used to test a change
-% without disturbing the live work root. Hardcoding them baked one
-% username into 22 MATLAB scripts and 6 shell launchers, which is what made
-% this code unrunnable by anyone else on the CReSIS machines.
+% without disturbing the live work root. Hardcoding them once baked one
+% username into every script and launcher, which is what made this code
+% unrunnable by anyone else on the CReSIS machines.
 %
 % Deliberately not relative to the WORKING DIRECTORY. The batch launchers
 % cd to <work>, but the one-liner form
 %
 %   matlab -batch "addpath('<code>/opr_fabric/server'); \
-%                  day_seg='20250108_02'; frm=9; run_season_ridge_a"
+%                  day_seg='20250108_02'; frm=9; run_node_frame"
 %
 % needs this directory on the path already, to find the script at all - so
 % the cwd that lets MATLAB find a script is not necessarily the cwd that
@@ -33,8 +33,7 @@ function [code_root, work_root] = fabric_paths()
 %
 % DATA roots stay absolute and are NOT derived here - /cresis/... are real
 % mount points on the CReSIS machines, not part of the work tree, and each
-% season declares its own site_root. So does shared software such as
-% /kucresis/scratch/software/snaphu.
+% site's root is named where it is used (coreg_batch.sh, node_survey.sh).
 %
 % The walk looks for the +ptt toolbox rather than counting directories, so
 % it stays right if the tree is nested differently, and it fails loudly
@@ -69,7 +68,7 @@ function [code_root, work_root] = fabric_paths()
 % "Running on the CReSIS machines", owns the reasoning for each and neither
 % header restates it.
 %
-% See also run_quadpol_pipeline, run_season_frame.
+% See also run_coreg_frame, run_node_frame.
 
 d = fileparts(mfilename('fullpath'));
 code_root = '';

@@ -1,10 +1,10 @@
 #!/bin/bash
-# Run the opr_fabric MATLAB test suite from a shell, exiting non-zero if any
-# test fails. Arguments pass through to run_all_tests.m:
+# Run the MATLAB test suite from a shell, exiting non-zero if any test
+# fails. Arguments pass through to run_all_tests.m:
 #
 #   bash opr_fabric/test/run_all_tests.sh             # every test
-#   bash opr_fabric/test/run_all_tests.sh quick       # a few minutes
-#   bash opr_fabric/test/run_all_tests.sh test_fabric_task test_quadpol
+#   bash opr_fabric/test/run_all_tests.sh quick       # all but the slow ones
+#   bash opr_fabric/test/run_all_tests.sh test_node_fabric test_xcorr_traveltime
 #
 # MATLAB is $MATLAB_BIN if set, else `matlab` on PATH, else the newest
 # install in the usual places: /Applications on a Mac, /opt/sw/matlab on the

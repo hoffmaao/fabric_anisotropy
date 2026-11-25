@@ -1,10 +1,10 @@
 function varargout = run_all_tests(selection)
-%RUN_ALL_TESTS Run the opr_fabric test suite; error if any test fails.
+%RUN_ALL_TESTS Run the test suite; error if any test fails.
 %
 %   run_all_tests              every test_*.m in this directory
-%   run_all_tests('quick')     all but the slow ones, a few minutes - the
-%                              smoke test for a fresh clone
-%   run_all_tests({'test_fabric_task','test_quadpol'})   just those
+%   run_all_tests('quick')     all but the slow ones - the smoke test for a
+%                              fresh clone, and what the gate runs
+%   run_all_tests({'test_node_fabric','test_xcorr_traveltime'})   just those
 %   results = run_all_tests(...)   also return name/status/seconds/message
 %
 % From a shell, where any failure becomes a non-zero exit status:
@@ -18,22 +18,21 @@ function varargout = run_all_tests(selection)
 % inside a helper function's workspace, where its clear cannot reach the
 % runner or the caller's base workspace. After it, the path, working
 % directory and warning state are restored and the figures it opened are
-% closed (figures that were already open stay): test_fabric_task puts the
-% OPR stubs on the path, and they must not leak into the next test or into
-% a run_fabric in the same session. A failing test is reported and the
-% suite carries on, so one run names every failure.
+% closed (figures that were already open stay), so nothing leaks into the
+% next test. A failing test is reported and the suite carries on, so one
+% run names every failure.
 
 here = fileparts(mfilename('fullpath'));
 listing = dir(fullfile(here, 'test_*.m'));
 names = sort(erase({listing.name}, '.m'));
 
-% Over two minutes each on an Apple-silicon laptop (R2025b), measured 22-23
-% Sep 2026; every other test takes seconds. Update when a test is added or
-% its cost changes, so 'quick' stays quick.
-slow = {'test_egrip_blocks', 'test_egrip_cap', 'test_fabric_gls', ...
-  'test_quadpol_bed_vote', 'test_quadpol_const_theta', 'test_quadpol_curved', ...
-  'test_quadpol_ls', 'test_quadpol_segmented', 'test_quadpol_signed_rate', ...
-  'test_quadpol_uncertainty'};
+% Tests that take over two minutes each on a laptop go here, and 'quick'
+% leaves them out. There are none now: the three tests take a little over
+% 2 min together on an Apple-silicon laptop (R2025b; test_node_fabric
+% 1.7 min, test_xcorr_traveltime 0.5 min) and about 10 min on mem1 at 8
+% threads. Update when a test is added or its cost changes, so 'quick'
+% stays quick.
+slow = {};
 
 if nargin == 0 || isequal(selection, 'all')
   % every test
@@ -57,10 +56,6 @@ for k = 1:numel(names)
   saved_dir = pwd;
   saved_warn = warning;
   saved_figs = findall(groot, 'Type', 'figure');
-  % No estimation method carries over from the previous test: each test
-  % selects its own with ptt.estimators.use, and one that forgets fails.
-  addpath(fullfile(here, '..', '..'));
-  ptt.estimators.use('none');
   t = tic;
   try
     H_run(fullfile(here, [names{k} '.m']));
